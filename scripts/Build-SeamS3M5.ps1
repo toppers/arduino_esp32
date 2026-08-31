@@ -19,7 +19,10 @@ param(
     [string]$M5StackPackage = (Join-Path $env:LOCALAPPDATA 'Arduino15\packages\m5stack'),
     [string]$CMake = ((Get-Command 'cmake.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)),
     [string]$Ninja = ((Get-Command 'ninja.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)),
-    [string]$GitBash = 'C:\Program Files\Git\bin\bash.exe',
+    #  Built from ProgramFiles rather than written out. Get-Command bash.exe is
+    #  NOT usable here: on Windows it usually finds the WSL launcher in
+    #  System32 instead of Git Bash, and the script needs the Git one.
+    [string]$GitBash = (Join-Path $env:ProgramFiles 'Git\bin\bash.exe'),
     [int]$Parallel = 8,
     [switch]$SkipRomLinkSetup,
     [string]$ExternalApplicationDirectory = '',

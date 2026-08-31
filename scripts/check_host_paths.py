@@ -31,8 +31,17 @@ from pathlib import Path
 #  A drive letter must not be preceded by an alphanumeric, or "https://" and
 #  every other URL scheme matches - which is how the first version of this
 #  reported eight false positives and no real ones.
+#
+#  After the separator, EITHER a component long enough to be a real directory
+#  name, OR a short one followed by another separator. Requiring just two
+#  path-safe characters matched compressed data: the three frozen driver
+#  binaries produced six findings between them - two characters of a deflate
+#  stream after a stray drive letter, followed by bytes that are not path
+#  characters at all. Those binaries hold no build-machine string of any kind,
+#  checked separately, so all six were noise.
 HOST_PATH = re.compile(
-    rb"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}[A-Za-z0-9_. -]{2,}"
+    rb"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}"
+    rb"(?:[A-Za-z0-9_. -]{4,}|[A-Za-z0-9_. -]{1,3}[\\/])"
     rb"|/home/[a-z0-9_-]{2,}/"
     rb"|/Users/[A-Za-z0-9_. -]{2,}/"
     rb"|/root/[A-Za-z0-9_.-]")
@@ -51,10 +60,20 @@ def contexts(data: bytes) -> list[str]:
     """Every host-path match with a little text around it, placeholders aside."""
     found = []
     for match in HOST_PATH.finditer(data):
-        line_start = data.rfind(b"\n", 0, match.start()) + 1
-        line_end = data.find(b"\n", match.end())
-        line = data[line_start:line_end if line_end != -1 else match.end() + 60]
-        if PLACEHOLDER.search(line[:400]):
+        #  Judge the placeholder against a window around THIS match, not the
+        #  whole line. A line can hold both, and the line-wide test then
+        #  silenced the real one: a generated recipe line holds an absolute
+        #  interpreter path AND a {runtime.platform.path} reference, so the CI
+        #  runner's interpreter went unreported because a placeholder appeared
+        #  later on the same line. A placeholder that makes a path generic
+        #  sits inside it or immediately after it - a bracketed user name
+        #  where the home directory belongs, or the path-to convention - so
+        #  that is the window.
+        #
+        #  Deliberately written without an example: an example would be a
+        #  path, and this file would then report itself.
+        window = data[match.start():match.end() + 24]
+        if PLACEHOLDER.search(window):
             continue
         text = data[match.start():match.end() + 50]
         text = text.split(b"\x00")[0]
@@ -74,18 +93,32 @@ def scan(target: Path, problems: list[str]) -> int:
     examined = 0
     if target.is_dir():
         for path in sorted(target.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(target)
+            #  Judged on the path RELATIVE to the target, so that scanning a
+            #  release directory that happens to live under build/ does not
+            #  skip its own contents.
+            #
             #  third_party is a submodule: upstream's files, carrying
             #  upstream's author's paths, which we cannot edit without
-            #  forking. Scanning it buries our own findings - 294 of the 305
-            #  matches on the publication tree came from one upstream
-            #  document. What ships to a user is the platform archive, and
-            #  that is scanned as an archive, where this does not apply.
-            if "third_party" in path.parts:
+            #  forking. build/ is compiler and ninja output, where absolute
+            #  paths belong and are never distributed. Scanning either buries
+            #  the findings that matter - one upstream document produced 294
+            #  of 305 matches on the publication tree, and a built worktree
+            #  produced 6492. What ships to a user is the platform archive,
+            #  and that is scanned as an archive, where neither applies.
+            if relative.parts and relative.parts[0] in ("third_party", "build"):
                 continue
-            if path.is_file():
-                examined += 1
-                scan_bytes(str(path.relative_to(target)),
-                           path.read_bytes(), problems)
+            #  Bytecode caches embed the source path they were compiled
+            #  from. Same category as build/, and they sit inside
+            #  scripts/ rather than at the top, so they need their own
+            #  test. make_package_index.py already keeps them out of
+            #  the archive.
+            if "__pycache__" in relative.parts:
+                continue
+            examined += 1
+            scan_bytes(str(relative), path.read_bytes(), problems)
     elif zipfile.is_zipfile(target):
         with zipfile.ZipFile(target) as archive:
             for member in archive.namelist():
