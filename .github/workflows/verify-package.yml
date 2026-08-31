@@ -1,0 +1,245 @@
+# Verify the Boards Manager package on macOS and Linux.
+#
+# The package is verified on Windows by hand: every runtime profile installs
+# through Boards Manager and builds to binaries byte-identical to the
+# development install. This workflow does the same check on the OSes that
+# cannot be reached from the development machine.
+#
+# Why it is split into two jobs:
+#
+#   package  Producing the prebuilt stages needs CMake, Ninja and the FMP3
+#            build, and the scripts that drive it are PowerShell with Windows
+#            paths. It runs on Windows, exactly as a release would.
+#   verify   The platform archive is host-independent - the stage manifests
+#            carry only relative paths - so the only host-dependent piece is
+#            the frozen link driver, which each verify job builds for itself.
+#
+# Run it from the Actions tab (workflow_dispatch). It is not on push/PR because
+# macOS runners are billed at a multiple of Linux minutes on private
+# repositories, and this is a release-time check rather than a per-commit one.
+
+name: verify-package
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Platform version to package'
+        required: false
+        default: '0.3.0'
+
+env:
+  M5STACK_INDEX: https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+  CORE_VERSION: 3.3.8
+  #  Pinned because the m5-unified stage is compiled against these sources; a
+  #  different version can add calls the stage does not resolve (M5Unified
+  #  0.2.20 added adc_oneshot_del_unit, which needed a new stub).
+  M5GFX_VERSION: 0.2.27
+  M5UNIFIED_VERSION: 0.2.20
+
+jobs:
+  package:
+    name: Build the platform (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install Ninja
+        #  cmake is preinstalled on windows-latest; ninja is not. The pip wheel
+        #  puts ninja.exe on PATH, which is what New-Fmp3PrebuiltStages.ps1
+        #  resolves by name.
+        run: python -m pip install --disable-pip-version-check ninja
+
+      - name: Install the M5Stack core and libraries
+        run: |
+          arduino-cli core update-index --additional-urls "$env:M5STACK_INDEX"
+          arduino-cli core install "m5stack:esp32@$env:CORE_VERSION" --additional-urls "$env:M5STACK_INDEX"
+          #  --no-deps is required. M5Unified 0.2.20 declares a bare
+          #  "depends=M5GFX" with no version constraint, so without it the
+          #  resolver installs the newest M5GFX and REPLACES the pinned one
+          #  named on this very command line - and this job compiles the
+          #  m5-unified stage against those sources, so the pin above would be
+          #  silently ignored. Observed on a Linux verify run 2026-08-29:
+          #  "Replacing M5GFX@0.2.27 with M5GFX@0.2.28".
+          arduino-cli lib install --no-deps "M5GFX@$env:M5GFX_VERSION" "M5Unified@$env:M5UNIFIED_VERSION"
+
+      - name: Build the prebuilt stages
+        run: |
+          #  Select-Object -First 1 and Trim() are load-bearing. PowerShell
+          #  captures native command output as an ARRAY of lines, and the
+          #  trailing newline makes this a two-element array whose second
+          #  element is empty. Interpolating that joins the elements with a
+          #  space, so "$sketchbook/libraries/..." came out as
+          #    C:\Users\<runner>\Documents\Arduino /libraries/M5GFX/src
+          #  and the path check failed with that exact string.
+          $sketchbook = (arduino-cli config get directories.user |
+                         Select-Object -First 1).Trim()
+          if ([string]::IsNullOrWhiteSpace($sketchbook)) {
+              throw "arduino-cli did not report directories.user"
+          }
+          ./scripts/New-Fmp3PrebuiltStages.ps1 `
+            -Chip esp32s3 `
+            -CoreVersion $env:CORE_VERSION `
+            -M5GfxSource "$sketchbook/libraries/M5GFX/src" `
+            -M5UnifiedSource "$sketchbook/libraries/M5Unified/src"
+
+      - name: Assemble the platform
+        run: |
+          ./scripts/Install-ArduinoIdeIntegration.ps1 `
+            -Sketchbook "${{ github.workspace }}/ci-sketchbook" `
+            -PrebuiltStageRoot "${{ github.workspace }}/build/prebuilt/esp32s3" `
+            -PythonExecutable (Get-Command python).Source `
+            -CoreVersion $env:CORE_VERSION `
+            -Chip esp32s3
+
+      - name: Check the partition table conversion
+        #  The driver reimplements gen_esp32part so that macOS and Linux do not
+        #  need python3 for the partition recipe. This is the only job with the
+        #  reference implementation to compare against, and the verify jobs
+        #  cannot catch a divergence because their runners have python3.
+        run: |
+          ./scripts/Test-PartitionTable.ps1 `
+            -PythonExecutable (Get-Command python).Source
+
+      - name: Check what is in the platform
+        #  A stage missing here becomes a build failure four jobs later, so fail
+        #  now with a readable message.
+        shell: bash
+        run: |
+          root=ci-sketchbook/hardware/toppers/esp32
+          test -f "$root/boards.txt" || { echo "no boards.txt"; exit 1; }
+          for p in minimal m5-unified wifi-connect; do
+            test -f "$root/fmp3-prebuilt/esp32s3/$p/link-manifest.json" \
+              || { echo "missing stage: $p"; exit 1; }
+          done
+          #  gen_esp32part.exe is not shipped any more, so nothing may depend
+          #  on it. The verify jobs cannot catch this: their runners have
+          #  python3, so the non-Windows tool definition would still work.
+          if grep -q '{tools.gen_esp32part.cmd}' "$root/platform.txt"; then
+            echo "a recipe still uses gen_esp32part, which is not shipped"
+            grep -n '{tools.gen_esp32part.cmd}' "$root/platform.txt"
+            exit 1
+          fi
+          test ! -f "$root/tools/gen_esp32part.exe"             || { echo "gen_esp32part.exe is back in the platform"; exit 1; }
+
+          #  The stages must not carry paths from this runner, or the archive is
+          #  not host-independent.
+          if grep -rlE '[A-Za-z]:[\\/]' "$root/fmp3-prebuilt" --include='*.json' --include='*.rsp'; then
+            echo "a stage references an absolute path"; exit 1
+          fi
+          du -sh "$root"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: platform
+          path: ci-sketchbook/hardware/toppers/esp32
+          if-no-files-found: error
+
+  verify:
+    name: Install and build (${{ matrix.host }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            host: x86_64-pc-linux-gnu
+          - runner: macos-latest
+            host: arm64-apple-darwin
+          #  Intel macOS is NOT in the matrix. The macos-13 job sat in
+          #  "Waiting for a runner to pick up this job" for over half an hour on
+          #  2026-08-30 while every other host finished, so the label no longer
+          #  gets a runner. A queued job does not fail - it hangs - so leaving it
+          #  in makes a release wait forever for a driver that never arrives.
+          #  v0.3.0 therefore ships without an x86_64-apple-darwin driver and
+          #  says so; add the host back once a working Intel label is confirmed.
+          #  Windows is in the matrix as the reference the others are compared
+          #  against, produced by the same CI rather than by hand.
+          - runner: windows-latest
+            host: x86_64-mingw32
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: platform
+          path: platform
+
+      - name: Install PyInstaller
+        run: python -m pip install --disable-pip-version-check pyinstaller
+
+      - name: Verify the package
+        #  scripts/verify_package.py does the whole thing: freeze the driver for
+        #  this host, build the package, serve it over loopback (Boards Manager
+        #  will not fetch an archive over file://), install it and build every
+        #  profile. The same script is what a developer runs on a machine this
+        #  workflow cannot reach, so CI and hand verification share one path.
+        run: >
+          python scripts/verify_package.py
+          --platform-dir platform
+          --version "${{ inputs.version }}"
+          --work-dir verify
+          --summary images.txt
+
+      - name: Publish the images for cross-OS comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: images-${{ matrix.host }}
+          path: |
+            images.txt
+            verify/out-*/*.ino.bin
+          if-no-files-found: warn
+
+  compare:
+    name: Compare images across hosts
+    needs: verify
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: images-*
+          path: images
+
+      - name: Report
+        #  Informational. The same compiler builds the same sources on every
+        #  host, so the images are expected to match, but a difference here is a
+        #  finding to investigate rather than a reason to fail the run: anything
+        #  that leaks a build path into the image (__FILE__, for instance) would
+        #  show up as a mismatch without meaning the build is broken.
+        run: |
+          reference=images/images-x86_64-mingw32/images.txt
+          if [ ! -f "$reference" ]; then
+            echo "no Windows reference in this run; listing what there is"
+            for f in images/*/images.txt; do echo "== $f"; cat "$f"; done
+            exit 0
+          fi
+          #  The first column is "profile/sketch", not just the
+          #  profile: each profile is verified with its own example AND with a
+          #  plain Blink, so the label carries both.
+          echo "profile/sketch                reference        host                       verdict"
+          for f in images/*/images.txt; do
+            host=$(basename "$(dirname "$f")" | sed 's/^images-//')
+            while read -r label size sum; do
+              want=$(awk -v p="$label" '$1==p {print $3}' "$reference")
+              if [ "$sum" = "$want" ]; then verdict=identical; else verdict="DIFFERS"; fi
+              printf '%-29s %-16s %-26s %s\n' \
+                "$label" "${want:0:12}" "$host" "$verdict"
+            done <"$f"
+          done

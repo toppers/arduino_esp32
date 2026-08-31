@@ -1,0 +1,4 @@
+[submodule "third_party/fmp3_core"]
+	path = third_party/fmp3_core
+	url = https://github.com/toppers/fmp3_core.git
+	branch = fix/p4-clic-ipm

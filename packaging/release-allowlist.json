@@ -1,0 +1,186 @@
+{
+  "packageName": "ToppersFMP3-M5CoreS3",
+  "packageProfile": "fmp3-m5unified-smp-wifi-preview",
+  "m5stackArduinoCore": "3.3.8",
+  "fmp3RuntimeIncluded": true,
+  "dualCoreIncluded": true,
+  "m5UnifiedIncluded": true,
+  "wifiIncluded": true,
+  "fmp3CoreCommit": "685b36a98175e3093c0931b713729b9030774e16",
+  "_esp32s3PortComment": "the reference is now the PUBLIC repository toppers/fmp3_esp_idf at its 2026-08-18 snapshot. That repository is a series of squashed snapshots, so its commit list cannot be compared with the private fmp3_esp_idf_dev history; compare trees instead. The previous baseline, 1683046b from the dev repository, is not reachable from the public one and has to be fetched by SHA.",
+  "esp32s3PortBaseRepository": "https://github.com/toppers/fmp3_esp_idf.git",
+  "esp32s3PortBaseCommit": "fdd89f8d8ff275d7dcd7f2d4e1a3ac90d3f4fa56",
+  "esp32s3PortBaseCommitDate": "2026-08-18",
+  "_esp32s3PortPatchesComment": "Empty on purpose. This port is not expressed as a patch series against the baseline: upstream has moved too far for the hunks to carry context, and the port itself was restructured. Treat the baseline commit above as provenance, not as something these sources can be regenerated from.",
+  "esp32s3PortPatches": [],
+  "entries": [
+    {
+      "source": "library.properties",
+      "destination": "library.properties"
+    },
+    {
+      "source": "packaging/README.release.md",
+      "destination": "README.md"
+    },
+    {
+      "source": "LICENSE",
+      "destination": "LICENSE"
+    },
+    {
+      "source": "THIRD_PARTY_NOTICES.md",
+      "destination": "THIRD_PARTY_NOTICES.md"
+    },
+    {
+      "source": "src",
+      "destination": "src"
+    },
+    {
+      "source": "examples/LibraryInfo/LibraryInfo.ino",
+      "destination": "examples/LibraryInfo/LibraryInfo.ino",
+      "boardsManager": false
+    },
+    {
+      "source": "examples/Fmp3Minimal/Fmp3Minimal.ino",
+      "destination": "examples/Fmp3Minimal/Fmp3Minimal.ino"
+    },
+    {
+      "source": "examples/Blink/Blink.ino",
+      "destination": "examples/Blink/Blink.ino"
+    },
+    {
+      "source": "examples/M5Unified/M5Unified.ino",
+      "destination": "examples/M5Unified/M5Unified.ino"
+    },
+    {
+      "_comment": "the dual-core profile is gone (m5-unified now builds the SMP kernel), and a shipped stage has no PRC2 task, so this example cannot demonstrate anything a user could reproduce. It stays in the repository as the input to Test-Smp.ps1, which builds it against phase6_smp_selftest. Ship it again once sketches can place their own task on PRC2.",
+      "source": "examples/DualCore/DualCore.ino",
+      "destination": "examples/DualCore/DualCore.ino",
+      "boardsManager": false
+    },
+    {
+      "source": "examples/WiFiScan/WiFiScan.ino",
+      "destination": "examples/WiFiScan/WiFiScan.ino"
+    },
+    {
+      "source": "examples/WiFiConnect/WiFiConnect.ino",
+      "destination": "examples/WiFiConnect/WiFiConnect.ino"
+    },
+    {
+      "source": "ports/esp32s3_m5cores3/runtime",
+      "destination": "extras/runtime/port"
+    },
+    {
+      "source": "ports/esp32s3_m5cores3/app/phase3",
+      "destination": "extras/runtime/app/phase3"
+    },
+    {
+      "source": "fmp_app/phase6",
+      "destination": "extras/runtime/app/phase6"
+    },
+    {
+      "source": "fmp_app/phase5",
+      "destination": "extras/runtime/app/phase5"
+    },
+    {
+      "source": "ports/esp32s3_m5cores3/app/wifi_connect",
+      "destination": "extras/runtime/app/wifi_connect"
+    },
+    {
+      "source": "third_party/fmp3_core/CMakeLists.txt",
+      "destination": "extras/runtime/fmp3_core/CMakeLists.txt"
+    },
+    {
+      "source": "third_party/fmp3_core/fmp3_core.cmake",
+      "destination": "extras/runtime/fmp3_core/fmp3_core.cmake"
+    },
+    {
+      "source": "third_party/fmp3_core/arch/gcc",
+      "destination": "extras/runtime/fmp3_core/arch/gcc"
+    },
+    {
+      "source": "third_party/fmp3_core/cfg",
+      "destination": "extras/runtime/fmp3_core/cfg"
+    },
+    {
+      "source": "third_party/fmp3_core/cfg_py",
+      "destination": "extras/runtime/fmp3_core/cfg_py"
+    },
+    {
+      "source": "third_party/fmp3_core/cmake",
+      "destination": "extras/runtime/fmp3_core/cmake"
+    },
+    {
+      "source": "third_party/fmp3_core/include",
+      "destination": "extras/runtime/fmp3_core/include"
+    },
+    {
+      "source": "third_party/fmp3_core/kernel",
+      "destination": "extras/runtime/fmp3_core/kernel"
+    },
+    {
+      "source": "third_party/fmp3_core/library",
+      "destination": "extras/runtime/fmp3_core/library"
+    },
+    {
+      "source": "third_party/fmp3_core/syssvc",
+      "destination": "extras/runtime/fmp3_core/syssvc"
+    },
+    {
+      "source": "third_party/fmp3_core/tools",
+      "destination": "extras/runtime/fmp3_core/tools"
+    },
+    {
+      "source": "third_party/fmp3_core/utils",
+      "destination": "extras/runtime/fmp3_core/utils"
+    },
+    {
+      "source": "third_party/fmp3_core/MANIFEST",
+      "destination": "extras/runtime/fmp3_core/MANIFEST"
+    },
+    {
+      "source": "third_party/fmp3_core/README.md",
+      "destination": "extras/runtime/fmp3_core/README.md"
+    },
+    {
+      "source": "third_party/fmp3_core/UPSTREAM_VERSION",
+      "destination": "extras/runtime/fmp3_core/UPSTREAM_VERSION"
+    },
+    {
+      "source": "scripts/Resolve-ArduinoEsp32S3Sdk.ps1",
+      "destination": "extras/tools/Resolve-ArduinoEsp32S3Sdk.ps1"
+    },
+    {
+      "source": "scripts/Invoke-PortableFmp3Recipe.ps1",
+      "destination": "extras/tools/Invoke-PortableFmp3Recipe.ps1"
+    },
+    {
+      "source": "scripts/Install-ArduinoIdeIntegration.ps1",
+      "destination": "extras/tools/Install-ArduinoIdeIntegration.ps1"
+    }
+  ],
+  "fmp3CoreBranch": "fix/p4-clic-ipm (main系ではない。動的生成一式を含む)",
+  "_releaseArtifactsComment": "a release is three kinds of artifact, not one. The platform archive carries the board definition, the prebuilt stages and the bundled library; the link driver is a separate Arduino tool frozen once per host, because a sketch build needs it and no package index ships a Python interpreter. scripts/check_release_artifacts.py verifies an assembled release against this section before it is published.",
+  "releaseArtifacts": {
+    "platformArchive": {
+      "kind": "platform",
+      "architecture": "esp32",
+      "fileNamePattern": "toppers-esp32-{version}.zip"
+    },
+    "linkDriver": {
+      "kind": "tool",
+      "toolName": "fmp3-link",
+      "fileNamePattern": "fmp3-link-{host}.zip",
+      "driverSource": "scripts/fmp3_link.py",
+      "_hostsComment": "Arduino host triplets a release must carry a frozen driver for. x86_64-apple-darwin is absent on purpose: the macos-13 runner stopped being allocated, and a queued job hangs rather than fails, so it would stall the release. Intel Macs cannot build with 0.3.0. Add the host back here and in both workflows once a working Intel label exists.",
+      "hosts": [
+        "x86_64-mingw32",
+        "x86_64-pc-linux-gnu",
+        "arm64-apple-darwin"
+      ]
+    },
+    "packageIndex": {
+      "kind": "index",
+      "fileNamePattern": "package_toppers_index.json"
+    }
+  }
+}

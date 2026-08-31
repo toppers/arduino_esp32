@@ -1,0 +1,50 @@
+#
+#		Makefileのターゲット依存部（ESP32-S3 / ESP32-S3-DevKitC-1 用）
+#
+
+#
+#  システム名，チップ名，コア名，開発環境名の定義
+#
+SYS = esp32s3_devkitc
+CHIP = esp32s3
+CORE = xtensa
+TOOL = gcc
+
+#
+#  TECS を使用しない（非TECS版 SIO ドライバを用いる）
+#
+OMIT_TECS = true
+ifdef OMIT_TECS
+	CDEFS := $(CDEFS) -DTOPPERS_OMIT_TECS
+endif
+
+#
+#  コンパイルオプション
+#
+INCLUDES := $(INCLUDES) -I$(TARGETDIR)
+
+#
+#  カーネルに関する定義
+#
+KERNEL_DIRS := $(KERNEL_DIRS) $(TARGETDIR)
+KERNEL_COBJS := $(KERNEL_COBJS) target_kernel_impl.o target_timer.o diag_recorder.o
+
+#
+#  リンカスクリプトの定義
+#
+LDSCRIPT = $(TARGETDIR)/esp32s3_devkitc.ld
+
+#
+#  チップ依存部
+#
+include $(SRCDIR)/arch/$(CORE)_$(TOOL)/$(CHIP)/Makefile.chip
+
+#
+#  QEMU実行／実機書込み（esptool.py使用）
+#
+#  現時点ではビルドのみ。QEMU実行はesptool.pyでのイメージ変換手順が
+#  必要なため、ビルド・
+#  動作確認タスクで別途行う。
+#
+run:
+	@echo "本Makefileはビルドのみ。QEMU実行・実機書込みは別途スクリプトで行う。"

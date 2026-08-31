@@ -1,0 +1,94 @@
+# Freezes scripts/fmp3_link.py into one executable per host.
+#
+# A sketch build needs the link driver, and a Python interpreter does not arrive
+# through Arduino's tool mechanism: neither the M5Stack nor the Arduino package
+# index declares one. esptool settles how this ecosystem handles that - the
+# esptool.exe shipped with the M5Stack core is itself a PyInstaller onefile
+# build of CPython - so the driver is frozen the same way and distributed as a
+# tool.
+#
+# macOS and Linux binaries cannot be produced on Windows, which is why this runs
+# on a matrix instead of a release script.
+#
+# The artifacts are inputs to scripts/make_package_index.py. Publishing happens
+# from the distribution repository, not here.
+
+name: build-link-driver
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  freeze:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # host names are Arduino's, as used in a package index
+          - runner: windows-latest
+            host: x86_64-mingw32
+            binary: fmp3-link.exe
+          - runner: macos-latest
+            host: arm64-apple-darwin
+            binary: fmp3-link
+          #  Intel macOS is NOT built. The macos-13 label stopped getting a
+          #  runner (see verify-package.yml), and because this workflow runs on
+          #  a v* tag push, leaving it in would hang the release itself rather
+          #  than fail it. Add it back with a confirmed Intel label.
+          - runner: ubuntu-latest
+            host: x86_64-pc-linux-gnu
+            binary: fmp3-link
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install PyInstaller
+        run: python -m pip install --disable-pip-version-check pyinstaller
+
+      - name: Freeze
+        run: >
+          python -m PyInstaller --onefile --name fmp3-link
+          --distpath dist
+          scripts/fmp3_link.py
+
+      - name: Smoke test
+        # The driver must fail with its own message, not a traceback, when the
+        # stage is missing. That also proves the frozen binary starts at all.
+        shell: bash
+        run: |
+          set +e
+          out=$(./dist/${{ matrix.binary }} --stage does-not-exist \
+                --build-path . --project-name x.ino 2>&1)
+          code=$?
+          echo "$out"
+          if [ "$code" -eq 0 ]; then echo "expected a failure"; exit 1; fi
+          case "$out" in
+            *"Prebuilt stage is incomplete"*) ;;
+            *) echo "unexpected message"; exit 1 ;;
+          esac
+
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p out/fmp3-link
+          cp dist/${{ matrix.binary }} out/fmp3-link/
+          cp LICENSE* out/fmp3-link/ 2>/dev/null || true
+          cd out
+          if command -v zip >/dev/null; then
+            zip -r ../fmp3-link-${{ matrix.host }}.zip fmp3-link
+          else
+            powershell -Command "Compress-Archive -Path fmp3-link -DestinationPath ../fmp3-link-${{ matrix.host }}.zip"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fmp3-link-${{ matrix.host }}
+          path: fmp3-link-${{ matrix.host }}.zip
+          if-no-files-found: error

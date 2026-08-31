@@ -1,0 +1,67 @@
+#
+#		Makefile のチップ依存部（ESP32-S3 用）
+#
+
+#
+#  チップ依存部ディレクトリ名の定義
+#
+CHIPDIR = $(SRCDIR)/arch/$(CORE)_$(TOOL)/$(CHIP)
+
+#
+#  コンパイルオプション
+#
+#  xtensa-esp32s3-elf-gccはESP32-S3専用にビルドされたツールチェーンの
+#  ため、-mcpu相当の指定は不要。-mlongcallsはESP-IDF全体で標準的に
+#  使われるオプションで、CALL命令の到達範囲（±128KB程度）を超える
+#  呼び出しをL32R+CALLXに変換する（コードサイズが増えると必須になる）。
+#  Windowed ABI（既定）を使用し、Call0 ABIへの変更は行わない
+#  （Wi-Fi/BTバイナリblobとのリンク要件のため。docs/product-requirements.md参照）。
+#
+COPTS := $(COPTS) -mlongcalls
+LDFLAGS := $(LDFLAGS) -mlongcalls
+# TOPPERS_ESP32S3はchip_stddef.hで定義済み（CDEFSでの重複定義はしない）
+
+#
+#  start.SのDATAセクション初期化（__idata→__data コピー）を無効化する。
+#  ESP32-S3のブートROMはフラッシュイメージ（esptool elf2image）の各ロード
+#  セグメントをそのVMAへ展開するため、.dataはROMによって正しい初期値で
+#  VMA上に配置済みである（LMA==VMA、リンカでのAT>指定なし）。この構成では
+#  _startによる__idata→__dataコピーは不要であるだけでなく、リンカが
+#  .dataの手前(=.rodata末尾)に置いた__idata_startが.dataの真のLMAを指さず、
+#  無関係なDRAM内容を.data先頭へ上書きして初期値を破壊する（test_notify1の
+#  error_variableが-1でなく12になりCP14でFAILしていた根本原因）。
+#  .bssはNOLOADでROMがゼロ化しないため、_startのBSS初期化は維持する。
+CDEFS := $(CDEFS) -DOMIT_DATA_INIT
+
+INCLUDES := $(INCLUDES) -I$(CHIPDIR)
+
+#
+#  カーネルに関する定義
+#
+KERNEL_DIRS := $(KERNEL_DIRS) $(CHIPDIR)
+#  chip_rom_libc.o：ROM newlib（rand等）が要求するsyscall stub tableと
+#  per-task _reent。カーネルに含める＝全構成（カーネルテスト・WiFi・BT）で
+#  必ずリンクされ、software_init_hook()から初期化される。
+KERNEL_COBJS := $(KERNEL_COBJS) chip_kernel_impl.o chip_ipi.o chip_rom_libc.o
+
+#
+#  システムサービスに関する定義（非TECS版 SIO ドライバ）
+#
+SYSSVC_DIRS := $(SYSSVC_DIRS) $(CHIPDIR)
+SYSSVC_COBJS := $(SYSSVC_COBJS) chip_serial.o
+
+#
+#  スタートアップモジュールに関する定義
+#
+START_OBJS := start.o $(START_OBJS)
+START_OBJS := $(addprefix $(OBJDIR)/, $(START_OBJS))
+
+$(START_OBJS): $(OBJDIR)/%.o: %.S
+	$(CC) -c -o $@ -MD -MP -MF $(DEPDIR)/$*.d $(CFLAGS) $(KERNEL_CFLAGS) $<
+
+LDFLAGS := -nostdlib $(LDFLAGS)
+
+#
+#  コア依存部
+#
+include $(SRCDIR)/arch/$(CORE)_$(TOOL)/common/Makefile.core

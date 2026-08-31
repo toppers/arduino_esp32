@@ -1,0 +1,82 @@
+#
+#		Makefileのコア依存部（Xtensa用）
+#
+
+#
+#  コア依存部ディレクトリ名の定義
+#
+COREDIR = $(SRCDIR)/arch/$(CORE)_$(TOOL)/common
+
+#
+#  ツール依存部ディレクトリ名の定義
+#
+TOOLDIR = $(SRCDIR)/arch/$(TOOL)
+
+#
+#  GNU開発環境のターゲットアーキテクチャの定義
+#
+ifndef GCC_TARGET
+	GCC_TARGET = xtensa-esp32s3-elf
+endif
+
+#
+#  コンパイルオプション
+#
+INCLUDES := $(INCLUDES) -I$(COREDIR) -I$(TOOLDIR)
+LIBS := $(LIBS) -lgcc
+
+#
+#  ダンプファイルの拡張子
+#
+DUMP = dump
+
+#
+#  カーネルに関する定義
+#
+KERNEL_DIRS := $(KERNEL_DIRS):$(COREDIR)
+KERNEL_ASMOBJS := $(KERNEL_ASMOBJS) core_support.o
+KERNEL_COBJS := $(KERNEL_COBJS) core_kernel_impl.o
+
+#
+#  コンフィギュレータ関係の変数の定義
+#
+CFG_TABS := $(CFG_TABS) --symval-table $(COREDIR)/core_sym.def
+
+#
+#  コンフィギュレータの Python 一本化（★2026-07-20 A3）
+#
+#  classic フロー（configure.rb+Makefile）も CMake と同じ cfg_py/cfg.py + .py
+#  テンプレートを使う（.trb 廃止・.py 一本化）。本ファイルは生成 Makefile 内で
+#  Makefile.target→Makefile.chip 経由で include され、CFG の既定定義
+#  （`CFG = ruby $(SRCDIR)/cfg/cfg.rb`）より後・かつ sample/Makefile の
+#  ifndef TARGET_*_TRB ガードより前に評価されるため、ここでの上書きが効く。
+#  cfg_py の CLI は cfg.rb 互換（-k/-p/-I/-T/-C/--api-table/--symval-table/-O）。
+#  IncludeTrb 連鎖（target_*.py→chip_kernel.py→core_kernel.py→kernel/kernel.py）
+#  は $(INCLUDES) の -I で解決される。等価性は A1 の seam バイト同一
+#  （CMake=cfg_py+.py と classic=cfg.rb+.trb が byte-identical）で既に立証済み。
+#  変数名は sample/Makefile(pristine) の TARGET_*_TRB を保つ（実体は .py）。
+CFG := python3 $(SRCDIR)/cfg_py/cfg.py
+TARGET_CLASS_TRB  := $(TARGETDIR)/target_class.py
+TARGET_KERNEL_TRB := $(TARGETDIR)/target_kernel.py
+TARGET_CHECK_TRB  := $(TARGETDIR)/target_check.py
+
+#
+#  オフセットファイル生成のための定義
+#
+TARGET_OFFSET_TRB = $(COREDIR)/core_offset.py
+
+#
+#  offset.h への C ソース依存関係の宣言
+#
+#  ARM-M コア依存部では core_kernel_impl.h が（CFG1_OUT 以外で）offset.h を
+#  取り込む．これは kernel_impl.h → target_kernel_impl.h → chip_kernel_impl.h
+#  → core_kernel_impl.h の連鎖で，カーネル／システムサービス／アプリの
+#  ほぼ全 C オブジェクトに波及する．他アーキ（arm64/riscv）では offset.h を
+#  アセンブラからのみ取り込むため，上位 Makefile の ASMOBJS 用 offset.timestamp
+#  順序依存だけで足り，C オブジェクトには宣言がない．そのため -j 並列ビルドで
+#  offset.h 生成前に C オブジェクトをコンパイルしてレース失敗する．
+#  OFFSET_COBJS に対象 C オブジェクト群を設定し，上位 Makefile がこれらに
+#  offset.timestamp への順序専用依存を付与する（遅延展開のため = を用い，
+#  OBJDIR 付与後の最終リストを参照する）．
+#
+OFFSET_COBJS = $(KERNEL_COBJS) $(SYSSVC_COBJS) $(APPL_COBJS)

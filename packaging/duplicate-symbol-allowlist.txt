@@ -1,0 +1,18 @@
+#  Duplicate strong global definitions that are accepted, one per line.
+#
+#  Read by scripts/audit_duplicate_symbols.py, which runs at the end of every
+#  prebuilt stage build (runtime/cmake/prebuilt_stage.cmake).
+#
+#  ★Every entry needs a reason on the same line. An entry without one is not a
+#    decision, it is a silenced check. Do not add a symbol just to make the
+#    build pass: which definition survives is decided by object file name
+#    order, because the link carries -Wl,--allow-multiple-definition. If two
+#    definitions differ in behaviour, the one that wins is an accident.
+#
+#  Prefer guarding the duplicate out of one side. The combined M5 + Wi-Fi
+#  profile does that with #ifndef M5_USE_ESP_SHIM.
+#
+#  Currently empty: the three duplicates this audit found on first run
+#  (_exit, _getpid, _kill, defined by both chip_rom_libc.o and
+#  toppers_lwip_compat.o) were removed from toppers_lwip_compat.c rather than
+#  listed here, since chip_rom_libc.o was already the one being linked.

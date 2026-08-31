@@ -1,0 +1,19 @@
+# Local build outputs
+/build/
+
+# Local machine configuration
+/*.local.ps1
+
+# Editor and OS metadata
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# arduino-cli writes here when a sketch is compiled in place
+/examples/*/build/
+
+# Python bytecode caches. The scripts import each other as modules
+# (arduino_sdk, check_host_paths), so these appear whenever one runs.
+__pycache__/
+*.py[cod]
