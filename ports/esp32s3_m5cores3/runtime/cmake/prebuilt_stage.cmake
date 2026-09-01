@@ -153,7 +153,14 @@ if(NOT DEFINED STRIP_DEBUG OR STRIP_DEBUG)
   if(NOT DEFINED OBJCOPY OR NOT EXISTS "${OBJCOPY}")
     get_filename_component(_gcc_dir "${GCC}" DIRECTORY)
     get_filename_component(_gcc_name "${GCC}" NAME)
-    string(REGEX REPLACE "gcc(\\.exe)?$" "objcopy\\1" _objcopy_name "${_gcc_name}")
+    #  \\1 の後方参照は使えない。CMake は「実際にマッチしたグループ数」で
+    #  置換文字列を検証するため、.exe の付かないホストでは (\\.exe)? が
+    #  マッチに参加せず、"replace expression contains an out-of-range escape"
+    #  で FATAL になる（cmake 3.30.0 で実測）。つまりこの経路は Windows で
+    #  しか通らなかった。拡張子の有無で 2 回に分ければ後方参照が要らない。
+    set(_objcopy_name "${_gcc_name}")
+    string(REGEX REPLACE "gcc$" "objcopy" _objcopy_name "${_objcopy_name}")
+    string(REGEX REPLACE "gcc\\.exe$" "objcopy.exe" _objcopy_name "${_objcopy_name}")
     unset(OBJCOPY)
     unset(OBJCOPY CACHE)
     find_program(OBJCOPY NAMES "${_objcopy_name}" HINTS "${_gcc_dir}")
@@ -355,7 +362,10 @@ if(NOT DEFINED DUPSYM_AUDIT OR DUPSYM_AUDIT)
   endif()
   get_filename_component(_gcc_dir2 "${GCC}" DIRECTORY)
   get_filename_component(_gcc_name2 "${GCC}" NAME)
-  string(REGEX REPLACE "gcc(\\.exe)?$" "nm\\1" _nm_name "${_gcc_name2}")
+  #  後方参照が使えない理由は objcopy の導出（上）と同じ。
+  set(_nm_name "${_gcc_name2}")
+  string(REGEX REPLACE "gcc$" "nm" _nm_name "${_nm_name}")
+  string(REGEX REPLACE "gcc\\.exe$" "nm.exe" _nm_name "${_nm_name}")
   find_program(TARGET_NM NAMES "${_nm_name}" HINTS "${_gcc_dir2}")
   if(NOT TARGET_NM)
     message(FATAL_ERROR "prebuilt_stage: ${_nm_name} が見つからない（重複定義監査）")
