@@ -57,13 +57,19 @@ def default_arduino_data() -> Path:
 
 
 def resolve(arduino_data: Path | None = None,
-            core_version: str = DEFAULT_CORE_VERSION) -> dict:
-    """Return the SDK layout, having checked every part the build needs."""
+            core_version: str = DEFAULT_CORE_VERSION,
+            chip: str = "esp32s3") -> dict:
+    """Return the SDK layout, having checked every part the build needs.
+
+    The M5Stack core ships one of these trees per chip, laid out identically
+    and named for the chip both in the tool directory and in the linker
+    scripts inside it, so the chip is the only thing that varies here.
+    """
     data = Path(arduino_data) if arduino_data else default_arduino_data()
 
     package_root = data / "packages" / "m5stack"
     core_root = package_root / "hardware" / "esp32" / core_version
-    sdk_root = package_root / "tools" / "esp32s3-libs" / core_version
+    sdk_root = package_root / "tools" / f"{chip}-libs" / core_version
     include_root = sdk_root / "include"
     library_root = sdk_root / "lib"
     linker_root = sdk_root / "ld"
@@ -79,10 +85,10 @@ def resolve(arduino_data: Path | None = None,
         "idfVersionHeader":
             include_root / "esp_common" / "include" / "esp_idf_version.h",
         "xtensaCoreIsa":
-            include_root / "xtensa" / "esp32s3" / "include" / "xtensa"
+            include_root / "xtensa" / chip / "include" / "xtensa"
             / "config" / "core-isa.h",
-        "peripheralLinkerScript": linker_root / "esp32s3.peripherals.ld",
-        "romLinkerScript": linker_root / "esp32s3.rom.ld",
+        "peripheralLinkerScript": linker_root / f"{chip}.peripherals.ld",
+        "romLinkerScript": linker_root / f"{chip}.rom.ld",
         "socArchive": library_root / "libsoc.a",
         "wifiArchive": library_root / "libesp_wifi.a",
         "coexistArchive": library_root / "libcoexist.a",

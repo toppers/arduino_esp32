@@ -123,10 +123,14 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         sdk = resolve(Path(args.arduino_data) if args.arduino_data else None,
-                      args.core_version)
+                      args.core_version, args.chip)
         package_root = Path(sdk["packageRoot"])
+        #  One multi-target driver serves both, but the per-chip alias is what
+        #  target.cmake matches on: -dumpmachine says "xtensa-esp-elf" for
+        #  either, so the driver name is the only thing that can catch
+        #  building one chip with the other's settings.
         compiler = tool_executable(package_root, "esp-x32",
-                                   "xtensa-esp32s3-elf-gcc")
+                                   f"xtensa-{args.chip}-elf-gcc")
         esptool = tool_executable(package_root, "esptool_py", "esptool")
     except SdkError as error:
         raise SystemExit(str(error))
@@ -187,11 +191,12 @@ def main(argv: list[str] | None = None) -> int:
             "-G", "Ninja",
             f"-DCMAKE_MAKE_PROGRAM={ninja}",
             f"-DCMAKE_TOOLCHAIN_FILE="
-            f"{runtime / 'cmake' / 'toolchain-xtensa-esp32s3.cmake'}",
+            f"{runtime / 'cmake' / f'toolchain-xtensa-{args.chip}.cmake'}",
             f"-DFMP3_CORE_ROOT={fmp3_core}",
             f"-DFMP3_APPLICATION_DIR={application}",
             f"-DFMP3_APPLICATION_NAME={application_name}",
             f"-DFMP3_RUNTIME_PROFILE={name}",
+            f"-DA1_CHIP={args.chip}",
             f"-DARDUINO_SDK_LD_ROOT={sdk['linkerScriptRoot']}",
             f"-DA1_ESPTOOL_EXECUTABLE={esptool}",
         ]

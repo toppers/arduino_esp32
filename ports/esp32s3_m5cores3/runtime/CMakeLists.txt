@@ -83,11 +83,42 @@ if(NOT FMP3_RUNTIME_PROFILE MATCHES "^(minimal|m5-unified|wifi-connect|all-in-on
         "FMP3_RUNTIME_PROFILE must be minimal, m5-unified, wifi-connect, or all-in-one")
 endif()
 
+#
+#  チップ選択。既定は esp32s3 で、-DA1_CHIP を渡さない従来の呼び出しは
+#  そのまま同じステージを建てる。チップに依らない部分（arch の common、
+#  boot/flash_cache_init.c）は TOPPERS_ESP32_LX6 の有無で分かれ、その略称は
+#  各 chip_stddef.h が自分で定義する。
+#
+#  ここは project() より前なので、パス組み立てに要らないものだけ決める。
+#
+if(NOT DEFINED A1_CHIP OR A1_CHIP STREQUAL "")
+    set(A1_CHIP esp32s3)
+endif()
+if(A1_CHIP STREQUAL "esp32s3")
+    set(A1_CHIP_TARGET_NAME esp32s3_devkitc_gcc)
+    set(A1_CHIP_ARCH_NAME esp32s3)
+    set(A1_XIP_LD_NAME esp32s3_xip_m5.ld)
+    set(A1_CHIP_ROM_LD esp32s3.rom.ld)
+    #  ROM 常駐コンソールは USB-Serial/JTAG。LX6 に USJ は無く UART0 を使う。
+    set(A1_CHIP_CONSOLE_DEFS TOPPERS_S3_CONSOLE_USJ)
+    #  2nd-stage bootloader が読む app descriptor。LX6 では要らない。
+    set(A1_CHIP_HAS_APPDESC ON)
+elseif(A1_CHIP STREQUAL "esp32")
+    set(A1_CHIP_TARGET_NAME esp32_devkitc_gcc)
+    set(A1_CHIP_ARCH_NAME esp32)
+    set(A1_XIP_LD_NAME esp32_xip_m5.ld)
+    set(A1_CHIP_ROM_LD esp32.rom.ld)
+    set(A1_CHIP_CONSOLE_DEFS)
+    set(A1_CHIP_HAS_APPDESC OFF)
+else()
+    message(FATAL_ERROR "A1_CHIP must be esp32s3 or esp32 (got '${A1_CHIP}')")
+endif()
+
 foreach(required_path
         "${FMP3_CORE_ROOT}/CMakeLists.txt"
         "${FMP3_APPLICATION_DIR}/${FMP3_APPLICATION_NAME}.c"
         "${FMP3_APPLICATION_DIR}/${FMP3_APPLICATION_NAME}.cfg"
-        "${ARDUINO_SDK_LD_ROOT}/esp32s3.rom.ld"
+        "${ARDUINO_SDK_LD_ROOT}/${A1_CHIP_ROM_LD}"
         "${A1_ESPTOOL_EXECUTABLE}")
     if(NOT EXISTS "${required_path}")
         message(FATAL_ERROR "Required file was not found: ${required_path}")
@@ -96,7 +127,7 @@ endforeach()
 
 set(FMP3_COMPILE_DEFS
     TOPPERS_BOOT_SEAM
-    TOPPERS_S3_CONSOLE_USJ)
+    ${A1_CHIP_CONSOLE_DEFS})
 set(FMP3_INCLUDE_DIRS "${FMP3_APPLICATION_DIR}")
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|wifi-connect|all-in-one)$")
     foreach(required
@@ -201,9 +232,10 @@ endif()
 
 project(toppers_fmp3_arduino_runtime C CXX ASM)
 
-set(FMP3_TARGET esp32s3_devkitc_gcc)
-set(FMP3_TARGET_DIR
-    "${RUNTIME_ROOT}/target/esp32s3_devkitc_gcc")
+set(FMP3_TARGET "${A1_CHIP_TARGET_NAME}")
+set(FMP3_TARGET_DIR "${RUNTIME_ROOT}/target/${A1_CHIP_TARGET_NAME}")
+set(FMP3_CHIP_DIR "${RUNTIME_ROOT}/arch/xtensa_gcc/${A1_CHIP_ARCH_NAME}")
+set(A1_XIP_LD "${FMP3_TARGET_DIR}/${A1_XIP_LD_NAME}")
 set(FMP3_LIBRARY_ONLY ON)
 #
 #  m5-unified は SMP（PRC1/PRC2）で建てる。旧 dual-core profile を吸収した
@@ -231,7 +263,7 @@ target_compile_definitions(seam_common INTERFACE
     TOPPERS_OMIT_TECS
     OMIT_DATA_INIT
     TNUM_PRCID=${FMP3_PRC_NUM}
-    TOPPERS_S3_CONSOLE_USJ
+    ${A1_CHIP_CONSOLE_DEFS}
     #  結合 profile では m5 のミニシムの重複定義を落とし、
     #  wifi/shim に一本化する（各 TU の #ifndef M5_USE_ESP_SHIM）。
     #  seam_objects / seam_cxx / m5_runtime_objects / net_objects はいずれも
@@ -241,8 +273,8 @@ target_compile_definitions(seam_common INTERFACE
         $<$<BOOL:${A1_XIP_PADDR_PROBE}>:TOPPERS_XIP_PADDR_PROBE>)
 target_include_directories(seam_common INTERFACE
     "${FMP3_CORE_ROOT}/include"
-    "${RUNTIME_ROOT}/target/esp32s3_devkitc_gcc"
-    "${RUNTIME_ROOT}/arch/xtensa_gcc/esp32s3"
+    "${FMP3_TARGET_DIR}"
+    "${FMP3_CHIP_DIR}"
     "${RUNTIME_ROOT}/arch/xtensa_gcc/common"
     "${FMP3_CORE_ROOT}/arch/gcc"
     "${FMP3_CORE_ROOT}"
@@ -261,9 +293,11 @@ add_library(seam_objects OBJECT
     "${FMP3_CORE_ROOT}/library/vasyslog.c"
     "${FMP3_CORE_ROOT}/library/t_perror.c"
     "${FMP3_CORE_ROOT}/library/strerror.c"
-    "${RUNTIME_ROOT}/arch/xtensa_gcc/esp32s3/chip_serial.c"
-    "${RUNTIME_ROOT}/arch/xtensa_gcc/esp32s3/chip_serial_sio.c"
-    "${RUNTIME_ROOT}/seam/seam_s3_appdesc.c")
+    "${FMP3_CHIP_DIR}/chip_serial.c"
+    "${FMP3_CHIP_DIR}/chip_serial_sio.c")
+if(A1_CHIP_HAS_APPDESC)
+    target_sources(seam_objects PRIVATE "${RUNTIME_ROOT}/seam/seam_s3_appdesc.c")
+endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
     target_sources(seam_objects PRIVATE
         "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
@@ -742,7 +776,7 @@ endif()
 add_custom_command(
     OUTPUT "${XIP_BINARY}" "${XIP_ELF}"
     COMMAND "${CMAKE_COMMAND}"
-        -DA1_CHIP=esp32s3
+        -DA1_CHIP=${A1_CHIP}
         -DGCC=${CMAKE_C_COMPILER}
         -DAR=${CMAKE_C_COMPILER_AR}
         -DESPTOOL=${A1_ESPTOOL_EXECUTABLE}
@@ -750,7 +784,7 @@ add_custom_command(
         -DLIBFMP3=$<TARGET_FILE:fmp3>
         "-DCONSUMER_OBJS=${CONSUMER_OBJECTS}"
         -DFLASHCACHE_SRC=${RUNTIME_ROOT}/boot/flash_cache_init.c
-        -DXIP_LD=${RUNTIME_ROOT}/target/esp32s3_devkitc_gcc/esp32s3_xip_m5.ld
+        -DXIP_LD=${A1_XIP_LD}
         -DROMLD_ROOT=${ARDUINO_SDK_LD_ROOT}
         "-DA1_LINK_UFLAGS=${XIP_LINK_UFLAGS}"
         "-DA1_LINK_LIBGROUP=${XIP_LINK_LIBGROUP}"
@@ -776,7 +810,7 @@ add_custom_command(
         ${ARDUINO_OBJECTS}
         "${RUNTIME_ROOT}/boot/flash_cache_init.c"
         "${RUNTIME_ROOT}/cmake/xip_build.cmake"
-        "${RUNTIME_ROOT}/target/esp32s3_devkitc_gcc/esp32s3_xip_m5.ld"
+        "${A1_XIP_LD}"
         ${XIP_EXTRA_DEPENDS}
     COMMENT "Linking ${FMP3_RUNTIME_PROFILE} Arduino/TOPPERS FMP3 XIP image"
     VERBATIM)
@@ -856,8 +890,8 @@ add_custom_command(
         "-DCONSUMER_OBJS_FILE=${PREBUILT_CONSUMER_OBJS_FILE}"
         -DFLASHCACHE_SRC=${RUNTIME_ROOT}/boot/flash_cache_init.c
         -DPROFILE=${FMP3_RUNTIME_PROFILE}
-        -DA1_CHIP=esp32s3
-        -DXIP_LD=${RUNTIME_ROOT}/target/esp32s3_devkitc_gcc/esp32s3_xip_m5.ld
+        -DA1_CHIP=${A1_CHIP}
+        -DXIP_LD=${A1_XIP_LD}
         -DROMLD_ROOT=${ARDUINO_SDK_LD_ROOT}
         "-DSDK_LIBRARY_ROOT=${ARDUINO_SDK_LIBRARY_ROOT}"
         "-DPERIPHERALS_LD=${PREBUILT_PERIPHERALS_LD}"
@@ -878,7 +912,7 @@ add_custom_command(
         ${PREBUILT_CONSUMER_OBJECTS}
         "${RUNTIME_ROOT}/boot/flash_cache_init.c"
         "${RUNTIME_ROOT}/cmake/prebuilt_stage.cmake"
-        "${RUNTIME_ROOT}/target/esp32s3_devkitc_gcc/esp32s3_xip_m5.ld"
+        "${A1_XIP_LD}"
     COMMENT "Staging sketch-independent ${FMP3_RUNTIME_PROFILE} FMP3 artifacts"
     VERBATIM)
 

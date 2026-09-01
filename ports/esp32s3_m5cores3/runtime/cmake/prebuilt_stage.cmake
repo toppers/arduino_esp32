@@ -50,8 +50,8 @@ endforeach()
 if(NOT DEFINED A1_CHIP OR A1_CHIP STREQUAL "")
   set(A1_CHIP esp32s3)
 endif()
-if(NOT A1_CHIP STREQUAL "esp32s3")
-  message(FATAL_ERROR "prebuilt_stage: 現状 esp32s3 のみ対応（指定=${A1_CHIP}）")
+if(NOT A1_CHIP MATCHES "^(esp32s3|esp32)$")
+  message(FATAL_ERROR "prebuilt_stage: esp32s3 か esp32 のみ対応（指定=${A1_CHIP}）")
 endif()
 if(NOT XIP_PADDR_RUNTIME)
   #  2パス経路はPADDRをビルド時に決めるため、スケッチ非依存に固められない。
@@ -281,7 +281,14 @@ to_json_array("${LINK_UFLAGS}" _uflags_json)
 to_json_array("${LINK_LIBGROUP}" _libgroup_json)
 to_json_array("${EXTRA_TSCRIPTS}" _tscripts_json)
 
-set(_romlds "esp32s3.rom.ld@@esp32s3.rom.api.ld@@esp32s3.rom.libc.ld@@esp32s3.rom.libgcc.ld@@esp32s3.rom.newlib.ld@@esp32s3.rom.version.ld")
+#  ROM リンカスクリプトの綴りはチップごとに違う。LX6 側は libc-funcs /
+#  newlib-data / newlib-nano で、S3 の libc / newlib / version には対応する
+#  ファイルが無い（M5Stack core 3.3.8 同梱の ld/ を実測）。
+if(A1_CHIP STREQUAL "esp32")
+  set(_romlds "esp32.rom.ld@@esp32.rom.api.ld@@esp32.rom.libc-funcs.ld@@esp32.rom.libgcc.ld@@esp32.rom.newlib-data.ld@@esp32.rom.newlib-nano.ld")
+else()
+  set(_romlds "esp32s3.rom.ld@@esp32s3.rom.api.ld@@esp32s3.rom.libc.ld@@esp32s3.rom.libgcc.ld@@esp32s3.rom.newlib.ld@@esp32s3.rom.version.ld")
+endif()
 to_json_array("${_romlds}" _romlds_json)
 
 set(_order_items "")

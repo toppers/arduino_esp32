@@ -438,14 +438,31 @@ void (*_kernel_exc_handler_tbl[NUM_EXCCAUSE])(void *p_excinf) = { 0 };
 
 /* core_exc_entry（core_support.S、core_rename.hで_kernel_core_exc_entryへ改名） */
 extern void core_exc_entry(void);
+#ifndef TOPPERS_ESP32_LX6
 /* ROMの例外ハンドラテーブル（実体アドレスはリンカスクリプトで結合） */
 extern _xtos_handler xtos_exc_handler_table[];
+#endif /* !TOPPERS_ESP32_LX6 */
 
 /*
  *  CPU例外ハンドラの静的登録（initialize_exceptionから各excinib分呼ばれる）
  *
  *  excnoは (prcid<<16)|EXCCAUSE で符号化されている。下位のEXCCAUSE部を
- *  取り出して対応表とROMテーブルへ登録する。
+ *  取り出して対応表（とS3ではROMテーブル）へ登録する。
+ *
+ *  【LX6（無印ESP32）ではROMテーブルへ書かない】
+ *  LX6は自前VECBASE化以降、ROMのベクタ表を一切使わない
+ *  （arch/xtensa_gcc/esp32/chip_vectors.S の _kernel_vec_exc_prologue が
+ *   EXCCAUSE を自前で demux し、4→_kernel_l1int_entry・その他→core_exc_entry
+ *   へ無条件に分岐する。表引きは無い）。したがってこの書込みはどこからも
+ *  読まれない。にもかかわらず、LX6の flash-XIP リンカスクリプト群は
+ *  `xtos_exc_handler_table = 0x3ffe0000` と結合していた——これは
+ *  (a) ROM実測値（0x3ffe0448、esp32.rom.ld）と一致しない誤った番地であり、
+ *  (b) その番地は ROM予約SRAM1とアプリ .bss の重なり域に在って、LX6の
+ *  wifi/m5 構成では生きているアプリ変数が載っている。
+ *  ⇒ DEF_EXC を持つLX6アプリは、起動時に .bss の任意の語へ関数ポインタ
+ *  （core_exc_entry）を書き込んで壊す。excinib テーブルが空の構成では
+ *  現に発火しないので、これは潜在バグである。
+ *  読まれない書込みを消せば、この経路のROMデータ依存は構造的に消える。
  */
 void
 define_exc(EXCNO excno, FP exc_entry)
@@ -453,7 +470,9 @@ define_exc(EXCNO excno, FP exc_entry)
 	uint_t excause = (uint_t)(excno) & 0x3FU;
 
 	_kernel_exc_handler_tbl[excause] = (void (*)(void *))(exc_entry);
+#ifndef TOPPERS_ESP32_LX6
 	xtos_exc_handler_table[excause] = (_xtos_handler) core_exc_entry;
+#endif /* !TOPPERS_ESP32_LX6 */
 }
 
 /*
