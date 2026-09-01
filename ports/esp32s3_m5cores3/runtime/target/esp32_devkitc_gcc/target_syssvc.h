@@ -25,7 +25,7 @@
 /*
  * 起動メッセージのターゲットシステム名
  */
-#define TARGET_NAME "ESP32-S3-DevKitC-1"
+#define TARGET_NAME "ESP32-DevKitC (Xtensa LX6)"
 
 /*
  * シリアルインタフェースドライバを実行するクラス

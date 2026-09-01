@@ -36,6 +36,20 @@ MARKER = ".toppers-fmp3-platform.json"
 #  keys are unchanged so sketches with a saved board selection keep working, and
 #  'dual' and 'wifi' are not reused - an old selection fails to resolve rather
 #  than silently building something different.
+#  Our board per chip, and the M5Stack board it is derived from.
+#
+#    chip: (source board id in the M5Stack boards.txt, our board id,
+#           our display name, the variant to reference)
+#
+#  The variant is named explicitly rather than taken from the source line,
+#  because it has to be rewritten into the m5stack: namespace anyway.
+BOARDS = {
+    "esp32s3": ("m5stack_cores3", "m5cores3_fmp3",
+                "M5CoreS3 (TOPPERS/FMP3)", "m5stack_cores3"),
+    "esp32": ("m5stack_core", "m5core_fmp3",
+              "M5Core (TOPPERS/FMP3)", "m5stack_core"),
+}
+
 MENU_ENTRIES = [
     ("minimal", "Minimal", "minimal"),
     ("m5", "M5Unified + Dual Core", "m5-unified"),
@@ -45,6 +59,16 @@ MENU_ENTRIES = [
 #  only when its stage is present, so a normal install of the three shipped
 #  profiles does not show a menu entry that cannot build.
 EXPERIMENTAL_ENTRY = ("aio", "All-in-one (experimental)", "all-in-one")
+
+#  What a complete board for this chip offers. Installing with a stage missing
+#  is a real mistake for the CoreS3 board - it ships all three - so that stays
+#  an error. The LX6 board runs the minimal profile only; m5-unified and
+#  wifi-connect need the m5/ and wifi/ shims ported to the chip, which has not
+#  been done.
+EXPECTED_PROFILES = {
+    "esp32s3": {"minimal", "m5-unified", "wifi-connect"},
+    "esp32": {"minimal"},
+}
 
 
 def default_sketchbook() -> Path:
@@ -90,44 +114,52 @@ def _is_reparse_point(path: Path) -> bool:
 def board_lines(source_boards: Path, chip: str,
                 stage_root: Path) -> list[str]:
     """Derive our board definition from the M5Stack one."""
+    source_id, board_id, display_name, variant = BOARDS[chip]
+    source_prefix = source_id + "."
+    prefix = board_id + "."
+
     kept = []
     for line in source_boards.read_text(encoding="utf-8").splitlines():
-        if line.startswith("menu.") or line.startswith("m5stack_cores3."):
-            kept.append(line.replace("m5stack_cores3.", "m5cores3_fmp3.", 1)
-                        if line.startswith("m5stack_cores3.") else line)
+        if line.startswith("menu."):
+            kept.append(line)
+        elif line.startswith(source_prefix):
+            kept.append(prefix + line[len(source_prefix):])
 
     adjusted = []
     for line in kept:
-        if line == "m5cores3_fmp3.name=M5CoreS3":
-            adjusted.append("m5cores3_fmp3.name=M5CoreS3 (TOPPERS/FMP3)")
+        if line.startswith(prefix + "name="):
+            adjusted.append(f"{prefix}name={display_name}")
         #  Arduino's core reference, so build.core.path and build.variant.path
         #  resolve into the M5Stack platform while runtime.platform.path stays
         #  ours - which is what the fmp3-tools and fmp3-prebuilt references
         #  rely on. This replaced NTFS junctions, which exist only on Windows
         #  and which a Boards Manager package cannot create at all.
-        elif line.startswith("m5cores3_fmp3.build.core="):
-            adjusted.append("m5cores3_fmp3.build.core=m5stack:esp32")
-        elif line.startswith("m5cores3_fmp3.build.variant="):
-            adjusted.append(
-                "m5cores3_fmp3.build.variant=m5stack:m5stack_cores3")
+        elif line.startswith(prefix + "build.core="):
+            adjusted.append(f"{prefix}build.core=m5stack:esp32")
+        elif line.startswith(prefix + "build.variant="):
+            adjusted.append(f"{prefix}build.variant=m5stack:{variant}")
         else:
             adjusted.append(line)
 
     menus = [line for line in adjusted if line.startswith("menu.")]
-    board = [line for line in adjusted if line.startswith("m5cores3_fmp3.")]
+    board = [line for line in adjusted if line.startswith(prefix)]
+    if not board:
+        raise SystemExit(
+            f"{source_boards} has no board '{source_id}' to derive from")
 
     lines = menus + ["menu.FMP3Runtime=FMP3 Runtime"] + board + [
-        #  Which chip's stages this board links against. A second board (plain
-        #  M5Core, ESP32 LX6) sets esp32 here, so the layout is
+        #  Which chip's stages this board links against; the layout is
         #  fmp3-prebuilt/<chip>/<profile>.
-        f"m5cores3_fmp3.build.toppers_chip={chip}",
+        f"{prefix}build.toppers_chip={chip}",
     ]
     entries = list(MENU_ENTRIES)
     if (stage_root / EXPERIMENTAL_ENTRY[2]).is_dir():
         entries.append(EXPERIMENTAL_ENTRY)
     for key, label, profile in entries:
-        lines.append(f"m5cores3_fmp3.menu.FMP3Runtime.{key}={label}")
-        lines.append(f"m5cores3_fmp3.menu.FMP3Runtime.{key}"
+        if not (stage_root / profile).is_dir():
+            continue
+        lines.append(f"{prefix}menu.FMP3Runtime.{key}={label}")
+        lines.append(f"{prefix}menu.FMP3Runtime.{key}"
                      f".build.toppers_profile={profile}")
     return lines
 
@@ -279,9 +311,9 @@ def main(argv: list[str] | None = None) -> int:
         staged += 1
     if staged == 0:
         raise SystemExit(f"No prebuilt stage was found below {stage_root}")
-    missing = sorted(offered - {"all-in-one"} - {p.name
-                                                 for p in stage_root.iterdir()
-                                                 if p.is_dir()})
+    missing = sorted(EXPECTED_PROFILES[args.chip] - {p.name
+                                                     for p in stage_root.iterdir()
+                                                     if p.is_dir()})
     if missing:
         raise SystemExit(
             "the board menu offers profiles with no stage built: "
@@ -339,7 +371,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print("\nTOPPERS/FMP3 Arduino board platform installed.")
     print(f"  Platform: {platform_root}")
-    print("  Board:    M5CoreS3 (TOPPERS/FMP3)")
+    print(f"  Board:    {BOARDS[args.chip][2]}")
     print(f"  Stages:   {staged}")
     print("Restart Arduino IDE before selecting the board.")
     return 0

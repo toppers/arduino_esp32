@@ -59,6 +59,53 @@ extern char _flash_text_size[];
 extern char _flash_rodata_size[];
 
 /*
+ *  PADDRの実行時取得（S3版と同じ考え方。定数は同梱SDKのヘッダが正本）。
+ *
+ *  Arduino経路ではESP-IDFの2nd-stage bootloaderが本関数より前にアプリの
+ *  DROM/IROMをフラッシュMMUへ張っている。そのエントリからページ番号を読めば、
+ *  イメージがフラッシュのどこに置かれたかをビルド時に知らなくてよい。
+ *
+ *  LX6のテーブルはS3と別物である。S3はvaddrの下位ビットがそのままエントリ番号に
+ *  なるが、LX6はDROM0とIROM0で別の窓を使い、IROM0は**エントリ64から**始まる
+ *  （soc/esp32/include/soc/mmu.h の SOC_MMU_IROM0_PAGES_START）。ページ番号も
+ *  8bitで、無効ビットは0x100（soc/esp32/register/soc/dport_reg.h）。
+ */
+#if defined(TOPPERS_XIP_PADDR_RUNTIME)
+#define XIP_MMU_TABLE        0x3FF10000U  /* DPORT_PRO_FLASH_MMU_TABLE */
+#define XIP_MMU_PAGE_MASK    0x000000FFU  /* DPORT_MMU_ADDRESS_MASK */
+#define XIP_MMU_INVALID      0x00000100U  /* DPORT_FLASH_MMU_TABLE_INVALID_VAL */
+#define XIP_MMU_IROM0_START  64U          /* SOC_MMU_IROM0_PAGES_START */
+#define XIP_MMU_IROM0_BASE   0x40000000U  /* SOC_IROM_MASK_LOW */
+#define XIP_MMU_DROM0_BASE   0x3F400000U  /* SOC_DROM_LOW */
+#define XIP_PADDR_INVALID    0xFFFFFFFFU
+
+static uint32_t IRAM_BOOT
+xip_mmu_entry(uint32_t vaddr)
+{
+	uint32_t entry_id;
+
+	if (vaddr >= XIP_MMU_IROM0_BASE) {
+		entry_id = XIP_MMU_IROM0_START + ((vaddr - XIP_MMU_IROM0_BASE) >> 16);
+	}
+	else {
+		entry_id = (vaddr - XIP_MMU_DROM0_BASE) >> 16;
+	}
+	return *(volatile uint32_t *)(XIP_MMU_TABLE + entry_id * 4U);
+}
+
+static uint32_t IRAM_BOOT
+xip_mmu_paddr(uint32_t vaddr)
+{
+	uint32_t entry = xip_mmu_entry(vaddr);
+
+	if ((entry & XIP_MMU_INVALID) != 0U) {
+		return XIP_PADDR_INVALID;
+	}
+	return (entry & XIP_MMU_PAGE_MASK) << 16;
+}
+#endif /* TOPPERS_XIP_PADDR_RUNTIME */
+
+/*
  * UART0(0x3FF40000)にFIFO空きを待って1文字（診断用・信頼できる出力）。
  * ★2026-07-17追記(F-10)：S3版と同様にフラグ化（既定は従来どおり出力、非回帰）。
  */
@@ -75,25 +122,61 @@ xputc(char c)
 #endif
 }
 
+static char IRAM_BOOT
+hexdigit(uint32_t v)
+{
+	v &= 0xFU;
+	return (char) ((v < 10U) ? ('0' + v) : ('a' + (v - 10U)));
+}
+
 void IRAM_BOOT
 flash_xip_map(void)
 {
 	uint32_t irom_pages = ((uint32_t)(uintptr_t)_flash_text_size   + 0xFFFFU) >> 16;
 	uint32_t drom_pages = ((uint32_t)(uintptr_t)_flash_rodata_size + 0xFFFFU) >> 16;
+	uint32_t drom_paddr, irom_paddr;
 	int rd, ri;
 
 	if (irom_pages == 0U) { irom_pages = 1U; }
 	if (drom_pages == 0U) { drom_pages = 1U; }
 
+	/*  ★MMUの読み出しは mmu_init() より前に行う（初期化でエントリが消える）。 */
+#if defined(TOPPERS_XIP_PADDR_RUNTIME)
+	drom_paddr = xip_mmu_paddr(XIP_DROM_VADDR);
+	irom_paddr = xip_mmu_paddr(XIP_IROM_VADDR);
+#else
+	drom_paddr = (uint32_t) XIP_DROM_PADDR;
+	irom_paddr = (uint32_t) XIP_IROM_PADDR;
+#endif
+
+	/*  1/2/3 は「どのROM呼び出しで止まったか」を1文字で切り分けるための印。
+	 *  この経路は実機で一度も通っていなかったので、印は残す。 */
 	xputc('[');
+#if defined(TOPPERS_XIP_PADDR_RUNTIME)
+	if ((drom_paddr == XIP_PADDR_INVALID) || (irom_paddr == XIP_PADDR_INVALID)) {
+		/*  bootloaderがDROM/IROMを張っていない構成。既定値へ落ちると原因不明の
+		 *  ハングになるので、診断を出して止める（S3版と同じ扱い）。 */
+		xputc('!'); xputc('P'); xputc('A'); xputc('D'); xputc('D'); xputc('R');
+		xputc('!'); xputc('\n');
+		for (;;) { }
+	}
+	/*  復元したページ番号を出す。期待値は「本当にそのページに置かれたか」を
+	 *  esptool image-info と突き合わせて確かめられる。 */
+	xputc('p');
+	xputc(hexdigit(drom_paddr >> 20)); xputc(hexdigit(drom_paddr >> 16));
+	xputc(hexdigit(irom_paddr >> 20)); xputc(hexdigit(irom_paddr >> 16));
+#endif
+	xputc('1');
 	ROM_Cache_Read_Disable(0);
+	xputc('2');
 	ROM_Cache_Flush(0);
+	xputc('3');
 	ROM_mmu_init(0);
 	xputc('m');
 	/* DROM(rodata)とIROM(text)をそれぞれ別vaddr窓へマップ（統合MMUだが
 	 * vaddrからエントリ番号が決まるため個別呼出しで非重複）。 */
-	rd = ROM_cache_flash_mmu_set(0, 0, XIP_DROM_VADDR, XIP_DROM_PADDR, MMU_PSIZE_64K, (int) drom_pages);
-	ri = ROM_cache_flash_mmu_set(0, 0, XIP_IROM_VADDR, XIP_IROM_PADDR, MMU_PSIZE_64K, (int) irom_pages);
+	rd = ROM_cache_flash_mmu_set(0, 0, XIP_DROM_VADDR, drom_paddr, MMU_PSIZE_64K, (int) drom_pages);
+	ri = ROM_cache_flash_mmu_set(0, 0, XIP_IROM_VADDR, irom_paddr, MMU_PSIZE_64K, (int) irom_pages);
 	xputc('D'); xputc((char)('0' + (rd & 7)));
 	xputc('I'); xputc((char)('0' + (ri & 7)));
 	/* ★キャッシュ領域マスク解除（S3のIBUS SHUTビット相当・実機で判明）：

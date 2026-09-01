@@ -100,7 +100,7 @@ if(A1_CHIP STREQUAL "esp32s3")
     set(A1_XIP_LD_NAME esp32s3_xip_m5.ld)
     set(A1_CHIP_ROM_LD esp32s3.rom.ld)
     #  ROM 常駐コンソールは USB-Serial/JTAG。LX6 に USJ は無く UART0 を使う。
-    set(A1_CHIP_CONSOLE_DEFS TOPPERS_S3_CONSOLE_USJ)
+    set(A1_CHIP_DEFS TOPPERS_S3_CONSOLE_USJ)
     #  2nd-stage bootloader が読む app descriptor。LX6 では要らない。
     set(A1_CHIP_HAS_APPDESC ON)
 elseif(A1_CHIP STREQUAL "esp32")
@@ -108,7 +108,9 @@ elseif(A1_CHIP STREQUAL "esp32")
     set(A1_CHIP_ARCH_NAME esp32)
     set(A1_XIP_LD_NAME esp32_xip_m5.ld)
     set(A1_CHIP_ROM_LD esp32.rom.ld)
-    set(A1_CHIP_CONSOLE_DEFS)
+    #  LX6 の hardware_init_hook は既定で banner を出したところで無限ループする
+    #  （元は QEMU PoC の T1 スコープ）。Arduino ランタイムは sta_ker まで進む。
+    set(A1_CHIP_DEFS TOPPERS_LX6_PROCEED_TO_KERNEL)
     set(A1_CHIP_HAS_APPDESC OFF)
 else()
     message(FATAL_ERROR "A1_CHIP must be esp32s3 or esp32 (got '${A1_CHIP}')")
@@ -127,7 +129,7 @@ endforeach()
 
 set(FMP3_COMPILE_DEFS
     TOPPERS_BOOT_SEAM
-    ${A1_CHIP_CONSOLE_DEFS})
+    ${A1_CHIP_DEFS})
 set(FMP3_INCLUDE_DIRS "${FMP3_APPLICATION_DIR}")
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|wifi-connect|all-in-one)$")
     foreach(required
@@ -263,7 +265,7 @@ target_compile_definitions(seam_common INTERFACE
     TOPPERS_OMIT_TECS
     OMIT_DATA_INIT
     TNUM_PRCID=${FMP3_PRC_NUM}
-    ${A1_CHIP_CONSOLE_DEFS}
+    ${A1_CHIP_DEFS}
     #  結合 profile では m5 のミニシムの重複定義を落とし、
     #  wifi/shim に一本化する（各 TU の #ifndef M5_USE_ESP_SHIM）。
     #  seam_objects / seam_cxx / m5_runtime_objects / net_objects はいずれも

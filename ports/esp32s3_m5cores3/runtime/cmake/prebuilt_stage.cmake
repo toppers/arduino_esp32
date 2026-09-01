@@ -120,9 +120,20 @@ endforeach()
 #  ---- (3) flash_cache_init.o ----
 #  実行時PADDR経路ではPADDR定数を焼き込まないので、ここで一度コンパイルして
 #  そのまま配布できる（従来は2パスのたびに再コンパイルしていた）。
+#
+#  ★このTUだけは単独でコンパイルするので、チップの略称がヘッダから来ない。
+#  flash_cache_init.c は #include <stdint.h> しかせず、S3 とLX6 を
+#  TOPPERS_ESP32_LX6 の有無で分ける。渡し忘れると **黙って S3 版が建つ**：
+#  LX6 機で S3 のUART0番地(0x60000000)とS3のROM番地を叩き、最初の1文字を
+#  出したところで LoadProhibited で落ちる（2026-09-02、M5Stack Basic 実機）。
+#  コンパイルもリンクも通るので、実機で走らせるまで分からない。
+#
 set(_fc_defs "")
 if(XIP_PADDR_RUNTIME)
   list(APPEND _fc_defs -DTOPPERS_XIP_PADDR_RUNTIME)
+endif()
+if(A1_CHIP STREQUAL "esp32")
+  list(APPEND _fc_defs -DTOPPERS_ESP32_LX6)
 endif()
 execute_process(
   COMMAND "${GCC}" -c -o "${OBJDIR}/flash_cache_init.o"
