@@ -58,13 +58,49 @@ LIBRARY_VERSIONS = {"M5GFX": "0.2.27", "M5Unified": "0.2.20"}
 #  sketch, because "any sketch builds on any profile" is a property worth
 #  failing on: it was not true before D-4, and nothing else here would notice
 #  if it broke again.
+#  Not an example directory; written into the work tree by
+#  multi_file_sketch().
+MULTI_FILE_SKETCH = "TwoFileSketch"
+
+#  LibraryInfo is on every profile because it is the only example that calls
+#  the bundled library rather than the runtime, and that is exactly what went
+#  unbuilt: the driver linked the sketch object plus a fixed allowlist, so
+#  ToppersFMP3_M5CoreS3.cpp.o - which no profile's manifest names - never
+#  reached the linker and the example failed on all three. Nothing here built
+#  it, so nothing here noticed.
+#
+#  MULTI_FILE_SKETCH is generated rather than shipped, because "a sketch of
+#  more than one file links" is a property to test, not an example anyone
+#  needs to read. It went the same way for the same reason: only
+#  <project>.cpp.o was taken out of build/sketch. One profile is enough - the
+#  object collection it exercises does not vary by profile.
 PROFILES = {
-    "minimal": ["Blink"],
-    "m5": ["M5Unified", "DualCore", "Blink"],
-    "wificonnect": ["WiFiConnect", "WiFiScan", "Blink"],
+    "minimal": ["Blink", "LibraryInfo", MULTI_FILE_SKETCH],
+    "m5": ["M5Unified", "DualCore", "Blink", "LibraryInfo"],
+    "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo"],
 }
 
 BOARD = "toppers:esp32:m5cores3_fmp3"
+
+
+def multi_file_sketch(work: Path) -> Path:
+    """Write a sketch whose .ino calls a function defined in a second file.
+
+    helperTick has to be called from loop() and defined nowhere else, so that
+    dropping helper.cpp from the link is an undefined reference rather than
+    dead weight nobody notices.
+    """
+    sketch = work / MULTI_FILE_SKETCH
+    sketch.mkdir(parents=True, exist_ok=True)
+    (sketch / f"{MULTI_FILE_SKETCH}.ino").write_text(
+        "#include <ToppersFMP3_ArduinoBridge.h>\n"
+        "void helperTick(void);\n"
+        "void setup() {}\n"
+        "void loop() { helperTick(); }\n", encoding="utf-8")
+    (sketch / "helper.cpp").write_text(
+        "volatile unsigned long helperTicks;\n"
+        "void helperTick(void) { ++helperTicks; }\n", encoding="utf-8")
+    return sketch
 
 
 class VerifyError(Exception):
@@ -309,6 +345,9 @@ def main() -> int:
             for example in PROFILES[option]:
                 label = f"{option}/{example}"
                 output = work / f"out-{option}-{example}"
+                sketch = (multi_file_sketch(work)
+                          if example == MULTI_FILE_SKETCH
+                          else repository / "examples" / example)
                 print(f"  {label}")
                 try:
                     #  No library path: the library is bundled in the platform.
@@ -317,7 +356,7 @@ def main() -> int:
                                "--build-path",
                                str(work / f"bp-{option}-{example}"),
                                "--output-dir", str(output),
-                               str(repository / "examples" / example)],
+                               str(sketch)],
                         f"building {label}", capture=True)
                 except VerifyError as error:
                     print(f"    {error}")

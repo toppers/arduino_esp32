@@ -40,6 +40,7 @@ import struct
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 
 #  The frozen driver is shipped as a versioned Arduino tool, and a
@@ -47,9 +48,11 @@ from pathlib import Path
 #  a real hazard: the manifest schema the driver understands is what decides
 #  whether a stage links at all. --version lets the release check compare the
 #  binary it is about to publish against this source.
-DRIVER_VERSION = "1"
+DRIVER_VERSION = "2"
 
 MANIFEST_SCHEMA = 1
+#  Holds the Arduino objects the manifest does not name; see stage_archive.
+ARCHIVE_NAME = "libarduino.a"
 EXE = ".exe" if os.name == "nt" else ""
 
 
@@ -92,6 +95,19 @@ def existing_program(path: Path, what: str) -> Path:
     raise LinkError(f"{what} does not exist: {path}")
 
 
+def ar_beside(gcc: Path) -> Path:
+    """The ar of the same toolchain as the given gcc.
+
+    The Arduino recipe passes {compiler.c.cmd} but has no placeholder that
+    names ar for this chip, so it is derived rather than passed: the two live
+    in the same directory and differ only in the last three characters.
+    """
+    stem = gcc.name[:-4] if gcc.name.lower().endswith(".exe") else gcc.name
+    if not stem.endswith("gcc"):
+        raise LinkError(f"Cannot find the ar that goes with {gcc}")
+    return existing_program(gcc.with_name(stem[:-3] + "ar"), "ar")
+
+
 def resolve_sdk(args: argparse.Namespace) -> dict[str, Path]:
     """Fill in whatever the caller did not pass explicitly."""
     resolved: dict[str, Path] = {}
@@ -128,6 +144,7 @@ def resolve_sdk(args: argparse.Namespace) -> dict[str, Path]:
 
     for key in ("gcc", "esptool"):
         resolved[key] = existing_program(resolved[key], key)
+    resolved["ar"] = ar_beside(resolved["gcc"])
     for key in ("sdk_ld", "sdk_lib"):
         if not resolved[key].is_dir():
             raise LinkError(f"{key} does not exist: {resolved[key]}")
@@ -148,12 +165,35 @@ def load_manifest(stage: Path) -> dict:
     return manifest
 
 
+class ArduinoObjects(NamedTuple):
+    """What the Arduino builder produced, split by how it reaches the linker.
+
+    ``linked`` is force-linked, the way the Arduino builder links a sketch:
+    every translation unit of the sketch itself, plus the library objects the
+    stage cannot work without (``requiredArduinoObjects``).
+
+    ``archived`` is everything else the builder compiled - the bundled
+    library's other sources, and any library the sketch pulls in. It goes into
+    an archive so that the linker takes a member only when the sketch actually
+    refers to it. Force-linking these instead would break the profiles they
+    were not built for: ToppersFMP3_WiFi.cpp.o calls Wi-Fi symbols that exist
+    only in the wifi-connect stage, so a minimal build would stop linking.
+    """
+
+    linked: list[Path]
+    archived: list[Path]
+
+
 def collect_arduino_objects(manifest: dict, build_path: Path,
-                            project_name: str) -> list[Path]:
+                            project_name: str) -> ArduinoObjects:
     sketch_object = build_path / "sketch" / f"{project_name}.cpp.o"
     if not sketch_object.is_file():
         raise LinkError(f"Arduino sketch object was not found: {sketch_object}")
-    objects = [sketch_object]
+    #  Not just the .ino: a sketch folder may hold further .cpp/.c files, and
+    #  the builder compiles each of them into build/sketch.
+    linked = sorted((build_path / "sketch").rglob("*.o"))
+
+    required: list[Path] = []
     for name in manifest.get("requiredArduinoObjects", []):
         if name == "<sketch>.cpp.o":
             continue
@@ -161,13 +201,16 @@ def collect_arduino_objects(manifest: dict, build_path: Path,
         if len(hits) != 1:
             raise LinkError(
                 f"Expected exactly one {name}, found {len(hits)}.")
-        objects.append(hits[0])
-    return objects
+        required.append(hits[0])
+
+    archived = [path for path in sorted((build_path / "libraries").rglob("*.o"))
+                if path not in set(required)]
+    return ArduinoObjects(linked + required, archived)
 
 
 def stage_objects(stage: Path, work: Path,
-                  arduino_objects: list[Path]) -> list[str]:
-    """Copy the stage and the Arduino objects into one directory.
+                  arduino_objects: ArduinoObjects) -> list[str]:
+    """Copy the stage and the force-linked Arduino objects into one directory.
 
     Basename collisions inside the stage were already rejected when it was
     produced; a collision here can only come from an Arduino object.
@@ -178,7 +221,7 @@ def stage_objects(stage: Path, work: Path,
     objs.mkdir(parents=True)
     for source in sorted((stage / "objs").glob("*.o")):
         shutil.copyfile(source, objs / source.name)
-    for source in arduino_objects:
+    for source in arduino_objects.linked:
         staged = re.sub(r"\.(c|cpp|S)\.o$", ".o", source.name)
         if staged == source.name:
             raise LinkError(f"Unexpected Arduino object name: {source.name}")
@@ -192,6 +235,23 @@ def stage_objects(stage: Path, work: Path,
     (work / "objects.rsp").write_text(
         "".join(f"objs/{name}\n" for name in names), encoding="ascii")
     return names
+
+
+def stage_archive(work: Path, arduino_objects: ArduinoObjects,
+                  ar: Path) -> str | None:
+    """Put the on-demand objects into an archive beside objects.rsp.
+
+    Returns the archive's name for the link command, or None when there is
+    nothing to offer. ``D`` keeps the archive itself reproducible; duplicate
+    member basenames are allowed by ar and resolved through the symbol index,
+    so two libraries may both contain a util.cpp.o.
+    """
+    if not arduino_objects.archived:
+        return None
+    run([str(ar), "rcsD", ARCHIVE_NAME]
+        + [str(path) for path in arduino_objects.archived],
+        work, "Archiving the Arduino objects")
+    return ARCHIVE_NAME
 
 
 def expander(stage: Path, sdk: dict[str, Path]):
@@ -211,7 +271,7 @@ def expander(stage: Path, sdk: dict[str, Path]):
 
 
 def build_link_command(manifest: dict, stage: Path, sdk: dict[str, Path],
-                       expand) -> list[str]:
+                       expand, archive: str | None = None) -> list[str]:
     command = [
         str(sdk["gcc"]),
         "-nostdlib",
@@ -226,6 +286,11 @@ def build_link_command(manifest: dict, stage: Path, sdk: dict[str, Path],
                 for name in manifest.get("extraLinkerScripts", [])]
     command += [expand(flag) for flag in manifest.get("linkUFlags", [])]
     command += ["-Wl,-Map=fmp_xip.map", "-o", "fmp_xip.elf", "@objects.rsp"]
+    #  After the objects, so a member is taken only for a symbol still
+    #  undefined at this point, and before the SDK libraries it may itself
+    #  need.
+    if archive:
+        command += [archive]
     command += [expand(flag) for flag in manifest.get("linkLibGroup", [])]
     command += ["-lgcc", "-lc"]
     return command
@@ -534,9 +599,11 @@ def main(argv: list[str] | None = None) -> int:
     arduino_objects = collect_arduino_objects(manifest, build_path,
                                               args.project_name)
     names = stage_objects(stage, work, arduino_objects)
+    archive = stage_archive(work, arduino_objects, sdk["ar"])
 
     expand = expander(stage, sdk)
-    run(build_link_command(manifest, stage, sdk, expand), work, "Linking")
+    run(build_link_command(manifest, stage, sdk, expand, archive), work,
+        "Linking")
     run([str(sdk["esptool"]), "--chip", manifest["chip"], "elf2image",
          "--flash-mode", manifest["flashMode"],
          "--flash-freq", manifest["flashFreq"],
@@ -552,7 +619,10 @@ def main(argv: list[str] | None = None) -> int:
     print()
     print(f"Linked the {manifest['profile']} profile from the prebuilt stage.")
     print(f"  objects:  {len(names)} "
-          f"(prebuilt {manifest['objectCount']} + Arduino {len(arduino_objects)})")
+          f"(prebuilt {manifest['objectCount']} + "
+          f"Arduino {len(arduino_objects.linked)})"
+          + (f", plus {len(arduino_objects.archived)} on demand"
+             if arduino_objects.archived else ""))
     print(f"  ELF:      {destination_elf}")
     print(f"  BIN:      {destination_bin}")
     print(f"  SHA-256:  {digest}")
