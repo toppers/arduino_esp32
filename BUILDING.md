@@ -52,12 +52,17 @@ Arduino のデータディレクトリは OS ごとに解決します
 ## 2. platform ディレクトリを組み立てる
 
 ```bash
-python scripts/install_platform.py --prebuilt-stage-root build/prebuilt/esp32s3
+python scripts/install_platform.py --prebuilt-stage-root build/prebuilt
 ```
 
 `boards.txt` / `platform.txt` / stage / リンクドライバ / partition テーブルを
 sketchbook の `hardware/toppers/esp32` へ置きます。Arduino IDE を再起動すると
 ボードが選べます。
+
+`build/prebuilt/<チップ>/` が並んでいる親を渡すと、**そこにある全チップの
+ボードが 1 つの platform に入ります**（CoreS3 と M5Stack Basic が同居する）。
+チップ 1 つ分のディレクトリを渡せばそのボードだけになり、`--chip` で
+親から一部だけ選ぶこともできます。
 
 ## 3. パッケージと index を作る
 

@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
-"""Assemble the M5CoreS3 (TOPPERS/FMP3) Arduino board platform.
+"""Assemble the TOPPERS/FMP3 Arduino board platform.
 
 Produces the platform
 directory that Boards Manager later packages: boards.txt, platform.txt, the
 partition tools, the prebuilt stages and the link driver.
 
-    python scripts/install_platform.py --prebuilt-stage-root build/prebuilt/esp32s3
+One platform can hold both boards. build_prebuilt_stages.py writes
+build/prebuilt/<chip>, so pointing at the parent installs every chip built
+there:
+
+    python scripts/install_platform.py --prebuilt-stage-root build/prebuilt
+
+Pointing at one chip's own directory installs just that board, and --chip
+picks a subset out of a multi-chip root:
+
+    python scripts/install_platform.py --chip esp32s3 \
+        --prebuilt-stage-root build/prebuilt/esp32s3
 
 Together with build_prebuilt_stages.py this is everything the CI package job
 does, so that job no longer needs a Windows runner.
@@ -112,8 +122,12 @@ def _is_reparse_point(path: Path) -> bool:
 
 
 def board_lines(source_boards: Path, chip: str,
-                stage_root: Path) -> list[str]:
-    """Derive our board definition from the M5Stack one."""
+                stage_root: Path) -> tuple[list[str], list[str]]:
+    """Derive our board definition from the M5Stack one.
+
+    Returns the menu declarations (shared by every board in a platform, so the
+    caller emits them once) and the lines for this one board.
+    """
     source_id, board_id, display_name, variant = BOARDS[chip]
     source_prefix = source_id + "."
     prefix = board_id + "."
@@ -147,7 +161,7 @@ def board_lines(source_boards: Path, chip: str,
         raise SystemExit(
             f"{source_boards} has no board '{source_id}' to derive from")
 
-    lines = menus + ["menu.FMP3Runtime=FMP3 Runtime"] + board + [
+    lines = board + [
         #  Which chip's stages this board links against; the layout is
         #  fmp3-prebuilt/<chip>/<profile>.
         f"{prefix}build.toppers_chip={chip}",
@@ -161,7 +175,7 @@ def board_lines(source_boards: Path, chip: str,
         lines.append(f"{prefix}menu.FMP3Runtime.{key}={label}")
         lines.append(f"{prefix}menu.FMP3Runtime.{key}"
                      f".build.toppers_profile={profile}")
-    return lines
+    return menus, lines
 
 
 def platform_lines(source: Path, link: str, objcopy: str,
@@ -201,10 +215,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--python-executable", default="",
                         help="interpreter for the driver recipe; a frozen "
                              "per-OS build replaces it in the released package")
-    parser.add_argument("--chip", choices=["esp32s3", "esp32"],
-                        default="esp32s3")
+    #  Repeatable. Without it, a stage root laid out per chip installs every
+    #  chip it holds; a single chip's stage root installs esp32s3.
+    parser.add_argument("--chip", action="append",
+                        choices=["esp32s3", "esp32"], default=None)
     parser.add_argument("--uninstall", action="store_true")
     args = parser.parse_args(argv)
+    args.chip_given = args.chip is not None
+    if not args.chip_given:
+        args.chip = ["esp32s3"]
 
     library_root = Path(args.library_root).resolve() if args.library_root \
         else Path(__file__).resolve().parent.parent
@@ -236,6 +255,30 @@ def main(argv: list[str] | None = None) -> int:
     stage_root = Path(args.prebuilt_stage_root).resolve()
     if not stage_root.is_dir():
         raise SystemExit(f"Prebuilt stage root was not found: {stage_root}")
+
+    #
+    #  Which chips to install, and where each one's stages are.
+    #
+    #  build_prebuilt_stages.py writes build/prebuilt/<chip>/<profile>, so
+    #  pointing at build/prebuilt installs every chip built there - both boards
+    #  in one platform, which is how a release should look. Pointing at one
+    #  chip's own directory still installs just that board, which is what the
+    #  older invocations do.
+    #
+    per_chip = {name: stage_root / name
+                for name in BOARDS if (stage_root / name).is_dir()}
+    if per_chip:
+        if args.chip_given:
+            per_chip = {c: r for c, r in per_chip.items() if c in args.chip}
+            missing_chip = sorted(set(args.chip) - set(per_chip))
+            if missing_chip:
+                raise SystemExit(
+                    "no stages for " + ", ".join(missing_chip)
+                    + f" below {stage_root}")
+    else:
+        #  A single chip's stage root, named by --chip (default esp32s3).
+        per_chip = {args.chip[0]: stage_root}
+    chips = sorted(per_chip)
 
     python_executable = args.python_executable or sys.executable
     if not Path(python_executable).exists():
@@ -280,9 +323,20 @@ def main(argv: list[str] | None = None) -> int:
     if source_tool.is_file():
         shutil.copy2(source_tool, tools_destination)
 
+    #  The menu.* declarations are platform-wide, so they are written once and
+    #  each board's own lines follow. Two boards that both offer FMP3Runtime
+    #  would otherwise declare the menu twice.
+    menu_lines: list[str] = []
+    board_blocks: list[str] = []
+    for chip in chips:
+        menus, board = board_lines(source_boards, chip, per_chip[chip])
+        for line in menus:
+            if line not in menu_lines:
+                menu_lines.append(line)
+        board_blocks.extend(board)
     (platform_root / "boards.txt").write_text(
-        "\n".join(board_lines(source_boards, args.chip, stage_root)) + "\n",
-        encoding="utf-8", newline="\r\n")
+        "\n".join(menu_lines + ["menu.FMP3Runtime=FMP3 Runtime"] + board_blocks)
+        + "\n", encoding="utf-8", newline="\r\n")
 
     platform_tools = platform_root / "fmp3-tools"
     platform_tools.mkdir(parents=True, exist_ok=True)
@@ -294,31 +348,32 @@ def main(argv: list[str] | None = None) -> int:
     #  of a profile no menu entry can select, packaged and distributed. What a
     #  release contains has to follow from what the board offers, not from what
     #  a build directory still holds.
-    offered = {profile for _, _, profile in MENU_ENTRIES}
-    if (stage_root / EXPERIMENTAL_ENTRY[2]).is_dir():
-        offered.add(EXPERIMENTAL_ENTRY[2])
     staged = 0
     skipped = []
-    for stage in sorted(p for p in stage_root.iterdir() if p.is_dir()):
-        if not (stage / "link-manifest.json").is_file():
-            continue
-        if stage.name not in offered:
-            skipped.append(stage.name)
-            continue
-        shutil.copytree(
-            stage,
-            platform_root / "fmp3-prebuilt" / args.chip / stage.name)
-        staged += 1
+    for chip in chips:
+        chip_root = per_chip[chip]
+        offered = {profile for _, _, profile in MENU_ENTRIES}
+        if (chip_root / EXPERIMENTAL_ENTRY[2]).is_dir():
+            offered.add(EXPERIMENTAL_ENTRY[2])
+        present = {p.name for p in chip_root.iterdir() if p.is_dir()}
+        for stage in sorted(p for p in chip_root.iterdir() if p.is_dir()):
+            if not (stage / "link-manifest.json").is_file():
+                continue
+            if stage.name not in offered:
+                skipped.append(f"{chip}/{stage.name}")
+                continue
+            shutil.copytree(
+                stage, platform_root / "fmp3-prebuilt" / chip / stage.name)
+            staged += 1
+        missing = sorted(EXPECTED_PROFILES[chip] - present)
+        if missing:
+            raise SystemExit(
+                f"the {chip} board offers profiles with no stage built: "
+                + ", ".join(missing)
+                + "\nbuild them first: build_prebuilt_stages.py"
+                + f" --chip {chip} --profiles {' '.join(missing)}")
     if staged == 0:
         raise SystemExit(f"No prebuilt stage was found below {stage_root}")
-    missing = sorted(EXPECTED_PROFILES[args.chip] - {p.name
-                                                     for p in stage_root.iterdir()
-                                                     if p.is_dir()})
-    if missing:
-        raise SystemExit(
-            "the board menu offers profiles with no stage built: "
-            + ", ".join(missing)
-            + f"\nbuild them first: build_prebuilt_stages.py --profiles {' '.join(missing)}")
     for name in skipped:
         print(f"  skipped stage {name}: no menu entry selects it")
 
@@ -367,11 +422,13 @@ def main(argv: list[str] | None = None) -> int:
         "libraryRoot": str(library_root),
         "sourcePlatform": str(source_platform),
         "coreVersion": args.core_version,
+        "chips": chips,
     }, indent=2) + "\n", encoding="utf-8")
 
     print("\nTOPPERS/FMP3 Arduino board platform installed.")
     print(f"  Platform: {platform_root}")
-    print(f"  Board:    {BOARDS[args.chip][2]}")
+    for chip in chips:
+        print(f"  Board:    {BOARDS[chip][2]}  ({chip})")
     print(f"  Stages:   {staged}")
     print("Restart Arduino IDE before selecting the board.")
     return 0
