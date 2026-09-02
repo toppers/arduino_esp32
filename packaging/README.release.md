@@ -95,11 +95,13 @@ PWM（GPIO32）で点きます。
 | `WiFi` | scan（資格情報不要）、Open／WPA接続、DHCP、DNS、TCP | `WiFiScan`、`WiFiConnect` |
 | `Bluetooth Classic (SPP)` | SPPサーバ。**M5Coreのみ**（ESP32-S3にBR/EDRは無い） | `BluetoothSPP` |
 
-> **Bluetooth Classicのペアリングは安全ではありません。** `BT.begin()`は端末を
-> discoverableにし、**あらゆるペアリング要求を受け入れます**（Secure Simple
-> Pairingの確認は自動承認、レガシーペアリングはPIN `1234`で応答）。電波の
->届く範囲の誰でも接続でき、認証されません。試すぶんには問題ありませんが、
-> 外に出したくないものをこのリンクに載せないでください。
+> **Bluetooth Classicは接続に認証を要求しません。** SPPサーバは
+> `ESP_SPP_SEC_NONE`で起動するので、電波の届く範囲の誰でも、ペアリングを
+> 経ずに接続してデータを送受信できます（2026-09-02実機確認: PC側のボンドを
+> 消した状態から接続でき、ボンドは作られず、確認も一度も出なかった＝
+> SSPの"Just Works"）。コードには数値比較の自動承認とレガシー用の固定PIN
+> `1234`もありますが、この経路ではどちらも通りません。試すぶんには
+> 問題ありませんが、**外に出したくないものをこのリンクに載せないでください。**
 
 exampleは`File > Examples`の、選択中のボード向けセクションに
 `ToppersFMP3-M5CoreS3`として現れます。ライブラリはボードパッケージに

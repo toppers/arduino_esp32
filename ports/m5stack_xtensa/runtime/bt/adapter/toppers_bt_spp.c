@@ -105,8 +105,13 @@ ring_take(uint8_t *buf, size_t len)
  *
  * The pairing policy is the upstream one, unchanged: Secure Simple Pairing
  * confirmations are accepted automatically and legacy pairing replies with the
- * fixed PIN. It is NOT secure - any device in range can pair and connect - and
- * the README, the release README and the example all say so.
+ * fixed PIN.
+ *
+ * ★Neither is what a peer actually meets. The server is started with
+ * ESP_SPP_SEC_NONE below, so no authentication is required to connect at all:
+ * measured on 2026-09-02 with the bond cleared on the PC, the connection
+ * succeeded, no bond was created, and neither of these two cases fired. They
+ * are fallbacks, not the gate. The READMEs and the example say so.
  */
 static void
 bt_gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)

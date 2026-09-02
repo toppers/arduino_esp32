@@ -15,10 +15,12 @@
  * ESP32-S3 has no Bluetooth Classic at all, so this exists on the
  * M5Stack Core (ESP32) board of this package and nowhere else.
  *
- * SECURITY: begin() makes the device discoverable and accepts any pairing
- * request - Secure Simple Pairing confirmations are auto-accepted and legacy
- * pairing answers with PIN 1234. Any device in range can pair and connect.
- * Do not put anything on this link you would not broadcast.
+ * SECURITY: begin() makes the device discoverable and starts the SPP server
+ * with ESP_SPP_SEC_NONE - no authentication is required to connect. Anything
+ * in range can open the link and exchange data without pairing. The code also
+ * auto-accepts Secure Simple Pairing confirmations and answers legacy pairing
+ * with PIN 1234, but a peer does not have to go through either. Do not put
+ * anything on this link you would not broadcast.
  */
 
 #ifdef __cplusplus

@@ -10,10 +10,14 @@
 // ESP32-S3 has no Bluetooth Classic, so this example does not build for the
 // CoreS3 board.
 //
-// SECURITY: this accepts any pairing request - Secure Simple Pairing
-// confirmations are auto-accepted and legacy pairing answers with PIN 1234.
-// Any device in range can pair and connect. It is fine for trying the link
-// out and not fine for anything you would not broadcast.
+// SECURITY: this server requires no authentication to connect. It starts with
+// ESP_SPP_SEC_NONE, so anything in range can open the link and exchange data
+// without pairing at all - measured on hardware on 2026-09-02: with the bond
+// cleared on the PC, the connection succeeded, no bond was created, and no
+// pairing confirmation appeared on the device (SSP "Just Works"). The code
+// also auto-accepts numeric comparison and answers legacy pairing with PIN
+// 1234, but neither is reached on that path. Fine for trying the link out,
+// not fine for anything you would not broadcast.
 
 const char DEVICE_NAME[] = "M5Stack-SPP";
 
