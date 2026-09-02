@@ -190,11 +190,18 @@ unsigned char *esp_wifi_sta_get_ie(unsigned char *bssid, unsigned char elem_id)
 }
 #endif
 
-/* ---- esp_timer 最小スタブ（TODO: runtime用にshimタイマへ委譲） ---- */
+/* ---- esp_timer 最小スタブ（TODO: runtime用にshimタイマへ委譲） ----
+ *
+ *  ★これらは「作った」と言うだけで一度も発火しない。bt-classic では
+ *  esp_timer_shim.c の本物を使う。coex はタイマのコールバックで
+ *  セマフォを返すので、no-op のままだと btdm_controller_enable() が
+ *  永久に待つ（2026-09-02 実機で実測）。 */
+#if !defined(TOPPERS_BT_CLASSIC)
 esp_err_t esp_timer_create(const void *args, void **out)     { (void)args; if(out)*out=(void*)1; return(ESP_OK); }
 esp_err_t esp_timer_start_periodic(void *h, uint64_t us)     { (void)h;(void)us; return(ESP_OK); }
 esp_err_t esp_timer_stop(void *h)                            { (void)h; return(ESP_OK); }
 esp_err_t esp_timer_delete(void *h)                          { (void)h; return(ESP_OK); }
+#endif
 
 /* ---- WPA supplicant ----
  * esp_supplicant_init/deinit, hexstr2bin, g_wifi_default_wpa_crypto_funcs は

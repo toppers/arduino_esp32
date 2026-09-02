@@ -207,6 +207,20 @@ extern void esp_shim_inthdr_5(void);
 extern void esp_shim_inthdr_7(void);
 extern void esp_shim_inthdr_8(void);
 extern void esp_shim_inthdr_23(void);
+/*
+ *  esp_timer shim（wifi/shim/esp_timer_shim.c）。bt-classic のみ実体を持つ。
+ *  ESP_TIMER_NUM は BlueDroid の osi_alarm(CONFIG_BT_ALARM_MAX_NUM=16)と
+ *  同じプールを使うので 16 で揃える。
+ */
+#if defined(TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
+#define ESP_TIMER_NUM       16
+#ifndef ESP_TIMER_TASK_PRI
+#define ESP_TIMER_TASK_PRI  5
+#endif
+#define ESP_TIMER_STKSZ     4096
+extern void esp_timer_shim_task(intptr_t exinf);
+#endif
+
 extern void esp_shim_inthdr_27(void);
 #if defined(TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
 extern void esp_shim_inthdr_29(void);

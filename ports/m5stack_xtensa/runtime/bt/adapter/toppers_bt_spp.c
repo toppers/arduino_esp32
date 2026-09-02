@@ -254,6 +254,7 @@ toppers_bt_spp_begin(const char *device_name)
 	 */
 	esp_shim_bt_clock_init();
 
+
 	err = esp_bt_controller_init(&cfg);
 	if (err != ESP_OK) {
 		syslog_1(LOG_ERROR, "bt: controller init failed (%d)", (intptr_t) err);

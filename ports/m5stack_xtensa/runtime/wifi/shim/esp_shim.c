@@ -576,6 +576,7 @@ esp_shim_sem_take(void *sem, uint32_t block_time_tick)
 	ER		er;
 	int32_t	ret;
 
+
 	er = twai_sem((ID)(intptr_t)sem, esp_shim_tick_to_tmo(block_time_tick));
 	if (er == E_CTX) {
 		/*

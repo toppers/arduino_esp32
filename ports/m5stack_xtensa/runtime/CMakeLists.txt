@@ -476,7 +476,9 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one|bt-classic)$")
         #  BlueDroid の FreeRTOS キューの実体。Wi-Fi は osi テーブル経由で
         #  キューを使うため引かない（他 profile の stage を変えないよう限定する）。
         target_sources(seam_objects PRIVATE
-            "${RUNTIME_ROOT}/wifi/shim/esp_shim_ring.c")
+            "${RUNTIME_ROOT}/wifi/shim/esp_shim_ring.c"
+            #  本物の esp_timer。wifi_stubs.c の no-op は畳まれる。
+            "${RUNTIME_ROOT}/wifi/shim/esp_timer_shim.c")
         #  seam_objects 側にも要る（wifi_stubs.c が BT ブロブと衝突する
         #  no-op を畳むのに見ている）。bt_common の同名定義とは別経路。
         target_compile_definitions(wifi_common INTERFACE

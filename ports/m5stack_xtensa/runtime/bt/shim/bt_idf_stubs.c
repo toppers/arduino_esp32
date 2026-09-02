@@ -75,28 +75,6 @@ esp_clk_xtal_freq(void)
 }
 
 /*
- *  esp_timer.
- *
- *  wifi_stubs.c already owns create/delete/stop/start_periodic. Only the
- *  one-shot and the liveness query are missing, and BlueDroid's alarm layer
- *  is the only caller.
- */
-extern esp_err_t esp_timer_start_periodic(void *timer, uint64_t period);
-
-esp_err_t
-esp_timer_start_once(void *timer, uint64_t timeout_us)
-{
-	return(esp_timer_start_periodic(timer, timeout_us));
-}
-
-bool
-esp_timer_is_active(void *timer)
-{
-	(void) timer;
-	return(false);
-}
-
-/*
  *  Cross-core call. FMP3 runs the BT stack on one core here, so the callee
  *  runs inline; esp_ipc_call_blocking is bt_shim.c's and does the same.
  */
