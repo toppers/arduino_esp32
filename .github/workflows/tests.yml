@@ -1,0 +1,30 @@
+# The regression tests that need nothing but Python.
+#
+# verify-package.yml is the real check - it installs the package and builds
+# every profile - but it is workflow_dispatch only, because it needs Windows
+# and macOS runners. These tests cost seconds, so they run on every push, and
+# they cover the two places where a wrong answer looked reasonable: which host
+# paths count as a leak, and which Arduino objects reach the linker.
+
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    name: Python regression tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Host-path check
+        run: python scripts/test_check_host_paths.py
+
+      - name: Arduino object selection
+        run: python scripts/test_fmp3_link_objects.py
