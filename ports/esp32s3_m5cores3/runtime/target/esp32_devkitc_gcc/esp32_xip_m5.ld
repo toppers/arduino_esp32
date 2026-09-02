@@ -126,6 +126,13 @@ SECTIONS
      * LX6版）。走査・呼出しはm5/compat/cxx_runtime.cppのesp_run_init_array()
      * （アプリmain_task先頭で1回呼ぶ）。golden保護構成（seam-lx6-smp/wifi）は
      * このファイルを一切参照しないため無関係・不変。 */
+    /*  ★4 バイト境界へ揃える。esp_run_init_array() は表を 32bit の関数ポインタ
+     *  配列として読むので、境界に載っていないと**別物を関数ポインタとして呼ぶ**。
+     *  2026-09-02、M5Stack Basic 実機で __ctors_start=0x3f412fb2 /
+     *  __ctors_end=0x3f412fb8（6 バイト・非整列）になり、
+     *  EXCCAUSE=20 InstrFetchProhibited PC=0x00000074 で落ちた。
+     *  S3 側の同じスクリプトには入っている。 */
+    . = ALIGN(4);
     __init_array_start = ABSOLUTE(.);
     KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
     KEEP(*(.init_array))
@@ -137,6 +144,7 @@ SECTIONS
      * blob .ctorsは存在せず、単純KEEPで安全（S3のesp32s3_xip_m5.ldと同じ
      * 前提）。将来M5+blob合成構成を作る場合はEXCLUDE_FILEでblobオブジェクトの
      * .ctorsを除外する行を追加すること。 */
+    . = ALIGN(4);
     __ctors_start = ABSOLUTE(.);
     KEEP(*(SORT_BY_INIT_PRIORITY(.ctors.*)))
     KEEP(*(.ctors))

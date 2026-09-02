@@ -145,6 +145,21 @@ SECTIONS
     *core_support.o(.literal .text .literal.* .text.*)
     *chip_l1int_entry.o(.literal .text .literal.* .text.*)
     *(.iram1 .iram1.*)
+    /*  ★Wi-Fi blob の IRAM_ATTR コード（割込み・cache-off 文脈で走るため
+     *  SRAM 必須）。集める記述が無いと孤児セクションとして .flash_text の
+     *  **後ろ**へ流され、_flash_text_end の外に出る。flash_xip_map() は
+     *  _flash_text_size の分しか MMU へ張らないので、そこを実行した瞬間に
+     *  マップ外の命令フェッチになる（2026-09-02、M5Stack Basic 実機で
+     *  esp_wifi_start 中の i2c_master_reset=0x401402b8 が
+     *  _flash_text_end=0x4013690c を 0x2b8 超えて EXCCAUSE=0）。
+     *  S3 の esp32s3_xip_m5.ld には最初から入っている。 */
+    *(.wifi0iram .wifi0iram.*)
+    *(.wifirxiram .wifirxiram.*)
+    *(.wifislpiram .wifislpiram.*)
+    *(.wifislprxiram .wifislprxiram.*)
+    *(.wifiextrairam .wifiextrairam.*)
+    *(.wifiorslpiram .wifiorslpiram.*)
+    *(.coexiram .coexiram.*)
     /* WiFi blobのIRAM_ATTRコード（割込み・cache-off文脈で走るためSRAM必須） */
     *(.wifi0iram .wifi0iram.*)
     *(.wifirxiram .wifirxiram.*)

@@ -97,20 +97,48 @@ endif()
 if(A1_CHIP STREQUAL "esp32s3")
     set(A1_CHIP_TARGET_NAME esp32s3_devkitc_gcc)
     set(A1_CHIP_ARCH_NAME esp32s3)
+    #  S3 は全 profile で同じスクリプト（wifi 専用の派生は無い）。
     set(A1_XIP_LD_NAME esp32s3_xip_m5.ld)
     set(A1_CHIP_ROM_LD esp32s3.rom.ld)
     #  ROM 常駐コンソールは USB-Serial/JTAG。LX6 に USJ は無く UART0 を使う。
     set(A1_CHIP_DEFS TOPPERS_S3_CONSOLE_USJ)
+    #  ESP-IDF 由来のコードへ渡すチップ判別と、そのチップの sdkconfig が読む
+    #  フラッシュ周波数マクロ。綴りがチップで違う（LX6 は ESPRESSIF_ 系）。
+    set(A1_CHIP_IDF_DEFS TOPPERS_ESP32S3 CONFIG_ESP32S3_FLASH_FREQ_80M)
+    #  S3 の ld/ に librtc.a は無い。
+    set(A1_CHIP_WIFI_LIBS)
     #  2nd-stage bootloader が読む app descriptor。LX6 では要らない。
     set(A1_CHIP_HAS_APPDESC ON)
 elseif(A1_CHIP STREQUAL "esp32")
     set(A1_CHIP_TARGET_NAME esp32_devkitc_gcc)
     set(A1_CHIP_ARCH_NAME esp32)
-    set(A1_XIP_LD_NAME esp32_xip_m5.ld)
+    #  LX6 は DRAM の取り方が profile ごとに違うので使い分ける。
+    #    _wifi     … BT を使わないので 0x3FFB0000 から 288KB 全部を使う。
+    #                 Wi-Fi の大きな .bss は共用 ld では溢れる。
+    #    _m5_wifi  … M5 と Wi-Fi の合成構成用。
+    #    _m5       … それ以外（BT の EM 領域を除いた保守的なレイアウト）。
+    #  ★_wifi ではなく _m5_wifi を使う。この "m5" は M5Unified ではなく
+    #  「.ctors 集約版」の意で、seam/init_array.cpp が要求する
+    #  __ctors_start/__init_array_start を定義しているのはこちらだけである
+    #  （esp32_xip_wifi.ld にはそれが無く、リンクが未定義参照で落ちる）。
+    if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
+        set(A1_XIP_LD_NAME esp32_xip_m5_wifi.ld)
+    elseif(FMP3_RUNTIME_PROFILE STREQUAL "all-in-one")
+        set(A1_XIP_LD_NAME esp32_xip_m5_wifi.ld)
+    else()
+        set(A1_XIP_LD_NAME esp32_xip_m5.ld)
+    endif()
     set(A1_CHIP_ROM_LD esp32.rom.ld)
     #  LX6 の hardware_init_hook は既定で banner を出したところで無限ループする
     #  （元は QEMU PoC の T1 スコープ）。Arduino ランタイムは sta_ker まで進む。
-    set(A1_CHIP_DEFS TOPPERS_LX6_PROCEED_TO_KERNEL)
+    #  wifi/ の shim にはカーネルヘッダを読まない TU があり、そこは -D でしか
+    #  チップを判別できない（esp_shim_cfg.h の注記）。chip_stddef.h 側は
+    #  二重定義にならないようガードしてある。
+    set(A1_CHIP_DEFS TOPPERS_LX6_PROCEED_TO_KERNEL TOPPERS_ESP32_LX6)
+    set(A1_CHIP_IDF_DEFS TOPPERS_ESP32_LX6 CONFIG_ESPRESSIF_FLASH_FREQ_80M)
+    #  temprature_sens_read / force_wifi_mode / unforce_wifi_mode /
+    #  coex_bt_high_prio は LX6 では librtc.a が持つ（ld/ に在る。S3 には無い）。
+    set(A1_CHIP_WIFI_LIBS "-lrtc@@")
     set(A1_CHIP_HAS_APPDESC OFF)
 else()
     message(FATAL_ERROR "A1_CHIP must be esp32s3 or esp32 (got '${A1_CHIP}')")
@@ -148,8 +176,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|wifi-connect|all-in-one)$")
         "${ARDUINO_SDK_INCLUDE_ROOT}" DIRECTORY)
     list(APPEND FMP3_COMPILE_DEFS
         ESP_PLATFORM
-        TOPPERS_ESP32S3
-        CONFIG_ESP32S3_FLASH_FREQ_80M
+        ${A1_CHIP_IDF_DEFS}
         CONFIG_ESP_PHY_ENABLED=1
         TOPPERS_ESPIDF_SUPPLY
         TOPPERS_ESP_WIFI_SYSCLK_PLL)
@@ -389,8 +416,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
     add_library(wifi_common INTERFACE)
     target_compile_definitions(wifi_common INTERFACE
         ESP_PLATFORM
-        TOPPERS_ESP32S3
-        CONFIG_ESP32S3_FLASH_FREQ_80M
+        ${A1_CHIP_IDF_DEFS}
         CONFIG_ESP_PHY_ENABLED=1
         TOPPERS_ESPIDF_SUPPLY
         TOPPERS_ESP_WIFI_SYSCLK_PLL)
@@ -449,7 +475,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
             "${ARDUINO_SDK_ROOT}/qio_qspi/include")
         add_library(net_common INTERFACE)
         target_compile_definitions(net_common INTERFACE
-            ESP_PLATFORM TOPPERS_ESP32S3 CONFIG_ESP32S3_FLASH_FREQ_80M
+            ESP_PLATFORM ${A1_CHIP_IDF_DEFS}
             CONFIG_ESP_PHY_ENABLED=1 TOPPERS_ESPIDF_SUPPLY
             TOPPERS_ESP_WIFI_SYSCLK_PLL)
         target_compile_options(net_common INTERFACE
@@ -623,8 +649,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
     target_include_directories(m5_runtime_objects PRIVATE ${M5_IDF_INCLUDE_DIRS})
     target_compile_definitions(m5_runtime_objects PRIVATE
         ESP_PLATFORM
-        TOPPERS_ESP32S3
-        CONFIG_ESP32S3_FLASH_FREQ_80M
+        ${A1_CHIP_IDF_DEFS}
         CONFIG_ESP_PHY_ENABLED=1
         TOPPERS_ESPIDF_SUPPLY
         TOPPERS_ESP_WIFI_SYSCLK_PLL)
@@ -687,11 +712,14 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
         "-L${ARDUINO_SDK_LD_ROOT}@@"
         "-Wl,--start-group@@"
         "-lnet80211@@-lpp@@-lcore@@-lcoexist@@-lmesh@@-lphy@@"
+        "${A1_CHIP_WIFI_LIBS}"
         "-lstdc++@@-lm@@-Wl,--end-group")
     if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
         set(XIP_LINK_UFLAGS "-Wl,--wrap=esp_supplicant_init")
+        #  チップごとに別物である。ソフト暗号でビルドした版が要る理由は
+        #  wifi/prebuilt/wpa2/README.md を参照。
         set(WPA2_PREBUILT_ROOT
-            "${RUNTIME_ROOT}/wifi/prebuilt/wpa2")
+            "${RUNTIME_ROOT}/wifi/prebuilt/wpa2/${A1_CHIP_ARCH_NAME}")
         list(APPEND WIFI_ARCHIVES
             "${ARDUINO_SDK_LIBRARY_ROOT}/liblwip.a"
             "${WPA2_PREBUILT_ROOT}/libsupplicant.a"
@@ -710,6 +738,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
             "-L${ARDUINO_SDK_LD_ROOT}@@"
             "-Wl,--start-group@@"
             "-lnet80211@@-lpp@@-lcore@@-lcoexist@@-lmesh@@-lphy@@"
+            "${A1_CHIP_WIFI_LIBS}"
             "-lsupplicant@@-lmbedcrypto@@-llwip@@"
             "-lstdc++@@-lm@@-Wl,--end-group")
     endif()

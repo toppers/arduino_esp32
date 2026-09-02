@@ -100,9 +100,9 @@ foreach ($required in @(
         $wifiExample,
         $wifiConnectExample,
         (Join-Path $installedRoot `
-            'extras\runtime\port\wifi\prebuilt\wpa2\libsupplicant.a'),
+            'extras\runtime\port\wifi\prebuilt\wpa2\esp32s3\libsupplicant.a'),
         (Join-Path $installedRoot `
-            'extras\runtime\port\wifi\prebuilt\wpa2\libmbedcrypto.a'),
+            'extras\runtime\port\wifi\prebuilt\wpa2\esp32s3\libmbedcrypto.a'),
         (Join-Path $installedRoot `
             'extras\runtime\port\wifi\prebuilt\wpa2\WPA_SUPPLICANT_COPYING.txt'),
         (Join-Path $installedRoot `
@@ -117,9 +117,9 @@ foreach ($required in @(
 }
 
 $wpa2Archives = [ordered]@{
-    'extras\runtime\port\wifi\prebuilt\wpa2\libsupplicant.a' =
+    'extras\runtime\port\wifi\prebuilt\wpa2\esp32s3\libsupplicant.a' =
         '212FAAFE03512E07DE7ED67EFC49E65AE6F25370361CD4D3B02B52AFB1C4F173'
-    'extras\runtime\port\wifi\prebuilt\wpa2\libmbedcrypto.a' =
+    'extras\runtime\port\wifi\prebuilt\wpa2\esp32s3\libmbedcrypto.a' =
         '3242C8FA215A4F9E38EE0B3EEADA88D26012B1DB4DA08B4F0ED9E443CCA760F7'
 }
 foreach ($archive in $wpa2Archives.GetEnumerator()) {

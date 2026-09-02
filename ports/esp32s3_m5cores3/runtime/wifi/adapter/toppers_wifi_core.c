@@ -215,6 +215,21 @@ int toppers_wifi_core_init(bool protected_auth, const char *tag,
     }
 
     stage_log(tag, "init: shim begin");
+#if defined(TOPPERS_ESP32_LX6)
+    /*  ★無印ESP32(LX6) は ROM の newlib を通る経路があり、その入口の
+     *  ROM __getreent は syscall_table_ptr_pro/app が指す stub table を辿る。
+     *  bootloader 経由の起動ではこのポインタが 0 のままなので、先に張らないと
+     *  最初に errno や malloc へ触れた時点で LoadProhibited になる
+     *  （EXCCAUSE=28, pc=ROM __getreent 0x4000be94。2026-09-02、
+     *  M5Stack Basic 実機で esp_shim_initialize の中で発生）。
+     *  wifi_stubs.c が表を用意しているが、呼ぶ側がどこにも無かった。
+     *  S3 は arch 側の chip_rom_libc.c が software_init_hook で同じことをする。 */
+    {
+        extern void esp32_rom_libc_init(void);
+
+        esp32_rom_libc_init();
+    }
+#endif
     esp_shim_initialize();
     register_handler_once(handler);
     esp_shim_coex_adapter_register();

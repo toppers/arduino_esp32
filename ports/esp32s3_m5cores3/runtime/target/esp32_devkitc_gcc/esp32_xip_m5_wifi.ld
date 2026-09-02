@@ -68,6 +68,21 @@ SECTIONS
     *core_support.o(.literal .text .literal.* .text.*)
     *chip_l1int_entry.o(.literal .text .literal.* .text.*)
     *(.iram1 .iram1.*)
+    /*  ★Wi-Fi blob の IRAM_ATTR コード（割込み・cache-off 文脈で走るため
+     *  SRAM 必須）。集める記述が無いと孤児セクションとして .flash_text の
+     *  **後ろ**へ流され、_flash_text_end の外に出る。flash_xip_map() は
+     *  _flash_text_size の分しか MMU へ張らないので、そこを実行した瞬間に
+     *  マップ外の命令フェッチになる（2026-09-02、M5Stack Basic 実機で
+     *  esp_wifi_start 中の i2c_master_reset=0x401402b8 が
+     *  _flash_text_end=0x4013690c を 0x2b8 超えて EXCCAUSE=0）。
+     *  S3 の esp32s3_xip_m5.ld には最初から入っている。 */
+    *(.wifi0iram .wifi0iram.*)
+    *(.wifirxiram .wifirxiram.*)
+    *(.wifislpiram .wifislpiram.*)
+    *(.wifislprxiram .wifislprxiram.*)
+    *(.wifiextrairam .wifiextrairam.*)
+    *(.wifiorslpiram .wifiorslpiram.*)
+    *(.coexiram .coexiram.*)
     . = ALIGN(4);
   } > IRAM
 
@@ -98,10 +113,18 @@ SECTIONS
     *(.eh_frame .eh_frame.* .eh_frame_hdr)
     *(.xt.lit .xt.lit.* .xt.prop .xt.prop.*)
 
+    /*  ★4 バイト境界へ揃える。esp_run_init_array() は表を 32bit の関数ポインタ
+     *  配列として読むので、境界に載っていないと**別物を関数ポインタとして呼ぶ**。
+     *  2026-09-02、M5Stack Basic 実機で __ctors_start=0x3f412fb2 /
+     *  __ctors_end=0x3f412fb8（6 バイト・非整列）になり、
+     *  EXCCAUSE=20 InstrFetchProhibited PC=0x00000074 で落ちた。
+     *  S3 側の同じスクリプトには入っている。 */
+    . = ALIGN(4);
     __init_array_start = ABSOLUTE(.);
     KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
     KEEP(*(.init_array))
     __init_array_end = ABSOLUTE(.);
+    . = ALIGN(4);
     __ctors_start = ABSOLUTE(.);
     KEEP(*(SORT_BY_INIT_PRIORITY(.ctors.*)))
     KEEP(*(.ctors))

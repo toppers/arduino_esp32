@@ -29,7 +29,11 @@
 #include <t_syslog.h>
 #include <hal/gpio_ll.h>
 #include <sil.h>
+#if defined(TOPPERS_ESP32_LX6)
+#include <soc/dport_reg.h>			/* 割込みマトリクスの MAP レジスタ（DPORT） */
+#else
 #include <soc/interrupt_core0_reg.h>	/* 割込みマトリクスの MAP レジスタ */
+#endif
 
 #include "target_serial.h"		/* USART_INTNO（コンソール線との衝突検査） */
 #include "chip_ipi.h"			/* XT_IPI_INTNUM */
@@ -51,7 +55,15 @@
  *    ★esp_wifi_adapter.c 側の扱いも併せて確認すること
  *      （Wi-Fi は動いているので本作業では触っていない）。
  */
+#if defined(TOPPERS_ESP32_LX6)
+/*  無印ESP32(LX6) は DPORT 側。SDK が
+ *  DPORT_PRO_GPIO_INTERRUPT_MAP_REG = DR_REG_DPORT_BASE + 0x15C として与える。
+ *  上のコメントの「0x3FF00104 + src*4」と符合する：source 0 の MAC が +0x104、
+ *  GPIO は source 22 なので 0x104 + 22*4 = 0x15C。 */
+#define ARD_GPIO_MAP_REG	DPORT_PRO_GPIO_INTERRUPT_MAP_REG
+#else
 #define ARD_GPIO_MAP_REG	INTERRUPT_CORE0_GPIO_INTERRUPT_PRO_MAP_REG
+#endif
 
 /*
  *  ------------------------------------------------------------------

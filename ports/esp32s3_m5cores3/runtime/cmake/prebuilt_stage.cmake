@@ -295,6 +295,16 @@ if(DEFINED WPA_LIB_DIR AND NOT WPA_LIB_DIR STREQUAL "")
   endforeach()
 endif()
 
+#  elf2image が焼くイメージヘッダのフラッシュ容量。チップではなくボードの
+#  実装容量である：CoreS3 は 16MB、M5Stack Basic は 4MB（M5Stack core の
+#  boards.txt の m5stack_cores3 / m5stack_core が正本）。実容量より大きい値を
+#  書くと bootloader が実在しない領域まで前提にする。
+if(A1_CHIP STREQUAL "esp32")
+  set(_flash_size "4MB")
+else()
+  set(_flash_size "16MB")
+endif()
+
 to_json_array("${LINK_UFLAGS}" _uflags_json)
 to_json_array("${LINK_LIBGROUP}" _libgroup_json)
 to_json_array("${EXTRA_TSCRIPTS}" _tscripts_json)
@@ -345,7 +355,7 @@ file(WRITE "${STAGE_DIR}/link-manifest.json"
   \"linkLibGroup\": ${_libgroup_json},
   \"flashMode\": \"dio\",
   \"flashFreq\": \"80m\",
-  \"flashSize\": \"16MB\",
+  \"flashSize\": \"${_flash_size}\",
   \"objectCount\": ${_order_count},
   \"objectOrder\": [
 ${_order_json}
