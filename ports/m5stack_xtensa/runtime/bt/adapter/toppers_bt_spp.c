@@ -27,6 +27,7 @@
 #include "esp_gap_bt_api.h"
 #include "esp_spp_api.h"
 #include "esp_shim.h"
+#include "syssvc/logtask.h"
 #include "toppers_bt_spp.h"
 
 /*
@@ -345,6 +346,15 @@ toppers_bt_spp_write(const uint8_t *buf, size_t len)
 		return(0U);
 	}
 	return(len);
+}
+
+void
+toppers_bt_spp_log_line(const char *message)
+{
+	if (message != NULL) {
+		syslog(LOG_NOTICE, "%s", message);
+		(void) logtask_flush(0U);
+	}
 }
 
 uint32_t

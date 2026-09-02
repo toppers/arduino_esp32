@@ -62,7 +62,14 @@ PROFILES = {
     "minimal": ["Blink"],
     "m5": ["M5Unified", "DualCore", "Blink"],
     "wificonnect": ["WiFiConnect", "WiFiScan", "Blink"],
+    "btclassic": ["BluetoothSPP", "Blink"],
 }
+
+#  Profiles only one board offers. The ESP32-S3 has no Bluetooth Classic radio,
+#  so the CoreS3 board has no btclassic menu entry and asking for one fails at
+#  FQBN resolution rather than at the link - a failure that would say nothing
+#  about the code. Skipped, not expected to fail.
+BOARD_ONLY_PROFILES = {"btclassic": "m5core_fmp3"}
 
 #  Every board the platform offers. The package holds both now, and verifying
 #  one says nothing about the other: the two chips have different linker
@@ -331,6 +338,8 @@ def main() -> int:
         failures = 0
         for board in args.boards:
             for option in args.profiles:
+                if BOARD_ONLY_PROFILES.get(option, board) != board:
+                    continue
                 for example in PROFILES[option]:
                     label = f"{board}/{option}/{example}"
                     stem = f"{board}-{option}-{example}"

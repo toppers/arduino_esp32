@@ -70,6 +70,15 @@ MENU_ENTRIES = [
 #  profiles does not show a menu entry that cannot build.
 EXPERIMENTAL_ENTRY = ("aio", "All-in-one (experimental)", "all-in-one")
 
+#  Entries that exist on one chip only. Bluetooth Classic is the first: the
+#  ESP32-S3 has no BR/EDR radio at all, so the CoreS3 board must not offer an
+#  option it could never build. Keyed by chip rather than filtered by "is the
+#  stage on disk", so a stray stage directory cannot put the entry on the wrong
+#  board.
+CHIP_ONLY_ENTRIES = {
+    "esp32": [("btclassic", "Bluetooth Classic (SPP)", "bt-classic")],
+}
+
 #  What a complete board for this chip offers. Installing with a stage missing
 #  is a real mistake for the CoreS3 board - it ships all three - so that stays
 #  an error. The LX6 board runs the minimal profile only; m5-unified and
@@ -201,6 +210,7 @@ def board_lines(source_boards: Path, chip: str,
     entries = list(MENU_ENTRIES)
     if (stage_root / EXPERIMENTAL_ENTRY[2]).is_dir():
         entries.append(EXPERIMENTAL_ENTRY)
+    entries.extend(CHIP_ONLY_ENTRIES.get(chip, []))
     for key, label, profile in entries:
         if not (stage_root / profile).is_dir():
             continue
@@ -387,6 +397,7 @@ def main(argv: list[str] | None = None) -> int:
         offered = {profile for _, _, profile in MENU_ENTRIES}
         if (chip_root / EXPERIMENTAL_ENTRY[2]).is_dir():
             offered.add(EXPERIMENTAL_ENTRY[2])
+        offered.update(profile for _, _, profile in CHIP_ONLY_ENTRIES.get(chip, []))
         present = {p.name for p in chip_root.iterdir() if p.is_dir()}
         for stage in sorted(p for p in chip_root.iterdir() if p.is_dir()):
             if not (stage / "link-manifest.json").is_file():

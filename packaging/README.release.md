@@ -93,6 +93,13 @@ PWM（GPIO32）で点きます。
 | `Minimal` | FMP3起動、`setup()`／`loop()`、heartbeat | `Blink`、`Fmp3Minimal` |
 | `M5Unified + Dual Core` | LCD、touch、RTC、PMIC、IMU。SMP（PRC1／PRC2）で起動 | `M5Unified` |
 | `WiFi` | scan（資格情報不要）、Open／WPA接続、DHCP、DNS、TCP | `WiFiScan`、`WiFiConnect` |
+| `Bluetooth Classic (SPP)` | SPPサーバ。**M5Coreのみ**（ESP32-S3にBR/EDRは無い） | `BluetoothSPP` |
+
+> **Bluetooth Classicのペアリングは安全ではありません。** `BT.begin()`は端末を
+> discoverableにし、**あらゆるペアリング要求を受け入れます**（Secure Simple
+> Pairingの確認は自動承認、レガシーペアリングはPIN `1234`で応答）。電波の
+>届く範囲の誰でも接続でき、認証されません。試すぶんには問題ありませんが、
+> 外に出したくないものをこのリンクに載せないでください。
 
 exampleは`File > Examples`の、選択中のボード向けセクションに
 `ToppersFMP3-M5CoreS3`として現れます。ライブラリはボードパッケージに
@@ -127,6 +134,7 @@ Verify後に表示されるFlash／RAM使用量は、FMP3のセクション構�
 | `M5Unified + Dual Core` | 269,104 | 48,900 |
 | `WiFi`（`WiFiConnect`） | 513,900 | 242,880 |
 | `WiFi`（`WiFiScan`） | 518,724 | 244,624 |
+| `Bluetooth Classic (SPP)` | 785,896 | 225,824 |
 
 ## Blink（Minimal）
 

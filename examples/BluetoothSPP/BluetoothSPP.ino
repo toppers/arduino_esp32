@@ -1,0 +1,88 @@
+#include <ToppersFMP3_ArduinoBridge.h>
+#include <ToppersFMP3_BT.h>
+
+// Bluetooth Classic SPP echo server for the M5Stack Core (ESP32).
+//
+// Select the M5Stack Core board with the Bluetooth Classic runtime profile,
+// upload, then pair with "M5Stack-SPP" from a phone or PC and open the serial
+// port it creates. Anything you type comes back with "echo: " in front of it.
+//
+// ESP32-S3 has no Bluetooth Classic, so this example does not build for the
+// CoreS3 board.
+//
+// SECURITY: this accepts any pairing request - Secure Simple Pairing
+// confirmations are auto-accepted and legacy pairing answers with PIN 1234.
+// Any device in range can pair and connect. It is fine for trying the link
+// out and not fine for anything you would not broadcast.
+
+const char DEVICE_NAME[] = "M5Stack-SPP";
+
+static bool started;
+static bool wasConnected;
+static uint32_t reportedDrops;
+
+// One line's worth of what the peer sent, assembled a byte at a time.
+static char lineBuffer[128];
+static size_t lineLength;
+
+static void sendEcho(const char *text, size_t length)
+{
+    static const char prefix[] = "echo: ";
+
+    BT.write(reinterpret_cast<const uint8_t *>(prefix), sizeof(prefix) - 1U);
+    BT.write(reinterpret_cast<const uint8_t *>(text), length);
+    BT.write(static_cast<uint8_t>('\r'));
+    BT.write(static_cast<uint8_t>('\n'));
+}
+
+void setup()
+{
+    started = BT.begin(DEVICE_NAME);
+    if (started) {
+        toppersBtLog("[BluetoothSPP] discoverable as M5Stack-SPP");
+    } else {
+        toppersBtLog("[BluetoothSPP] BT.begin failed; see the log above");
+    }
+}
+
+void loop()
+{
+    if (!started) return;
+
+    const bool connectedNow = BT.connected();
+    if (connectedNow != wasConnected) {
+        toppersBtLog(connectedNow ? "[BluetoothSPP] peer connected"
+                                  : "[BluetoothSPP] peer disconnected");
+        wasConnected = connectedNow;
+        lineLength = 0U;
+    }
+    if (!connectedNow) return;
+
+    while (BT.available() > 0) {
+        const int byte = BT.read();
+        if (byte < 0) break;
+
+        if (byte == '\n' || byte == '\r') {
+            if (lineLength > 0U) {
+                sendEcho(lineBuffer, lineLength);
+                lineLength = 0U;
+            }
+        } else if (lineLength < sizeof(lineBuffer)) {
+            lineBuffer[lineLength++] = static_cast<char>(byte);
+        } else {
+            // Longer than the buffer: send what there is and keep going rather
+            // than dropping the rest silently.
+            sendEcho(lineBuffer, lineLength);
+            lineLength = 0U;
+        }
+    }
+
+    // Bytes the receive buffer had to drop because this loop did not keep up.
+    // Reported once per new drop so a slow sketch is visible rather than
+    // looking like a flaky link.
+    const uint32_t drops = BT.droppedBytes();
+    if (drops != reportedDrops) {
+        toppersBtLog("[BluetoothSPP] receive buffer overflowed; bytes lost");
+        reportedDrops = drops;
+    }
+}

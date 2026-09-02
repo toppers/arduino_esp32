@@ -35,6 +35,7 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
 | `Minimal` | FMP3 起動、`setup()` / `loop()`、heartbeat |
 | `M5Unified + Dual Core` | LCD・touch・RTC・PMIC・IMU。SMP（PRC1／PRC2）で起動 |
 | `WiFi` | scan、Open / WPA2-PSK / WPA3-SAE 接続、DHCP、DNS、TCP |
+| `Bluetooth Classic (SPP)` | SPP サーバ。**M5Core のみ**（ESP32-S3 に BR/EDR は無い） |
 
 ## 確認済みの範囲
 
@@ -50,6 +51,11 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
 
 ## 制約
 
+- **Bluetooth Classic のペアリングは安全ではありません。** `BT.begin()` は端末を
+  discoverable にし、**あらゆるペアリング要求を受け入れます**（Secure Simple
+  Pairing の確認は自動承認、レガシーペアリングは PIN `1234` で応答）。
+  電波の届く範囲の誰でも接続できます。ペアリング方針をスケッチ側から選べる
+  ようにするのは別の設計課題で、まだ手を付けていません。
 - **Arduino / FreeRTOS API は完全互換ではありません。** 各構成と例題で実際に
   使用したサブセットのみ対応しています。未実装の API は無条件に成功を返すの
   ではなく、リンクエラーになるか失敗を返します。

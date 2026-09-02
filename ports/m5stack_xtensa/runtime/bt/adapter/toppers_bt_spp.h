@@ -49,6 +49,16 @@ size_t toppers_bt_spp_write(const uint8_t *buf, size_t len);
  */
 uint32_t toppers_bt_spp_dropped(void);
 
+/*
+ * Put one line on the kernel log and flush it.
+ *
+ * A sketch has no Serial here - this port does not link the M5Stack core's
+ * core.a - so this is how the example says anything. The Wi-Fi adapter carries
+ * the same helper for the same reason; it is not shared because the two
+ * profiles never link together.
+ */
+void toppers_bt_spp_log_line(const char *message);
+
 #ifdef __cplusplus
 }
 #endif

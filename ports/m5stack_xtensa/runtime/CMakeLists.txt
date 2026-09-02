@@ -1035,6 +1035,10 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
     set(PREBUILT_ARDUINO_OBJECTS
         "${PREBUILT_ARDUINO_OBJECTS}@@ToppersFMP3_WiFi.cpp.o")
 endif()
+if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+    set(PREBUILT_ARDUINO_OBJECTS
+        "${PREBUILT_ARDUINO_OBJECTS}@@ToppersFMP3_BT.cpp.o")
+endif()
 
 set(PREBUILT_STAGE_DEPENDS fmp3 seam_objects seam_start seam_cxx)
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
