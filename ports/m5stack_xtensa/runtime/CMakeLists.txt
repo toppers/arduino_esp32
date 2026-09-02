@@ -112,22 +112,19 @@ if(A1_CHIP STREQUAL "esp32s3")
 elseif(A1_CHIP STREQUAL "esp32")
     set(A1_CHIP_TARGET_NAME esp32_devkitc_gcc)
     set(A1_CHIP_ARCH_NAME esp32)
-    #  LX6 は DRAM の取り方が profile ごとに違うので使い分ける。
-    #    _wifi     … BT を使わないので 0x3FFB0000 から 288KB 全部を使う。
-    #                 Wi-Fi の大きな .bss は共用 ld では溢れる。
-    #    _m5_wifi  … M5 と Wi-Fi の合成構成用。
-    #    _m5       … それ以外（BT の EM 領域を除いた保守的なレイアウト）。
-    #  ★_wifi ではなく _m5_wifi を使う。この "m5" は M5Unified ではなく
-    #  「.ctors 集約版」の意で、seam/init_array.cpp が要求する
-    #  __ctors_start/__init_array_start を定義しているのはこちらだけである
-    #  （esp32_xip_wifi.ld にはそれが無く、リンクが未定義参照で落ちる）。
-    if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
-        set(A1_XIP_LD_NAME esp32_xip_m5_wifi.ld)
-    elseif(FMP3_RUNTIME_PROFILE STREQUAL "all-in-one")
-        set(A1_XIP_LD_NAME esp32_xip_m5_wifi.ld)
-    else()
-        set(A1_XIP_LD_NAME esp32_xip_m5.ld)
-    endif()
+    #  LX6 のリンカスクリプトは 4 種あるが、選ぶ軸は 2 つしかない：
+    #  「.ctors を集約するか」と「BT コントローラの EM 領域を空けるか」。
+    #
+    #  seam/init_array.cpp が __ctors_start/__init_array_start を要求するので
+    #  集約版が要る。そして**このポートはどの profile でも BT を使わない**ので、
+    #  EM 領域(0x3FFB0000〜、約56KB)を予約する理由が無い。両方を満たすのは
+    #  esp32_xip_m5_wifi.ld で、名前の "wifi" は由来であって中身は
+    #  「.ctors 集約＋フル DRAM(288KB)」である。
+    #
+    #  esp32_xip_m5.ld は EM 領域を除いた 232KB で、将来 M5+BT 構成を作る
+    #  ときのために上流が残しているもの。BT profile を足すときは
+    #  そちらか esp32_xip_btc.ld へ分岐すること。
+    set(A1_XIP_LD_NAME esp32_xip_m5_wifi.ld)
     set(A1_CHIP_ROM_LD esp32.rom.ld)
     #  LX6 の hardware_init_hook は既定で banner を出したところで無限ループする
     #  （元は QEMU PoC の T1 スコープ）。Arduino ランタイムは sta_ker まで進む。
