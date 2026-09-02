@@ -645,6 +645,8 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${RUNTIME_ROOT}/m5/shim/m5_spi_bus_stub.c"
         #  LX6 の m5 構成でだけ要るスタブ（gpio / rtc_gpio / SPI DMA）。
         $<$<STREQUAL:${A1_CHIP},esp32>:${RUNTIME_ROOT}/m5/shim/m5_lx6_stubs.c>
+        #  LEDC の実装（バックライト）。S3 は m5_idf_stubs.c のスタブのまま。
+        $<$<STREQUAL:${A1_CHIP},esp32>:${RUNTIME_ROOT}/m5/shim/m5_lx6_ledc.c>
         #  __getreent は wifi_stubs.c も持つので、wifi を含まない profile
         #  （m5-unified）のときだけ足す。詳細は m5_lx6_reent.c の冒頭。
         $<$<AND:$<STREQUAL:${A1_CHIP},esp32>,$<STREQUAL:${FMP3_RUNTIME_PROFILE},m5-unified>>:${RUNTIME_ROOT}/m5/shim/m5_lx6_reent.c>

@@ -111,6 +111,9 @@ i2c_del_master_bus(i2c_master_bus_handle_t bus_handle)
  *  Light_PWM.cpp（他ボード用・S3 では未実行経路）からのみ。no-op（ESP_OK）。
  *  design.md §4：初期は GPIO ON/OFF 代替で足りる。
  */
+/*  LX6 では m5_lx6_ledc.c が本物を持つ（M5Stack Basic のバックライトは
+ *  LEDC の PWM で点く。スタブのままだと画面が真っ暗になる）。 */
+#if !defined(TOPPERS_ESP32_LX6)
 esp_err_t ledc_timer_config(const ledc_timer_config_t *timer_conf)
 { M5_STUB_HIT("ledc_timer_config"); (void) timer_conf; return(ESP_OK); }
 
@@ -122,6 +125,7 @@ esp_err_t ledc_set_duty(ledc_mode_t speed_mode, ledc_channel_t channel, uint32_t
 
 esp_err_t ledc_update_duty(ledc_mode_t speed_mode, ledc_channel_t channel)
 { M5_STUB_HIT("ledc_update_duty"); (void) speed_mode; (void) channel; return(ESP_OK); }
+#endif /* !defined(TOPPERS_ESP32_LX6) */
 
 /*
  *  ------------------------------------------------------------------
