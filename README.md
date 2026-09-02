@@ -6,9 +6,10 @@ M5Stack の 2 機種で、Arduino の `setup()` / `loop()` を
 | ボード | チップ |
 | --- | --- |
 | M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 |
+| M5StickS3 | ESP32-S3 / Xtensa LX7 |
 | M5Stack Basic | ESP32 / Xtensa LX6 |
 
-1 つのパッケージに両方が入り、`Tools > Board` で選びます。
+1 つのパッケージに 3 つとも入り、`Tools > Board` で選びます。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
 スケッチは静的に構成された FMP3 タスクから呼ばれます。
@@ -39,9 +40,10 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
 
 ## 確認済みの範囲
 
-- 3 構成すべてが、Boards Manager 経由で入れたパッケージから
-  **両ボードでビルドできること**（`scripts/verify_package.py` が
-  2 ボード × 3 構成 × 例題を建てる）。CoreS3 単独については
+- 各構成が、Boards Manager 経由で入れたパッケージから
+  **対応するすべてのボードでビルドできること**（`scripts/verify_package.py` が
+  3 ボード × 構成 × 例題で 37 本を建てる。`Bluetooth Classic` だけは
+  M5Core 専用）。CoreS3 単独については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
 - CoreS3 実機で、M5Unified（LCD・touch、SMP カーネル上）と Wi-Fi 接続
