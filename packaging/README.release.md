@@ -1,7 +1,15 @@
 # ToppersFMP3-M5CoreS3
 
-M5Stack CoreS3（ESP32-S3 / Xtensa LX7）向けにArduinoスケッチと
-TOPPERS/FMP3を統合するArduinoボードパッケージです。
+M5Stack の 2 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
+Arduinoボードパッケージです。
+
+| ボード | チップ | `Tools > Board` |
+| --- | --- | --- |
+| M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 | `M5CoreS3 (TOPPERS/FMP3)` |
+| M5Stack Basic | ESP32 / Xtensa LX6 | `M5Core (TOPPERS/FMP3)` |
+
+1つのパッケージに両方入っています（パッケージ名がCoreS3なのは、
+名前を変えると既存のスケッチと例題の場所が動くためです）。
 
 Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカーネルの
 タスクとして動きます。ブート、割込み、スケジューラはFMP3が所有します。
@@ -68,7 +76,12 @@ https://github.com/toppers/arduino_esp32/releases/latest/download/package_topper
 
 ```text
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5CoreS3 (TOPPERS/FMP3)
+Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5Core (TOPPERS/FMP3)
 ```
+
+**M5Stack Basicにはtouch・IMU・RTCがありません。** `M5Unified` profileの
+例題は動きますが、これらは無効として報告されます。バックライトはLEDCの
+PWM（GPIO32）で点きます。
 
 `Tools > FMP3 Runtime`でランタイム構成を選びます。一度に選べるのは1つで、
 選んだ構成がスケッチと一緒にリンクされます。**どの構成でも普通のスケッチが

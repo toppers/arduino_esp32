@@ -1,7 +1,14 @@
-# Arduino on TOPPERS/FMP3 for M5Stack CoreS3
+# Arduino on TOPPERS/FMP3 for M5Stack
 
-M5Stack CoreS3（ESP32-S3 / Xtensa LX7）で、Arduino の `setup()` / `loop()` を
+M5Stack の 2 機種で、Arduino の `setup()` / `loop()` を
 **TOPPERS/FMP3 SMP カーネルの上で**動かすための Arduino ボードパッケージです。
+
+| ボード | チップ |
+| --- | --- |
+| M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 |
+| M5Stack Basic | ESP32 / Xtensa LX6 |
+
+1 つのパッケージに両方が入り、`Tools > Board` で選びます。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
 スケッチは静的に構成された FMP3 タスクから呼ばれます。
@@ -31,11 +38,15 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
 
 ## 確認済みの範囲
 
-- 3 構成すべてが、Boards Manager 経由で入れたパッケージからビルドできること
-  （Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測。
-  成果物は 3 ホストでバイト単位に一致）
+- 3 構成すべてが、Boards Manager 経由で入れたパッケージから
+  **両ボードでビルドできること**（`scripts/verify_package.py` が
+  2 ボード × 3 構成 × 例題を建てる）。CoreS3 単独については
+  Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
+  成果物が 3 ホストでバイト単位に一致することを確認済み
 - CoreS3 実機で、M5Unified（LCD・touch、SMP カーネル上）と Wi-Fi 接続
   （Open / WPA2-PSK / WPA3-SAE → DHCP → DNS → TCP）
+- M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
+  all-in-one。**touch・IMU・RTC はこの機種に無いので使えません**
 
 ## 制約
 
@@ -47,6 +58,8 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の
   tick とは単位が異なります。
 - M5Stack Arduino core は **3.3.8 固定**です。
+- **Bluetooth は未対応です。** BT Classic は ESP32 にしかなく（S3 は BLE のみ）、
+  どちらもこのパッケージには入っていません。
 
 ## リポジトリの構成
 

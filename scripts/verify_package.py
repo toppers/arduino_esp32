@@ -64,7 +64,13 @@ PROFILES = {
     "wificonnect": ["WiFiConnect", "WiFiScan", "Blink"],
 }
 
-BOARD = "toppers:esp32:m5cores3_fmp3"
+#  Every board the platform offers. The package holds both now, and verifying
+#  one says nothing about the other: the two chips have different linker
+#  scripts, different ROM symbols and a different Wi-Fi supplicant archive.
+#  Both were checked to build this same matrix.
+BOARDS = ["m5cores3_fmp3", "m5core_fmp3"]
+
+PACKAGE = "toppers:esp32"
 
 
 class VerifyError(Exception):
@@ -212,6 +218,8 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--profiles", nargs="*", choices=sorted(PROFILES),
                         default=sorted(PROFILES))
+    parser.add_argument("--boards", nargs="*", choices=BOARDS, default=BOARDS,
+                        help="boards to build on; both by default")
     parser.add_argument("--skip-core", action="store_true",
                         help="the M5Stack core is already installed")
     parser.add_argument("--skip-libraries", action="store_true",
@@ -278,6 +286,22 @@ def main() -> int:
             run(cli + ["core", "install", f"m5stack:esp32@{CORE_VERSION}",
                        "--additional-urls", urls],
                 "installing the M5Stack core")
+        #
+        #  Remove any platform already installed under this
+        #  packager:architecture first.
+        #
+        #  ★Without this the check can pass while testing something else.
+        #  arduino-cli treats "install X@V" as done when V is already
+        #  installed, so a run against the same version as the last release
+        #  silently keeps the OLD package and builds against that. It happened
+        #  here: the fresh archive held two boards and the installed one held
+        #  one, and the run reported the second board's FQBN as not found
+        #  rather than testing the archive it had just built (2026-09-02).
+        #  Releases normally bump the version, which is exactly why this went
+        #  unnoticed.
+        #
+        subprocess.run(cli + ["core", "uninstall", "toppers:esp32"],
+                       capture_output=True, text=True)
         run(cli + ["core", "install", f"toppers:esp32@{args.version}",
                    "--additional-urls", urls], "installing the FMP3 platform")
         if not args.skip_libraries:
@@ -302,43 +326,44 @@ def main() -> int:
                    for name, version in LIBRARY_VERSIONS.items()],
                 "installing the M5 libraries")
 
-        print("Building every runtime profile")
+        print("Building every runtime profile on every board")
         results = []
         failures = 0
-        for option in args.profiles:
-            for example in PROFILES[option]:
-                label = f"{option}/{example}"
-                output = work / f"out-{option}-{example}"
-                print(f"  {label}")
-                try:
-                    #  No library path: the library is bundled in the platform.
-                    run(cli + ["compile", "-b",
-                               f"{BOARD}:FMP3Runtime={option}",
-                               "--build-path",
-                               str(work / f"bp-{option}-{example}"),
-                               "--output-dir", str(output),
-                               str(repository / "examples" / example)],
-                        f"building {label}", capture=True)
-                except VerifyError as error:
-                    print(f"    {error}")
-                    results.append((label, "BUILD FAILED", ""))
-                    failures += 1
-                    continue
-                image = output / f"{example}.ino.bin"
-                if not image.is_file() or image.stat().st_size < 4096:
-                    results.append((label, "NO IMAGE", ""))
-                    failures += 1
-                    continue
-                digest = hashlib.sha256(image.read_bytes()).hexdigest()
-                results.append((label, f"{image.stat().st_size} bytes",
-                                digest))
+        for board in args.boards:
+            for option in args.profiles:
+                for example in PROFILES[option]:
+                    label = f"{board}/{option}/{example}"
+                    stem = f"{board}-{option}-{example}"
+                    output = work / f"out-{stem}"
+                    print(f"  {label}")
+                    try:
+                        #  No library path: the library is in the platform.
+                        run(cli + ["compile", "-b",
+                                   f"{PACKAGE}:{board}:FMP3Runtime={option}",
+                                   "--build-path", str(work / f"bp-{stem}"),
+                                   "--output-dir", str(output),
+                                   str(repository / "examples" / example)],
+                            f"building {label}", capture=True)
+                    except VerifyError as error:
+                        print(f"    {error}")
+                        results.append((label, "BUILD FAILED", ""))
+                        failures += 1
+                        continue
+                    image = output / f"{example}.ino.bin"
+                    if not image.is_file() or image.stat().st_size < 4096:
+                        results.append((label, "NO IMAGE", ""))
+                        failures += 1
+                        continue
+                    digest = hashlib.sha256(image.read_bytes()).hexdigest()
+                    results.append((label, f"{image.stat().st_size} bytes",
+                                    digest))
     finally:
         server.shutdown()
 
     print()
-    print(f"{'profile/sketch':<30}{'image':<16}sha256")
+    print(f"{'board/profile/sketch':<44}{'image':<16}sha256")
     for label, size, digest in results:
-        print(f"{label:<30}{size:<16}{digest[:32]}")
+        print(f"{label:<44}{size:<16}{digest[:32]}")
     if args.summary:
         rows = [f"{label} {size.split()[0]} {digest}"
                 for label, size, digest in results if digest]

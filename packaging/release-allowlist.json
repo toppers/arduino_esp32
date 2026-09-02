@@ -7,12 +7,12 @@
   "m5UnifiedIncluded": true,
   "wifiIncluded": true,
   "fmp3CoreCommit": "685b36a98175e3093c0931b713729b9030774e16",
-  "_esp32s3PortComment": "the reference is now the PUBLIC repository toppers/fmp3_esp_idf at its 2026-08-18 snapshot. That repository is a series of squashed snapshots, so its commit list cannot be compared with the private fmp3_esp_idf_dev history; compare trees instead. The previous baseline, 1683046b from the dev repository, is not reachable from the public one and has to be fetched by SHA.",
-  "esp32s3PortBaseRepository": "https://github.com/toppers/fmp3_esp_idf.git",
-  "esp32s3PortBaseCommit": "fdd89f8d8ff275d7dcd7f2d4e1a3ac90d3f4fa56",
-  "esp32s3PortBaseCommitDate": "2026-08-18",
-  "_esp32s3PortPatchesComment": "Empty on purpose. This port is not expressed as a patch series against the baseline: upstream has moved too far for the hunks to carry context, and the port itself was restructured. Treat the baseline commit above as provenance, not as something these sources can be regenerated from.",
-  "esp32s3PortPatches": [],
+  "_portComment": "the reference is now the PUBLIC repository toppers/fmp3_esp_idf at its 2026-08-18 snapshot. That repository is a series of squashed snapshots, so its commit list cannot be compared with the private fmp3_esp_idf_dev history; compare trees instead. The previous baseline, 1683046b from the dev repository, is not reachable from the public one and has to be fetched by SHA.",
+  "portBaseRepository": "https://github.com/toppers/fmp3_esp_idf.git",
+  "portBaseCommit": "fdd89f8d8ff275d7dcd7f2d4e1a3ac90d3f4fa56",
+  "portBaseCommitDate": "2026-08-18",
+  "_portPatchesComment": "Empty on purpose. This port is not expressed as a patch series against the baseline: upstream has moved too far for the hunks to carry context, and the port itself was restructured. Treat the baseline commit above as provenance, not as something these sources can be regenerated from.",
+  "portPatches": [],
   "entries": [
     {
       "source": "library.properties",
