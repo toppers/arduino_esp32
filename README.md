@@ -48,6 +48,9 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
   （Open / WPA2-PSK / WPA3-SAE → DHCP → DNS → TCP）
 - M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
   all-in-one。**touch・IMU・RTC はこの機種に無いので使えません**
+- M5StickS3 実機で、minimal（`Blink`）と Wi-Fi スキャン（13 AP を検出）。
+  **M5Unified は建つが画面が出るかは未確認**——CoreS3 とパネル・PMIC・IMU が
+  違い、touch が無い
 
 ## 制約
 
