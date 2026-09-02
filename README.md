@@ -48,11 +48,21 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
   （Open / WPA2-PSK / WPA3-SAE → DHCP → DNS → TCP）
 - M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
   all-in-one。**touch・IMU・RTC はこの機種に無いので使えません**
-- M5StickS3 実機で、minimal（`Blink`）と Wi-Fi スキャン（13 AP を検出）。
-  **M5Unified はこのボードでは動きません**——M5GFX の autodetect が画面を
-  見つけられず、画面を持たない `board_M5AtomS3Lite` にフォールバックして
-  `M5.begin` が失敗します（詳細は
-  [`docs/m5sticks3-m5unified.md`](docs/m5sticks3-m5unified.md)）
+- M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
+  M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
+  当初この機種だけ M5Unified が動かなかった経緯と原因は
+  [`docs/m5sticks3-m5unified.md`](docs/m5sticks3-m5unified.md)
+
+## M5Unified をスケッチから使うとき
+
+`<M5Unified.h>` ではなく **`<ToppersFMP3_M5Unified.h>`** を include してください。
+プリビルトランタイムは M5GFX を `ARDUINO` 未定義でビルドしており（定義すると
+M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替わるため）、
+スケッチ側は arduino-cli が必ず `-DARDUINO` を付けるので、素の
+`<M5Unified.h>` ではレイアウトが 4 バイトずれて `M5.` の値が壊れます。
+このヘッダが両者を揃えます。誤って先に `<M5Unified.h>` を読んだ場合は
+`static_assert` でビルドが止まります（詳細は
+[`docs/m5unified-sketch-abi.md`](docs/m5unified-sketch-abi.md)）。
 
 ## 制約
 
