@@ -123,7 +123,7 @@ jobs:
         run: |
           root=ci-sketchbook/hardware/toppers/esp32
           test -f "$root/boards.txt" || { echo "no boards.txt"; exit 1; }
-          for board in m5cores3_fmp3 m5core_fmp3; do
+          for board in m5cores3_fmp3 m5sticks3_fmp3 m5core_fmp3; do
             grep -q "^$board\.name=" "$root/boards.txt" \
               || { echo "missing board: $board"; exit 1; }
           done

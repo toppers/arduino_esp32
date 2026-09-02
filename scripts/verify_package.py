@@ -94,7 +94,7 @@ BOARD_ONLY_PROFILES = {"btclassic": "m5core_fmp3"}
 #  one says nothing about the other: the two chips have different linker
 #  scripts, different ROM symbols and a different Wi-Fi supplicant archive.
 #  Both were checked to build this same matrix.
-BOARDS = ["m5cores3_fmp3", "m5core_fmp3"]
+BOARDS = ["m5cores3_fmp3", "m5sticks3_fmp3", "m5core_fmp3"]
 
 PACKAGE = "toppers:esp32"
 
