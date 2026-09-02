@@ -111,18 +111,22 @@ esp_ipc_call(uint32_t cpu_id, void (*func)(void *), void *arg)
 }
 
 /*
- *  Logging. The archives call esp_log_writev(); route it to the kernel log the
- *  way the rest of this port does rather than dropping it.
+ *  Logging.
+ *
+ *  ★This used to print the tag and throw the message away, which is exactly
+ *  backwards: the message is the part that says what went wrong. BlueDroid and
+ *  the controller report their failures through here.
  */
+extern void	esp_shim_syslog_vprintf(const char *format, __builtin_va_list args);
+
 void
 esp_log_writev(uint32_t level, const char *tag, const char *format,
 			   __builtin_va_list args)
 {
 	(void) level;
-	(void) format;
-	(void) args;
-	if (tag != NULL) {
-		syslog_1(LOG_INFO, "bt: %s", (intptr_t) tag);
+	(void) tag;
+	if (format != NULL) {
+		esp_shim_syslog_vprintf(format, args);
 	}
 }
 

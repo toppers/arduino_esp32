@@ -265,17 +265,20 @@ toppers_bt_spp_begin(const char *device_name)
 				 (intptr_t) err);
 		return(false);
 	}
+	syslog_0(LOG_NOTICE, "bt: controller enabled");
 	err = esp_bluedroid_init();
 	if (err != ESP_OK) {
 		syslog_1(LOG_ERROR, "bt: bluedroid init failed (%d)", (intptr_t) err);
 		return(false);
 	}
+	syslog_0(LOG_NOTICE, "bt: bluedroid initialised");
 	err = esp_bluedroid_enable();
 	if (err != ESP_OK) {
 		syslog_1(LOG_ERROR, "bt: bluedroid enable failed (%d)",
 				 (intptr_t) err);
 		return(false);
 	}
+	syslog_0(LOG_NOTICE, "bt: bluedroid enabled");
 	err = esp_bt_gap_register_callback(&bt_gap_callback);
 	if (err != ESP_OK) {
 		syslog_1(LOG_ERROR, "bt: gap callback failed (%d)", (intptr_t) err);
