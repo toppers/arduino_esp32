@@ -12,7 +12,7 @@
  */
 
 /*
- *  クラッシュ/ハング診断用の常設recorder（ESP32-S3-DevKitC-1 / FMP3 用）
+ *  クラッシュ/ハング診断用の常設recorder（無印ESP32 / Xtensa LX6 / FMP3 用）
  *
  *  背景：WiFiバイナリblob内の境界外書込みバグ（パッチ不可）でカーネル
  *  データが破壊されフリーズする問題がある（esp/debug/JTAG_DEBUG.md

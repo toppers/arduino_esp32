@@ -14,7 +14,7 @@
  */
 
 /*
- * ターゲット依存部モジュール（ESP32-S3用）
+ * ターゲット依存部モジュール（無印ESP32 / Xtensa LX6用）
  *
  * ジャイアントロックの実体。TNUM_PRCID>=2ではXtensa S32C1Iソフトウェア
  * スピンロックのLOCK変数（chip_kernel_impl.hのacquire_lock等が操作）。

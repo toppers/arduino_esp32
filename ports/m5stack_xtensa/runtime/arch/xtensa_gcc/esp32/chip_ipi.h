@@ -2,7 +2,7 @@
  *  TOPPERS/FMP Kernel
  *      Flexible MultiProcessor Kernel
  *
- *  プロセッサ間割込み（IPI）のチップ依存部（ESP32-S3用）ヘッダ
+ *  プロセッサ間割込み（IPI）のチップ依存部（無印ESP32 / Xtensa LX6用）ヘッダ
  *  （非公開作業記録/20260706-smp/）
  */
 

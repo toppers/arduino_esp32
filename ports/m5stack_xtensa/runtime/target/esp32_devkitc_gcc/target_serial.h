@@ -1,5 +1,5 @@
 /*
- *  シリアルインタフェースドライバのターゲット依存部（ESP32-S3-DevKitC-1）
+ *  シリアルインタフェースドライバのターゲット依存部（無印ESP32 / Xtensa LX6）
  *  （非TECS版専用）
  *
  *  対話的シリアルコンソール（sample1のserial_rea_dat/serial_wri_dat）用の

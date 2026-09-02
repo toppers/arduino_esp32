@@ -14,7 +14,7 @@
  */
 
 /*
- * ターゲット依存部モジュール（ESP32-S3用）
+ * ターゲット依存部モジュール（無印ESP32 / Xtensa LX6用）
  *
  * 本作業単位は単一コアのみ対象（SMP/cross-core interruptは別作業単位）。
  * TNUM_PRCID>=2の分岐（下記ロック定義）はrp2350_pico2_gcc（デュアルコア、

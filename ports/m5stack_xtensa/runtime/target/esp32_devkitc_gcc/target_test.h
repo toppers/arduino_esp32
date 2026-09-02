@@ -1,5 +1,5 @@
 /*
- *  テストプログラム用のターゲット依存定義（ESP32-S3-DevKitC-1）
+ *  テストプログラム用のターゲット依存定義（無印ESP32 / Xtensa LX6）
  *
  *  test_int1（割込み管理: dis/ena/clr/ras/prb_int）用にソフトウェア割込み
  *  INTNO1を定義する。ESP32-S3のXtensaコアのINT7はレベル1のソフトウェア
