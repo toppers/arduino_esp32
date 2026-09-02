@@ -100,6 +100,14 @@ jobs:
               --m5gfx-source "$sketchbook/libraries/M5GFX/src" \
               --m5unified-source "$sketchbook/libraries/M5Unified/src"
           done
+          #  bt-classic is not in the default profile set and is esp32 only,
+          #  so it needs its own call. Without this it was built and verified
+          #  nowhere in CI while shipping in the platform.
+          python scripts/build_prebuilt_stages.py \
+            --chip esp32 --profiles bt-classic \
+            --core-version "$CORE_VERSION" \
+            --m5gfx-source "$sketchbook/libraries/M5GFX/src" \
+            --m5unified-source "$sketchbook/libraries/M5Unified/src"
 
       - name: Assemble the platform
         #  The parent stage root, so both chips' boards go into one platform.
@@ -125,6 +133,18 @@ jobs:
                 || { echo "missing stage: $chip/$p"; exit 1; }
             done
           done
+          #  esp32 only: the ESP32-S3 has no Bluetooth Classic radio.
+          test -f "$root/fmp3-prebuilt/esp32/bt-classic/link-manifest.json" \
+            || { echo "missing stage: esp32/bt-classic"; exit 1; }
+          grep -q "^m5core_fmp3\.menu\.FMP3Runtime\.btclassic=" "$root/boards.txt" \
+            || { echo "M5Core does not offer the btclassic menu entry"; exit 1; }
+          #  ★if/then, not `grep && { exit 1; }`. Under `set -e` the && form
+          #  fails the step when grep finds nothing - which is the case we want
+          #  to pass.
+          if grep -q "^m5cores3_fmp3\.menu\.FMP3Runtime\.btclassic=" "$root/boards.txt"; then
+            echo "CoreS3 must not offer btclassic (it has no BR/EDR radio)"
+            exit 1
+          fi
           #  gen_esp32part.exe is not shipped any more, so nothing may depend
           #  on it. The verify jobs cannot catch this: their runners have
           #  python3, so the non-Windows tool definition would still work.

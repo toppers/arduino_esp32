@@ -1,9 +1,4 @@
 /*
- *  ⚠ [孤児 / CMake 未対応] classic 全廃(2026-07-20)で本ファイルの consumer（BT Classic
- *     SPP=W3 の seam ビルド）は削除済み。W3 バリアントの CMake preset 化は統合レビュー
- *     B-2/P-2（方針決定待ち）。復元は branch archive/trb-classic-cfg 参照。
- */
-/*
  *  W3(BT Classic/SPP) BlueDroidホスト静的統合：BLE専用として本ポートの
  *  CLASSIC_BT単独運用スコープ（レビュー方針、review-w3-bt-classic-approach.md
  *  「MVPは ESP_BT_MODE_CLASSIC_BT 単独」）では未到達となる残置参照の

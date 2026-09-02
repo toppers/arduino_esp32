@@ -3,7 +3,15 @@
 Design for exposing Bluetooth Classic SPP to Arduino sketches on the
 M5Stack Basic (ESP32, Xtensa LX6) board of this package.
 
-Status: agreed 2026-09-02. Not implemented.
+Status: implemented and verified on hardware, 2026-09-02.
+
+One decision changed on the way. This document assumed the M5Stack core's
+prebuilt libbt.a would be linked ("The archives exist in the core we already
+depend on"). It was, and it does not work: that archive is compiled with
+CONFIG_BTDM_CTRL_HLI=y and FMP3's vector table has no level-4 interrupt.
+BlueDroid is built from source instead - third_party/bluedroid, the same
+ESP-IDF commit the core was built from - which is what upstream does and what
+had already been proven on this board. See third_party/bluedroid/README.vendored.md.
 
 ## Scope
 

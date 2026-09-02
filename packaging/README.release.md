@@ -136,7 +136,7 @@ Verify後に表示されるFlash／RAM使用量は、FMP3のセクション構�
 | `M5Unified + Dual Core` | 269,104 | 48,900 |
 | `WiFi`（`WiFiConnect`） | 513,900 | 242,880 |
 | `WiFi`（`WiFiScan`） | 518,724 | 244,624 |
-| `Bluetooth Classic (SPP)` | 785,896 | 225,824 |
+| `Bluetooth Classic (SPP)` | 571,056 | 230,300 |
 
 ## Blink（Minimal）
 
