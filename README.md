@@ -49,8 +49,10 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
 - M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
   all-in-one。**touch・IMU・RTC はこの機種に無いので使えません**
 - M5StickS3 実機で、minimal（`Blink`）と Wi-Fi スキャン（13 AP を検出）。
-  **M5Unified は建つが画面が出るかは未確認**——CoreS3 とパネル・PMIC・IMU が
-  違い、touch が無い
+  **M5Unified はこのボードでは動きません**——M5GFX の autodetect が画面を
+  見つけられず、画面を持たない `board_M5AtomS3Lite` にフォールバックして
+  `M5.begin` が失敗します（詳細は
+  [`docs/m5sticks3-m5unified.md`](docs/m5sticks3-m5unified.md)）
 
 ## 制約
 
