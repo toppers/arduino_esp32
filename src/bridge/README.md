@@ -3,7 +3,7 @@
 The bridge implements the C/C++ boundary that invokes Arduino `setup()` once and then
 repeatedly invokes `loop()` from a statically configured FMP3 task.
 
-- `ports/esp32s3_m5cores3/app/phase3/phase3_arduino_app.cfg` creates
+- `ports/m5stack_xtensa/app/phase3/phase3_arduino_app.cfg` creates
   `ARDUINO_TASK` on `CLS_PRC1` with `TA_ACT | TA_FPU`.
 - `ArduinoSketchBridge.cpp` is compiled by Arduino builder and linked into the
   FMP3 ELF together with the generated sketch object.

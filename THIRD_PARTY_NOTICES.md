@@ -20,7 +20,7 @@ implementation source.
 remain governed by their original file-level copyright and TOPPERS license
 notices.
 
-`ports/esp32s3_m5cores3/runtime` contains the Xtensa LX7 common layer,
+`ports/m5stack_xtensa/runtime` contains the Xtensa LX7 common layer,
 ESP32-S3 chip layer, CoreS3 target layer, XIP linker, and host build support
 selected from that `esp32_s3` repository. Original file headers are retained.
 Arduino Release packages expand the pinned `fmp3_core` sources and this selected
@@ -28,13 +28,13 @@ port under `extras/runtime`; they do not include the `esp32_s3/esp-idf` source t
 
 The Wi-Fi profiles additionally contain the selected ESP shim, Wi-Fi HAL
 integration sources, configuration headers, and compatibility headers under
-`ports/esp32s3_m5cores3/runtime/wifi`, selected from the same `esp32_s3` source
+`ports/m5stack_xtensa/runtime/wifi`, selected from the same `esp32_s3` source
 commit. Original Espressif and project file headers are retained. At build time they
 link Wi-Fi driver, coexistence, PHY, lwIP, and related binary archives supplied by
 M5Stack Arduino core 3.3.8; those archives are not copied into the Release ZIP.
 
 The WPA2 Connect profile includes `libsupplicant.a` and `libmbedcrypto.a` under
-`ports/esp32s3_m5cores3/runtime/wifi/prebuilt/wpa2`. They were built from ESP-IDF
+`ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2`. They were built from ESP-IDF
 v5.5.4 by `esp/boot/build_wpa_libs_espidf_esp32s3.sh` in the same source repository
 at commit `1683046b0de6b0361e047a4f09add39a3df10b29`, with hardware crypto disabled
 for TOPPERS/FMP3 compatibility. Their ESP-IDF WPA supplicant and mbedTLS license
@@ -43,7 +43,7 @@ are included beside the archives.
 
 The M5Unified profile contains 25 selected FMP3 compatibility, C/C++ runtime,
 I2C/SPI/GPIO shim, and diagnostic support files under
-`ports/esp32s3_m5cores3/runtime/m5`, copied from the same `esp32_s3` commit
+`ports/m5stack_xtensa/runtime/m5`, copied from the same `esp32_s3` commit
 `1683046b0de6b0361e047a4f09add39a3df10b29`. Existing file headers are retained.
 This provenance record does not infer one repository-wide license for files that do
 not carry a standalone license statement. M5GFX and M5Unified implementation sources

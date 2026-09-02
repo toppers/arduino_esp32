@@ -8,7 +8,7 @@ toolchain and esptool that ship with the M5Stack Arduino core.
 
 One directory per profile appears under --output-directory, each holding objs/,
 ld/, optionally lib/, link-manifest.json and objects.rsp. See
-ports/esp32s3_m5cores3/runtime/cmake/prebuilt_stage.cmake.
+ports/m5stack_xtensa/runtime/cmake/prebuilt_stage.cmake.
 
 The stages are sketch-independent because cfg is fixed per profile; only the
 final link depends on the sketch.
@@ -150,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(
                     f"m5-unified needs the library sources: {required}")
 
-    runtime = library_root / "ports" / "esp32s3_m5cores3" / "runtime"
+    runtime = library_root / "ports" / "m5stack_xtensa" / "runtime"
     fmp3_core = library_root / "third_party" / "fmp3_core"
     if not (fmp3_core / "CMakeLists.txt").is_file():
         raise SystemExit(
@@ -179,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         #  tree, the same split Invoke-PortableFmp3Recipe.ps1 uses.
         application = (library_root / "fmp_app" / directory_name
                        if outside_ports else
-                       library_root / "ports" / "esp32s3_m5cores3" / "app"
+                       library_root / "ports" / "m5stack_xtensa" / "app"
                        / directory_name)
 
         build = work_directory / name

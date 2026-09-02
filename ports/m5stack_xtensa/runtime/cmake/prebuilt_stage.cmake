@@ -405,7 +405,7 @@ if(NOT DEFINED DUPSYM_AUDIT OR DUPSYM_AUDIT)
   if(NOT TARGET_NM)
     message(FATAL_ERROR "prebuilt_stage: ${_nm_name} が見つからない（重複定義監査）")
   endif()
-  #  .../ports/esp32s3_m5cores3/runtime/cmake から 4 段上がリポジトリ root。
+  #  .../ports/m5stack_xtensa/runtime/cmake から 4 段上がリポジトリ root。
   get_filename_component(_runtime_root "${CMAKE_CURRENT_LIST_DIR}" DIRECTORY)
   get_filename_component(_port_root "${_runtime_root}" DIRECTORY)
   get_filename_component(_ports_root "${_port_root}" DIRECTORY)

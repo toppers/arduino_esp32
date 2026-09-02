@@ -66,11 +66,11 @@
       "destination": "examples/WiFiConnect/WiFiConnect.ino"
     },
     {
-      "source": "ports/esp32s3_m5cores3/runtime",
+      "source": "ports/m5stack_xtensa/runtime",
       "destination": "extras/runtime/port"
     },
     {
-      "source": "ports/esp32s3_m5cores3/app/phase3",
+      "source": "ports/m5stack_xtensa/app/phase3",
       "destination": "extras/runtime/app/phase3"
     },
     {
@@ -82,7 +82,7 @@
       "destination": "extras/runtime/app/phase5"
     },
     {
-      "source": "ports/esp32s3_m5cores3/app/wifi_connect",
+      "source": "ports/m5stack_xtensa/app/wifi_connect",
       "destination": "extras/runtime/app/wifi_connect"
     },
     {

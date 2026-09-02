@@ -176,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  ... and {len(problems) - 40} more")
         print("\nA path here ships to every user. If it comes from __FILE__ or "
               "debug info,\nthe build needs -ffile-prefix-map; see "
-              "ports/esp32s3_m5cores3/runtime/CMakeLists.txt.")
+              "ports/m5stack_xtensa/runtime/CMakeLists.txt.")
         return 1
 
     if not args.quiet:

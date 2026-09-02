@@ -53,7 +53,7 @@ CMake も Ninja も Python も要りません。** 導入手順と例題の詳�
 | パス | 役割 |
 | --- | --- |
 | `src/` | Arduino builder が再帰コンパイルする領域。`Arduino.h` だけに依存 |
-| `ports/esp32s3_m5cores3/runtime/` | FMP3 の ESP32-S3 / CoreS3 固有ポート |
+| `ports/m5stack_xtensa/runtime/` | FMP3 の ESP32-S3 / CoreS3 固有ポート |
 | `fmp_app/` | 開発ツリーでのみ使う FMP3 アプリケーション |
 | `examples/` | 同梱例題 |
 | `scripts/` | ビルド・パッケージング |

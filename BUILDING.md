@@ -105,6 +105,6 @@ python scripts/check_host_paths.py <platform または zip>
 - **リンク順序は ordinal**（バイト単位・大文字小文字を区別）です。ロケール依存や
   大文字小文字を無視するソートでは別のイメージになります。
 - 構成を追加・変更するときは、`build_prebuilt_stages.py` の対応表、
-  `ports/esp32s3_m5cores3/runtime/CMakeLists.txt` の分岐、
+  `ports/m5stack_xtensa/runtime/CMakeLists.txt` の分岐、
   `install_platform.py` のメニュー定義、`packaging/release-allowlist.json`、
   `scripts/verify_package.py` の `PROFILES` を揃えてください。

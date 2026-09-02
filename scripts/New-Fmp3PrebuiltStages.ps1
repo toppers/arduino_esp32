@@ -10,7 +10,7 @@
 
     One directory per profile is produced under -OutputDirectory, each holding
     objs/, ld/, optionally lib/, link-manifest.json and objects.rsp. See
-    ports/esp32s3_m5cores3/runtime/cmake/prebuilt_stage.cmake.
+    ports/m5stack_xtensa/runtime/cmake/prebuilt_stage.cmake.
 
     The stages are sketch-independent because cfg is fixed per profile; only the
     final link depends on the sketch.
@@ -160,7 +160,7 @@ if (('m5-unified' -in $Profiles) -or ('all-in-one' -in $Profiles)) {
     }
 }
 
-$runtime = Join-Path $LibraryRoot 'ports\esp32s3_m5cores3\runtime'
+$runtime = Join-Path $LibraryRoot 'ports\m5stack_xtensa\runtime'
 $fmp3Core = Join-Path $LibraryRoot 'third_party\fmp3_core'
 if (-not (Test-Path -LiteralPath (Join-Path $fmp3Core 'CMakeLists.txt'))) {
     throw "fmp3_core submodule is not checked out: $fmp3Core"
@@ -207,7 +207,7 @@ try {
         }
         else {
             Join-Path $LibraryRoot `
-                "ports\esp32s3_m5cores3\app\$applicationDirectoryName"
+                "ports\m5stack_xtensa\app\$applicationDirectoryName"
         }
 
         $build = Join-Path $WorkDirectory $profileName

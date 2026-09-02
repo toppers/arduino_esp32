@@ -5,7 +5,7 @@ The final image is produced with nothing but the
 toolchain and esptool that ship with the M5Stack Arduino core, so a sketch build
 needs neither CMake, Ninja nor a cfg generator on the user's machine.
 
-The input is a stage produced by ports/esp32s3_m5cores3/runtime/cmake/
+The input is a stage produced by ports/m5stack_xtensa/runtime/cmake/
 prebuilt_stage.cmake: objs/, ld/, optionally lib/, and link-manifest.json.
 
 Replaces the PowerShell prototype this grew out of, because the recipe has to

@@ -131,13 +131,13 @@ if ($Mode -eq 'Objcopy') {
 }
 
 $developmentRuntime = Join-Path $LibraryRoot `
-    'ports\esp32s3_m5cores3\runtime'
+    'ports\m5stack_xtensa\runtime'
 $packagedRuntime = Join-Path $LibraryRoot 'extras\runtime\port'
 if (Test-Path -LiteralPath $developmentRuntime) {
     $runtime = $developmentRuntime
     $fmp3Core = Join-Path $LibraryRoot 'third_party\fmp3_core'
     $applicationRoot = Join-Path $LibraryRoot `
-        'ports\esp32s3_m5cores3\app'
+        'ports\m5stack_xtensa\app'
     $resolver = Join-Path $LibraryRoot `
         'scripts\Resolve-ArduinoEsp32S3Sdk.ps1'
 }

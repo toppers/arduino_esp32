@@ -581,22 +581,40 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_adc/interface"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_adc/${A1_CHIP_ARCH_NAME}/include")
 
+    #  platforms/esp32 は共通コードで、その上にチップ別のディレクトリが重なる。
+    #  LX6 では両者が同じディレクトリなので二重に並べない。
+    #
+    #  ★ここにジェネレータ式を書いてはならない。file(GLOB) は configure 時に
+    #  評価されるので `$<...>` は展開されず、**文字列のまま glob に渡って何にも
+    #  一致しない**。実際 S3 で platforms/esp32s3/*.cpp が丸ごと落ち、
+    #  ステージが 138→135 objects になっていた（2026-09-02）。分岐は if で書く。
+    if(A1_CHIP_ARCH_NAME STREQUAL "esp32")
+        set(M5GFX_CHIP_PLATFORM_GLOB "")
+    else()
+        set(M5GFX_CHIP_PLATFORM_GLOB
+            "${M5GFX_SOURCE_ROOT}/lgfx/v1/platforms/${A1_CHIP_ARCH_NAME}/*.cpp")
+    endif()
     file(GLOB M5GFX_CPP_SOURCES
         "${M5GFX_SOURCE_ROOT}/*.cpp"
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/*.cpp"
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/misc/*.cpp"
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/panel/*.cpp"
-        #  platforms/esp32 は共通コードで、その上にチップ別のディレクトリが
-        #  重なる。LX6 では両者が同じディレクトリなので二重に並べない。
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/platforms/esp32/*.cpp"
-        $<$<NOT:$<STREQUAL:${A1_CHIP_ARCH_NAME},esp32>>:${M5GFX_SOURCE_ROOT}/lgfx/v1/platforms/${A1_CHIP_ARCH_NAME}/*.cpp>
+        ${M5GFX_CHIP_PLATFORM_GLOB}
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/touch/*.cpp")
     list(FILTER M5GFX_CPP_SOURCES EXCLUDE REGEX
+        "platforms/esp32/(Bus_EPD|Panel_EPD|Bus_Parallel8)\\.cpp$")
+    if(A1_CHIP_ARCH_NAME STREQUAL "esp32")
         #  Panel_CVBS はコンポジット映像出力で、FreeRTOS の xTaskNotify /
-        #  xPortGetCoreID を直に使う。M5Stack Basic の画面は SPI の
-        #  ILI9342C なので要らない。S3 ではそもそも CONFIG_IDF_TARGET_ESP32 が
-        #  立たず中身が消えるため、除外しても S3 の出力は変わらない。
-        "platforms/esp32/(Bus_EPD|Panel_EPD|Bus_Parallel8|Panel_CVBS)\\.cpp$")
+        #  xPortGetCoreID を直に使う。M5Stack Basic の画面は SPI の ILI9342C
+        #  なので要らない。
+        #  ★S3 では除外しない。CONFIG_IDF_TARGET_ESP32 が立たず中身は空に
+        #  なるが、**オブジェクトは配布物に入っている**（release の
+        #  m5-unified ステージに Panel_CVBS.o がある）。除外すると
+        #  objectCount と objectOrder が変わり、S3 の成果物が動く。
+        list(FILTER M5GFX_CPP_SOURCES EXCLUDE REGEX
+            "platforms/esp32/Panel_CVBS\\.cpp$")
+    endif()
     #
     #  CJKフォント（lgfx/Fonts/efont・IPA）は既定で外す。1つでappパーティション
     #  (3MB)を超えるため到達不能で、事前ビルドステージに42MB積むだけになっていた

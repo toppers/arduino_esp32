@@ -11,7 +11,7 @@ two is therefore plain C, and a font has to be named by an id instead.
 This script parses M5GFX's lgfx_fonts.hpp and writes:
 
   src/ToppersFMP3_M5Fonts.h            the ids, for sketches
-  ports/esp32s3_m5cores3/runtime/m5/adapter/m5_arduino_fonts.inc
+  ports/m5stack_xtensa/runtime/m5/adapter/m5_arduino_fonts.inc
                                        the id -> &fonts::X mapping, for the
                                        adapter that runs on the runtime side
 
@@ -174,7 +174,7 @@ def main() -> int:
     root = Path(args.library_root) if args.library_root else Path(__file__).resolve().parent.parent
     outputs = {
         root / "src" / "ToppersFMP3_M5Fonts.h": render_header(fonts, version),
-        root / "ports" / "esp32s3_m5cores3" / "runtime" / "m5" / "adapter"
+        root / "ports" / "m5stack_xtensa" / "runtime" / "m5" / "adapter"
             / "m5_arduino_fonts.inc":
             render_include(fonts, version),
     }

@@ -33,7 +33,7 @@ if ([string]::IsNullOrWhiteSpace($FmpBuildDirectory)) {
 }
 if ([string]::IsNullOrWhiteSpace($FmpApplicationDirectory)) {
     $FmpApplicationDirectory = Join-Path $M5ArduinoRoot `
-        'ports\esp32s3_m5cores3\app\phase3'
+        'ports\m5stack_xtensa\app\phase3'
 }
 
 $destinationElf = Join-Path $ArduinoBuildPath "$ProjectName.elf"
