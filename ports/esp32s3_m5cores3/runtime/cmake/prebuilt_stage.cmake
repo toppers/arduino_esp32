@@ -1,3 +1,10 @@
+#  cmake -P で走るスクリプトにはポリシー設定が無く、既定は「未設定＝OLD」になる。
+#  OLD の CMP0053 は文字列中の `@VAR@` を変数参照として再展開するため、
+#  templatize_item が置いた `@SDK_LIBRARY_ROOT@` がそのままビルドマシンの
+#  絶対パスへ戻り、**配布物の link-manifest.json にホストのパスが載る**
+#  （cmake 3.30.0 で実測。CMakeLists.txt と同じ最低版を宣言して塞ぐ）。
+cmake_minimum_required(VERSION 3.23)
+
 #
 #  スケッチに依存しないFMP3成果物をステージングする（cmake -P）
 #

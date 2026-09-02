@@ -155,7 +155,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|wifi-connect|all-in-one)$")
         TOPPERS_ESP_WIFI_SYSCLK_PLL)
     list(APPEND FMP3_INCLUDE_DIRS
         "${CMAKE_CURRENT_LIST_DIR}/wifi/shim"
-        "${CMAKE_CURRENT_LIST_DIR}/wifi/config/esp32s3"
+        "${CMAKE_CURRENT_LIST_DIR}/wifi/config/${A1_CHIP_ARCH_NAME}"
         #  attachInterrupt の cfg 片とその定数ヘッダ。
         "${CMAKE_CURRENT_LIST_DIR}/arduino")
 endif()
@@ -321,13 +321,13 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         #  ROM 宣言。ライブラリのリンクは増えない。
         "${ARDUINO_SDK_INCLUDE_ROOT}/hal/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/hal/platform_port/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/hal/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/hal/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/soc/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/esp32s3/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/esp32s3/register"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/${A1_CHIP_ARCH_NAME}/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/${A1_CHIP_ARCH_NAME}/register"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_common/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/include")
 endif()
 target_link_libraries(seam_objects PRIVATE seam_common)
@@ -339,7 +339,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
         "${RUNTIME_ROOT}/arduino"
         "${RUNTIME_ROOT}/wifi/freertos_stub"
         "${RUNTIME_ROOT}/wifi/config/hal_stub_include"
-        "${RUNTIME_ROOT}/wifi/config/esp32s3"
+        "${RUNTIME_ROOT}/wifi/config/${A1_CHIP_ARCH_NAME}"
         "${RUNTIME_ROOT}/wifi/shim"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_wifi/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_wifi/wifi_apps/roaming_app/include"
@@ -347,28 +347,28 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/include/soc"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/include/esp_private"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/port/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/port/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/heap/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/efuse/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/efuse/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/efuse/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_event/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/log/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_phy/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_phy/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_phy/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_pm/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_common/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/hal/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/hal/platform_port/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/hal/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/hal/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/esp32s3/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/esp32s3/include/esp32s3"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/${A1_CHIP_ARCH_NAME}/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/${A1_CHIP_ARCH_NAME}/include/${A1_CHIP_ARCH_NAME}"
         "${ARDUINO_SDK_INCLUDE_ROOT}/soc/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/esp32s3/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/esp32s3/register"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/${A1_CHIP_ARCH_NAME}/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/${A1_CHIP_ARCH_NAME}/register"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_system/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/xtensa/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/xtensa/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/xtensa/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_timer/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_security/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_mm/include"
@@ -502,7 +502,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${RUNTIME_ROOT}/m5/idf_compat"
         "${RUNTIME_ROOT}/m5/shim"
         "${RUNTIME_ROOT}/wifi/shim"
-        "${RUNTIME_ROOT}/wifi/config/esp32s3"
+        "${RUNTIME_ROOT}/wifi/config/${A1_CHIP_ARCH_NAME}"
         "${FMP3_CORE_ROOT}/kernel"
         "${M5GFX_SOURCE_ROOT}"
         "${M5UNIFIED_SOURCE_ROOT}"
@@ -512,29 +512,29 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/include/soc"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/include/esp_private"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/port/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/port/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_hw_support/dma/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/heap/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/efuse/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/efuse/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/efuse/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_event/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/log/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_phy/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_phy/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_phy/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_pm/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_common/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/hal/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/hal/platform_port/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/hal/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/hal/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/esp32s3/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/esp32s3/include/esp32s3"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/${A1_CHIP_ARCH_NAME}/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_rom/${A1_CHIP_ARCH_NAME}/include/${A1_CHIP_ARCH_NAME}"
         "${ARDUINO_SDK_INCLUDE_ROOT}/soc/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/esp32s3/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/esp32s3/register"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/${A1_CHIP_ARCH_NAME}/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/soc/${A1_CHIP_ARCH_NAME}/register"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_system/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/xtensa/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/xtensa/esp32s3/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/xtensa/${A1_CHIP_ARCH_NAME}/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_timer/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_security/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_mm/include"
@@ -553,7 +553,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_adc/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_adc/deprecated/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/esp_adc/interface"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_adc/esp32s3/include")
+        "${ARDUINO_SDK_INCLUDE_ROOT}/esp_adc/${A1_CHIP_ARCH_NAME}/include")
 
     file(GLOB M5GFX_CPP_SOURCES
         "${M5GFX_SOURCE_ROOT}/*.cpp"
@@ -718,7 +718,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
 endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
     set(M5_SOC_ARCHIVE "${ARDUINO_SDK_LIBRARY_ROOT}/libsoc.a")
-    set(M5_PERIPHERALS_LD "${ARDUINO_SDK_LD_ROOT}/esp32s3.peripherals.ld")
+    set(M5_PERIPHERALS_LD "${ARDUINO_SDK_LD_ROOT}/${A1_CHIP_ARCH_NAME}.peripherals.ld")
     foreach(required_path "${M5_SOC_ARCHIVE}" "${M5_PERIPHERALS_LD}")
         if(NOT EXISTS "${required_path}")
             message(FATAL_ERROR "Arduino M5 runtime input not found: ${required_path}")
