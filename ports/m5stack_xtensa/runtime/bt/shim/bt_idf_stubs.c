@@ -144,45 +144,9 @@ rtc_clk_slow_src_get(void)
 }
 
 /*
- *  SPP's VFS mode. ESP_SPP_MODE_CB is what toppers_bt_spp.c initialises, so
- *  none of these is reachable; they are referenced from the same archive
- *  member as the callback path.
+ *  SPP の VFS モードのスタブは bt/classic/bluedroid_glue.c が持つ
+ *  （BlueDroid をソースからビルドする構成では、そちらが正）。
  */
-esp_err_t
-esp_vfs_register_fd(void *vfs_id, int *fd)
-{
-	(void) vfs_id;
-	(void) fd;
-	BT_UNREACHABLE("esp_vfs_register_fd");
-	return(ESP_ERR_NOT_SUPPORTED);
-}
-
-esp_err_t
-esp_vfs_unregister_fd(void *vfs_id, int fd)
-{
-	(void) vfs_id;
-	(void) fd;
-	BT_UNREACHABLE("esp_vfs_unregister_fd");
-	return(ESP_ERR_NOT_SUPPORTED);
-}
-
-esp_err_t
-esp_vfs_register_with_id(const void *vfs, void *ctx, void *vfs_id)
-{
-	(void) vfs;
-	(void) ctx;
-	(void) vfs_id;
-	BT_UNREACHABLE("esp_vfs_register_with_id");
-	return(ESP_ERR_NOT_SUPPORTED);
-}
-
-esp_err_t
-esp_vfs_unregister_with_id(void *vfs_id)
-{
-	(void) vfs_id;
-	BT_UNREACHABLE("esp_vfs_unregister_with_id");
-	return(ESP_ERR_NOT_SUPPORTED);
-}
 
 /*
  *  BLE. The controller is configured BR/EDR only, so the BLE background

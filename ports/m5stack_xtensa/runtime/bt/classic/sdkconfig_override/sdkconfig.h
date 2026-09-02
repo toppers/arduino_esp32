@@ -130,31 +130,19 @@
 #define CONFIG_BTDM_CTRL_BR_EDR_MIN_ENC_KEY_SZ_DFT_EFF 7
 
 /*
- *  ★HLI（high-level interrupt）を有効にする。
+ *  ★HLI（high-level interrupt）は有効にしない。
  *
- *  M5Stack コア同梱の sdkconfig は CONFIG_BTDM_CTRL_HLI=y であり、
- *  libbt.a / libbtdm_app.a は**その前提でコンパイルされている**。一方この
- *  include ツリーの sdkconfig.h には CONFIG_BTDM_CTRL_HLI が無く、
- *  esp_bt.h の #else 側で BTDM_CTRL_HLI=false になる。すると cfg.hli=0 が
- *  コントローラへ渡り、bt.c は RWBT/RWBLE を CPU 線 5（レベル1）へ流す。
+ *  2026-09-02 に一度有効化して試した。M5Stack コア同梱の libbt.a は
+ *  CONFIG_BTDM_CTRL_HLI=y でコンパイルされているので、その archive を
+ *  リンクする限り HLI 側に合わせるのが筋だった——実際ルーティングは
+ *  参照（素の Arduino コア）と同じ 8/25/25 になり、レベル4ベクタも
+ *  INTENABLE も通した。それでもコントローラは割込みを出さなかった。
  *
- *  2026-09-02、素の M5Stack コア＋BluetoothSerial を同じ実機に焼いて
- *  同じレジスタを読んだ比較で確定した:
- *
- *      動く方: map[src4]=8  map[src6]=25 map[src7]=25
- *      我々  : map[src4]=8  map[src6]=5  map[src7]=5
- *
- *  ベースバンド側は3レジスタとも完全一致（bb[0f8]=0x00040109 ほか）だった
- *  ので、差はここだけ。線 5 経路ではブロブがハンドラを線 5 へ置きもせず
- *  （設置したのは 7 と 8 だけ）、割込みが一度も上がらない。
- *
- *  HLI 側の実体（hli_api.c・hli_vectors.S の xt_highint4）は libbt.a に
- *  同梱されているので、こちらが用意するのはレベル4ベクタからの入口だけ
- *  （arch/xtensa_gcc/esp32/chip_vectors.S）。CPU 割込み 25 は
- *  XCHAL_INT25_LEVEL=4。
+ *  一方、上流 fmp3_esp_idf は **BlueDroid をソースからビルド**し、
+ *  HLI 無し・割込み線 5/7/8 で、同じ M5Stack Core Basic 実機で
+ *  SPP の RFCOMM 実データ往復まで実証している
+ *  （.steering/20260813-btclassic-rfcomm-dynisr）。本ポートはそちらへ
+ *  合わせる。よって HLI は無効のまま。
  */
-#ifndef CONFIG_BTDM_CTRL_HLI
-#define CONFIG_BTDM_CTRL_HLI 1
-#endif
 
 #endif /* TOPPERS_BT_CLASSIC_SDKCONFIG_OVERRIDE_H */

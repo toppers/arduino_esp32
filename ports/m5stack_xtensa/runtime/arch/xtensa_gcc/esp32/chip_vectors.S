@@ -161,21 +161,9 @@ _kernel_Level3Vector:
 	wsr.excsave3	a2
 	j	_kernel_l3int_entry
 
-/* ---- 0x200 Level4 ----
- *  bt-classic では BT コントローラの high-level interrupt がここへ来る
- *  （CONFIG_BTDM_CTRL_HLI=y、RWBT/RWBLE は CPU 割込み 25 = レベル4）。
- *  実体 xt_highint4 は libbt.a の hli_vectors.S.obj が持つ。ESP-IDF の
- *  _Level4Vector と同じく EXCSAVE_4 に a0 を退避して call0 する。
- *  それ以外の profile は従来どおり panic（未使用）。
- */
+/* ---- 0x200 Level4 （未使用：安全spin） ---- */
 	.org	0x200
-#if defined(TOPPERS_BT_CLASSIC)
-	wsr.excsave4	a0
-	call0	xt_highint4
-	/* xt_highint4 は戻らない */
-#else
 	j	_kernel_vec_panic
-#endif
 
 /* ---- 0x240 Level5 （未使用：安全spin） ---- */
 	.org	0x240

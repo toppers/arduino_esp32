@@ -63,3 +63,11 @@ repository:
 
 When source code is imported or adapted, preserve its file header, record the exact
 source commit, and document the modification boundary here.
+
+## BlueDroid (ESP-IDF Bluetooth host stack)
+
+`third_party/bluedroid/` — Espressif Systems, Apache License 2.0.
+ESP-IDF commit `735507283d5b2f9fb363a1901172dbd9e847945d` (v5.5.4) の
+`components/bt/` からの無改変コピー。由来と経緯は
+[`third_party/bluedroid/README.vendored.md`](third_party/bluedroid/README.vendored.md)。
+

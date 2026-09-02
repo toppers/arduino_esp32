@@ -126,11 +126,13 @@
  *  Wi-Fi blob を一切リンクしない。124KB のままだと .bss が DRAM を
  *  35,988 バイト超過する（2026-09-02 実測）。
  *
- *  80KB は「入る最小」ではなく「入る上で余裕を残した値」で、BlueDroid の
+ *  2026-09-02 に 80KB → 72KB へ。BlueDroid をソースからビルドする構成
+ *  （third_party/bluedroid）は .bss/.data がアーカイブ版より大きく、80KB では
+ *  1,728 バイト溢れた。72KB は「入る最小」ではなく余裕を見た値で、BlueDroid の
  *  実際のピークは未計測。実機で詰めるときは bt_stubs.c の
  *  esp_shim_heap_largest_free_block() を見ること。
  */
-#define ESP_SHIM_HEAP_SIZE  (80 * 1024)
+#define ESP_SHIM_HEAP_SIZE  (72 * 1024)
 #else
 #define ESP_SHIM_HEAP_SIZE  (124 * 1024)
 #endif

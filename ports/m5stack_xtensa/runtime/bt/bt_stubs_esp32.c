@@ -51,10 +51,6 @@ volatile uint32_t	bt_probe_ints_on_calls;
 volatile int32_t	bt_probe_ena_ercd[32];
 volatile uint32_t	bt_probe_intenable_after;
 
-/*  カーネルの割込み許可マスク（core_kernel_impl.h）。INTENABLE へ書く実効値は
- *  常に intenable_mask & vpri_mask なので、high-level の線もここへ載せる。 */
-extern volatile uint32_t	_kernel_intenable_mask[];
-extern volatile uint32_t	_kernel_vpri_mask[];
 
 void
 xt_ints_on(unsigned int mask)
@@ -67,22 +63,6 @@ xt_ints_on(unsigned int mask)
 		if ((mask & (1UL << i)) != 0U) {
 			ER	ercd;
 
-			/*
-			 *  ★レベル4/5 の線はカーネルの管理外なので ena_int を使わない。
-			 *
-			 *  ESP32 の CPU 割込み 24/25 はレベル4、26 はレベル5
-			 *  （XCHAL_INT{24,25}_LEVEL=4, INT26_LEVEL=5）。BT の
-			 *  high-level interrupt はここへ来て、ベクタ(0x200)から
-			 *  libbt.a の xt_highint4 が直接受ける——FMP3 のハンドラ
-			 *  ディスパッチを通らない。よって cfg に宣言は無く、
-			 *  ena_int() は E_NOSPT を返す。INTENABLE のビットだけ立てる。
-			 */
-			if (i == 24U || i == 25U || i == 26U) {
-				/*  下でまとめて立てる（ena_int が INTENABLE を
-				 *  書き直すので、その後でないと消される）。 */
-				bt_probe_ena_ercd[i] = 0;
-				continue;
-			}
 			ercd = ena_int((INTNO) i);
 
 			bt_probe_ena_ercd[i] = (int32_t) ercd;
@@ -99,44 +79,6 @@ xt_ints_on(unsigned int mask)
 		}
 	}
 
-	/*
-	 *  ★high-level（レベル4/5）の線は最後にまとめて立てる。
-	 *
-	 *  カーネルはこれらの線を知らない（cfg に無い）ので ena_int は使えない。
-	 *  一方 ena_int() は INTENABLE を自分の持つマスクから書き直すため、
-	 *  ループの途中で立てても後続の ena_int に消される（2026-09-02 実測：
-	 *  bit25 が消えて 0x200601c0 になっていた）。
-	 */
-	{
-		uint32_t	hli = mask & ((1UL << 24) | (1UL << 25) | (1UL << 26));
-
-		if (hli != 0U) {
-			uint32_t	state = esp_shim_int_disable();
-
-			/*
-			 *  ★カーネルの許可マスクへ載せる（ハードへ直接書くだけでは
-			 *  次の ena_int() に消される）。
-			 *
-			 *  このポートは INTENABLE へ書く実効値を常に
-			 *  `_kernel_intenable_mask[c] & _kernel_vpri_mask[c]` としている
-			 *  （core_kernel_impl.h）。直接 wsr.intenable しても、次に
-			 *  ena_int() が走った瞬間にその式で上書きされて消える
-			 *  （2026-09-02 実測：一度 0x22060040 になった bit25 が
-			 *   0x200601c0 へ戻っていた）。
-			 *
-			 *  レベル4/5 の線はカーネルのハンドラ表には無いが、許可マスクに
-			 *  居るぶんには害が無い——ベクタ(0x200)が直接 xt_highint4 へ
-			 *  行くので、カーネルのディスパッチは通らない。
-			 */
-			_kernel_intenable_mask[0] |= hli;
-			__asm__ __volatile__ ("wsr.intenable %0; rsync"
-								  :: "a" (_kernel_intenable_mask[0]
-										  & _kernel_vpri_mask[0]) : "memory");
-			__asm__ __volatile__ ("rsr.intenable %0"
-								  : "=a" (bt_probe_intenable_after));
-			esp_shim_int_restore(state);
-		}
-	}
 }
 
 /*

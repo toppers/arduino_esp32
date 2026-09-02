@@ -477,6 +477,8 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one|bt-classic)$")
         #  キューを使うため引かない（他 profile の stage を変えないよう限定する）。
         target_sources(seam_objects PRIVATE
             "${RUNTIME_ROOT}/wifi/shim/esp_shim_ring.c"
+            #  BlueDroid の stub ヘッダが要求する ISR 文脈判定。
+            "${RUNTIME_ROOT}/wifi/shim/esp_shim_isr_ctx.c"
             #  本物の esp_timer。wifi_stubs.c の no-op は畳まれる。
             "${RUNTIME_ROOT}/wifi/shim/esp_timer_shim.c")
         #  seam_objects 側にも要る（wifi_stubs.c が BT ブロブと衝突する
@@ -759,6 +761,9 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
             "the bt-classic profile is esp32 (LX6) only; the ESP32-S3 has no "
             "Bluetooth Classic (got A1_CHIP=${A1_CHIP})")
     endif()
+    set(BLUEDROID_ROOT
+        "${CMAKE_CURRENT_LIST_DIR}/../../../third_party/bluedroid")
+
     add_library(bt_common INTERFACE)
     target_compile_definitions(bt_common INTERFACE
         ESP_PLATFORM
@@ -771,12 +776,22 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
         #    BLE か BR/EDR かは bt/classic/sdkconfig_override が
         #    CONFIG_BTDM_CTRL_MODE_BLE_ONLY を外して BR_EDR_ONLY に付け替える。
         CONFIG_ESPRESSIF_BLE
+        #  上流 fmp3_esp_idf の btclassic variant と同じ定義（BlueDroid を
+        #  ソースからビルドするのに要る）。
+        CONFIG_BT_BLUEDROID_ENABLED=1
+        CONFIG_ESP_COEX_ENABLED
+        NVS_NS_NAME_MAX_SIZE=16
+        shared_periph_module_t=periph_module_t
         #  上流のゲート名。esp_shim_cfg.h の ESP_SHIM_NUM_FLG と esp_shim.cfg の
         #  CRE_FLG（SPP の tx_event_group 用イベントフラグプール）がこれを見る。
         TOPPERS_ESP32_BT_BLUEDROID_CLASSIC
         TOPPERS_BT_CLASSIC)
     target_compile_options(bt_common INTERFACE
-        -Wno-error=implicit-function-declaration)
+        -Wno-error=implicit-function-declaration
+        #  実 ESP-IDF では esp_bit_defs.h が全コンポーネントへ暗黙に見える。
+        #  btc_main.c は BIT() を #include 無しで使うので -include で再現する
+        #  （上流 CMakeLists と同じ対処）。
+        "SHELL:-include ${ARDUINO_SDK_INCLUDE_ROOT}/esp_common/include/esp_bit_defs.h")
     target_include_directories(bt_common INTERFACE
         #  kernel_cfg.h (cfg が吐く) はここ。
         "${GENERATED_DIR}"
@@ -786,13 +801,42 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
         "${RUNTIME_ROOT}/bt/adapter"
         "${RUNTIME_ROOT}/bt"
         "${RUNTIME_ROOT}/bt/stub/include"
-        #  BlueDroid's own headers.  The stack itself is not built from source:
-        #  the M5Stack core ships it compiled, as libbt.a (host) beside
-        #  libbtdm_app.a (controller), so this runtime only supplies the shims
-        #  those two archives call into.
-        "${ARDUINO_SDK_INCLUDE_ROOT}/bt/common/osi/include"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/bt/common/api/include/api"
-        "${ARDUINO_SDK_INCLUDE_ROOT}/bt/host/bluedroid/api/include/api"
+        #  ★BlueDroid のヘッダは vendored 側を見る。一覧は上流
+        #    fmp3_esp_idf の CMakeLists と同じ（BTROOT 配下＋common）。
+        #    M5Stack コアの include ツリーには内部ヘッダが 218 本足りない。
+        "${BLUEDROID_ROOT}/host/bluedroid/bta/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/bta/ar/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/bta/dm/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/bta/gatt/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/bta/jv/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/bta/sdp/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/bta/sys/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/device/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/hci/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/btc/profile/esp/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/btc/profile/std/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/btc/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/btm/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/gap/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/gatt/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/l2cap/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/sdp/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/smp/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/rfcomm/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/obex/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/goep/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/stack/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/common/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/config/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/api/include"
+        "${BLUEDROID_ROOT}/host/bluedroid/api/include/api"
+        "${BLUEDROID_ROOT}/common/include"
+        "${BLUEDROID_ROOT}/common/osi/include"
+        "${BLUEDROID_ROOT}/common/btc/include"
+        "${BLUEDROID_ROOT}/common/btc/profile/esp/include"
+        "${BLUEDROID_ROOT}/common/btc/profile/esp/blufi/include"
+        "${BLUEDROID_ROOT}/common/api/include/api"
+        "${BLUEDROID_ROOT}/common/hci_log/include"
         "${ARDUINO_SDK_INCLUDE_ROOT}/bt/include/esp32/include"
         ${WIFI_INCLUDE_DIRS})
 
@@ -801,7 +845,86 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
         "${RUNTIME_ROOT}/bt/classic/*.c"
         "${RUNTIME_ROOT}/bt/adapter/*.c"
         "${RUNTIME_ROOT}/bt/shim/*.c")
+
+    #
+    #  ★BlueDroid はソースからビルドする（同梱の libbt.a はリンクしない）。
+    #
+    #  archive は CONFIG_BTDM_CTRL_HLI=y でコンパイルされており、FMP3 の
+    #  ベクタ表にレベル4割込みが無い。上流 fmp3_esp_idf は HLI 無し・
+    #  割込み線 5/7/8 でソースからビルドし、同じ M5Stack Core Basic 実機で
+    #  SPP の RFCOMM 往復まで実証している。そちらへ合わせる
+    #  （third_party/bluedroid/README.vendored.md）。
+    #
+    #  ソース一覧は third_party/bluedroid/sources.txt を読む。上流の
+    #  esp/boot/bluedroid_srcs_classic.txt と同じ内容で、列挙の真実源を
+    #  1 つにするため CMake 側でも同じファイルを読む。
+    #
+    #  ★ENCODING UTF-8 は必須。無指定だと file(STRINGS) が「印字可能バイト列」
+    #    検出に落ちて、日本語コメントの UTF-8 バイト列を区切りと誤認する
+    #    （上流実測: 3 行のヘッダが 119 要素に分裂した）。
+    #
+    file(STRINGS "${BLUEDROID_ROOT}/sources.txt" BT_BLUEDROID_RELPATHS
+         ENCODING UTF-8)
+    #  basename 衝突（実測）: fmp3_core/kernel/{alarm,mutex,semaphore}.c は
+    #  libfmp3.a に常に入り、BlueDroid の common/osi/ の同名と衝突する。
+    #  ステージングは全 .o を 1 ディレクトリへ集めるので fail-closed で落ちる。
+    #  vendored を改名せず、#include だけの薄いラッパで別 basename を与える。
+    set(BT_BLUEDROID_SRCS "")
+    set(BT_BLUEDROID_COLLISIONS
+        "common/osi/alarm.c" "common/osi/mutex.c" "common/osi/semaphore.c")
+    foreach(relpath IN LISTS BT_BLUEDROID_RELPATHS)
+        if(relpath STREQUAL "" OR relpath MATCHES "^#")
+            continue()
+        endif()
+        list(FIND BT_BLUEDROID_COLLISIONS "${relpath}" collision)
+        if(NOT collision EQUAL -1)
+            get_filename_component(base "${relpath}" NAME_WE)
+            list(APPEND BT_SOURCES "${RUNTIME_ROOT}/bt/classic/osi_${base}_wrap.c")
+            list(APPEND BT_BLUEDROID_SRCS
+                 "${RUNTIME_ROOT}/bt/classic/osi_${base}_wrap.c")
+        else()
+            if(NOT EXISTS "${BLUEDROID_ROOT}/${relpath}")
+                message(FATAL_ERROR
+                    "vendored BlueDroid source is missing: ${relpath}")
+            endif()
+            list(APPEND BT_SOURCES "${BLUEDROID_ROOT}/${relpath}")
+            list(APPEND BT_BLUEDROID_SRCS "${BLUEDROID_ROOT}/${relpath}")
+        endif()
+    endforeach()
     list(FILTER BT_SOURCES EXCLUDE REGEX "_diag\\.c$")
+    #
+    #  ★BlueDroid ホストのソースにだけ picolibc の include を足す。
+    #
+    #  足さないと <fcntl.h> 等がツールチェーンの既定 sysroot
+    #  （xtensa-esp-elf/include、picolibc とは別物）へ解決され、esp_shim 側の
+    #  sys/types.h（time_t 等の独自 typedef）と衝突する（実測: time_t/dev_t/
+    #  ino_t の再定義エラー）。
+    #
+    #  ★scope を BlueDroid のソースだけに絞ること。ターゲット全体へ広げると
+    #    同じターゲット内の esp_shim_libc.c（fopen/fread 等の独自実装）が
+    #    picolibc 自身の宣言と衝突して壊れる。
+    #
+    #  ★順序も重要。CMake はソース単位の INCLUDE_DIRECTORIES をターゲット単位の
+    #    -I より前に置くので、libc_override/sdkconfig_override を picolibc より
+    #    前へ同じソース属性の中に積む。そうしないと errno が TLS 参照のまま残り、
+    #    esp_shim_libc.o の非 TLS 定義とリンク時に衝突する。
+    #
+    #  以上はいずれも上流 fmp3_esp_idf の実測記録に基づく。
+    #
+    if(BT_BLUEDROID_SRCS)
+        get_filename_component(_bt_toolbin "${CMAKE_C_COMPILER}" DIRECTORY)
+        get_filename_component(_bt_tooldir "${_bt_toolbin}" DIRECTORY)
+        set_source_files_properties(${BT_BLUEDROID_SRCS} PROPERTIES
+            INCLUDE_DIRECTORIES
+            "${RUNTIME_ROOT}/bt/classic/libc_override;${RUNTIME_ROOT}/bt/classic/sdkconfig_override;${_bt_tooldir}/picolibc/include")
+        #  -O2 では picolibc の ctype.h がテーブル参照版（extern const char
+        #  _ctype_b[]）を選ぶ。その実体は picolibc 自身のランタイムにしかなく、
+        #  最終リンクの -lc には無い（実測: undefined reference to '_ctype_b'）。
+        #  関数呼び出し版を強制する。
+        set_property(SOURCE ${BT_BLUEDROID_SRCS} APPEND PROPERTY
+            COMPILE_DEFINITIONS "_PICOLIBC_CTYPE_SMALL=1")
+    endif()
+
     add_library(bt_objects OBJECT ${BT_SOURCES})
     target_link_libraries(bt_objects PRIVATE seam_common bt_common)
     add_dependencies(bt_objects generate_cfg_gen_files)
@@ -844,7 +967,6 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
     #  controller を libbtdm_app.a (ld/) として同梱しており、この runtime は
     #  その2つが呼ぶ FreeRTOS/ESP-IDF 側の shim だけを供給する。
     set(BT_ARCHIVES
-        "${ARDUINO_SDK_LIBRARY_ROOT}/libbt.a"
         "${ARDUINO_SDK_LIBRARY_ROOT}/libcoexist.a"
         "${ARDUINO_SDK_LD_ROOT}/libbtdm_app.a"
         "${ARDUINO_SDK_LD_ROOT}/libphy.a"
@@ -858,7 +980,7 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
         "-L${ARDUINO_SDK_LIBRARY_ROOT}@@"
         "-L${ARDUINO_SDK_LD_ROOT}@@"
         "-Wl,--start-group@@"
-        "-lbt@@-lbtdm_app@@-lcoexist@@-lphy@@-lrtc@@"
+        "-lbtdm_app@@-lcoexist@@-lphy@@-lrtc@@"
         "-lstdc++@@-lm@@-Wl,--end-group")
     string(JOIN "" XIP_LINK_LIBGROUP ${XIP_LINK_LIBGROUP})
     #  ROM の printf 系は使えない（理由は esp_shim_libc.c の __wrap_ 群の注記）。
