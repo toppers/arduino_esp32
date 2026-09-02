@@ -141,3 +141,12 @@ toppers/esp32` に置いたままだと、arduino-cli はそれをスケッチ�
 残っていると、その `installed.json` を arduino-cli が読み続けて古い index の
 URL を掴む（実測: 消したはずのポートへ HEAD を投げ続けた）。検証中は
 `~/.arduino15/packages/` の**外**へ出しておくこと。
+
+## Windows 側テスト
+
+`scripts/Test-*.ps1` は Windows でしか走らず、Linux/macOS の CI も
+`verify_package.py` も一切呼ばない。手順・一覧・**既知の対象外**（15 本すべて
+CoreS3 前提で、M5Core ボードと `bt-classic` は未検証）は
+[`docs/windows-tests/README.md`](docs/windows-tests/README.md)。
+実施記録は `docs/windows-tests/runs/` に置く。
+

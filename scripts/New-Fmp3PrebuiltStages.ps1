@@ -38,9 +38,8 @@ param(
     [string]$M5GfxSource = '',
     [string]$M5UnifiedSource = '',
 
-    #  Stages are laid out per chip, because a second board (plain M5Core, LX6)
-    #  will need its own set. esp32 needs the LX6 target files, which are not
-    #  vendored here yet.
+    #  Stages are laid out per chip: the M5Core (plain ESP32, LX6) and the
+    #  CoreS3 (ESP32-S3) each get their own set, and one platform holds both.
     [ValidateSet('esp32s3', 'esp32')]
     [string]$Chip = 'esp32s3',
 
@@ -131,9 +130,12 @@ function Find-ToolFile {
     return $found[0].FullName
 }
 
+#  ★The toolchain is named for the chip. Hardcoding the S3 one made
+#  -Chip esp32 build with the wrong compiler while the parameter said
+#  otherwise - it was accepted and silently wrong.
 $toolchainCompiler = Find-ToolFile `
     -SearchRoot (Join-Path $sdk.packageRoot 'tools\esp-x32') `
-    -FileName 'xtensa-esp32s3-elf-gcc.exe'
+    -FileName "xtensa-$Chip-elf-gcc.exe"
 $esptool = Find-ToolFile `
     -SearchRoot (Join-Path $sdk.packageRoot 'tools\esptool_py') `
     -FileName 'esptool.exe'
@@ -218,7 +220,11 @@ try {
             '-B', $build
             '-G', 'Ninja'
             "-DCMAKE_MAKE_PROGRAM=$ninjaProgram"
-            "-DCMAKE_TOOLCHAIN_FILE=$runtime\cmake\toolchain-xtensa-esp32s3.cmake"
+            "-DCMAKE_TOOLCHAIN_FILE=$runtime\cmake\toolchain-xtensa-$Chip.cmake"
+            #  build_prebuilt_stages.py passes this; without it the CMake side
+            #  falls back to its default chip and the stage is built for the
+            #  wrong one.
+            "-DA1_CHIP=$Chip"
             "-DFMP3_CORE_ROOT=$fmp3Core"
             "-DFMP3_APPLICATION_DIR=$application"
             "-DFMP3_APPLICATION_NAME=$applicationName"
