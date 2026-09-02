@@ -643,10 +643,11 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${RUNTIME_ROOT}/m5/shim/m5_libc_alloc_bridge.c"
         "${RUNTIME_ROOT}/m5/shim/m5_libcxx_glue.c"
         "${RUNTIME_ROOT}/m5/shim/m5_spi_bus_stub.c"
-        #  LX6 の m5 構成でだけ要るスタブ。__getreent を持つので、
-        #  wifi_stubs.c と同居する all-in-one では重複する。今は m5-unified
-        #  だけに入れる（LX6 の all-in-one は未対応）。
-        $<$<AND:$<STREQUAL:${A1_CHIP},esp32>,$<STREQUAL:${FMP3_RUNTIME_PROFILE},m5-unified>>:${RUNTIME_ROOT}/m5/shim/m5_lx6_stubs.c>
+        #  LX6 の m5 構成でだけ要るスタブ（gpio / rtc_gpio / SPI DMA）。
+        $<$<STREQUAL:${A1_CHIP},esp32>:${RUNTIME_ROOT}/m5/shim/m5_lx6_stubs.c>
+        #  __getreent は wifi_stubs.c も持つので、wifi を含まない profile
+        #  （m5-unified）のときだけ足す。詳細は m5_lx6_reent.c の冒頭。
+        $<$<AND:$<STREQUAL:${A1_CHIP},esp32>,$<STREQUAL:${FMP3_RUNTIME_PROFILE},m5-unified>>:${RUNTIME_ROOT}/m5/shim/m5_lx6_reent.c>
         "${RUNTIME_ROOT}/m5/shim/m5_stub_trace.c"
         "${RUNTIME_ROOT}/m5/shim/m5_unified_stubs.c"
         "${RUNTIME_ROOT}/m5/shim/esp_shim_intr.c")

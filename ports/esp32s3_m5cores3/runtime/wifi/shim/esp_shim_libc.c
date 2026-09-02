@@ -32,6 +32,10 @@
 #include "esp_shim.h"
 #include "esp_heap_caps.h"
 
+/*  実装は下の方にある（輸出名 vsnprintf と分けた理由はそちらの注記）。 */
+static int	shim_vsnprintf(char *buf, size_t size, const char *format,
+						   va_list ap);
+
 /*
  *  errno実体（hal_stub/include/errno.hはexternのみ．BSDソケットAPI
  *  （lwip/src/api/sockets.c）が参照するため必要．単一グローバル＝
@@ -162,7 +166,7 @@ esp_shim_syslog_vprintf(const char *format, va_list args)
 	shim_syslog_index = (shim_syslog_index + 1U) % SHIM_SYSLOG_SLOTS;
 	esp_shim_int_restore(lock);
 	buffer = shim_syslog_buffer[slot];
-	vsnprintf(buffer, SHIM_SYSLOG_LENGTH, format, args);
+	shim_vsnprintf(buffer, SHIM_SYSLOG_LENGTH, format, args);
 	syslog(LOG_NOTICE, "%s", buffer);
 }
 
@@ -302,8 +306,24 @@ vsn_putnum(VSN_CTX *ctx, uint64_t val, unsigned int base, bool_t upper,
 	}
 }
 
-int
-vsnprintf(char *buf, size_t size, const char *format, va_list ap)
+/*
+ *  ★内部呼び出しは輸出名ではなく私設名で行う（LX6 のため）。
+ *
+ *  無印ESP32 の esp32.rom.newlib-nano.ld は PROVIDE ではなく**素の代入**で
+ *  `vsnprintf = 0x40056a68;` と ROM 番地へ束縛する。そのため本ファイル内の
+ *  呼び出しまで ROM 側へ付け替えられ、flash text（0x400D0000〜）からは
+ *  call8 の射程（±512KB）を超えて
+ *  「dangerous relocation: call8: call target out of range: vsnprintf」で
+ *  リンクが落ちる。しかも ROM 番地は絶対シンボルなので、ld はトランポリンも
+ *  作れない（2026-09-02、LX6 の all-in-one で実測。wifi-connect では
+ *  このオブジェクトが偶然 ROM の近くに置かれて通っていただけ）。
+ *  S3 側の rom ld は vsnprintf を一切定義しないので、この付け替えは起きない。
+ *
+ *  実装を私設名にして内部からはそちらを呼べば、束縛されるのは輸出用の
+ *  薄い包みだけになり、内部呼び出しは常に近い。
+ */
+static int
+shim_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 {
 	VSN_CTX	ctx;
 	char	c;
@@ -456,13 +476,19 @@ vsnprintf(char *buf, size_t size, const char *format, va_list ap)
 }
 
 int
+vsnprintf(char *buf, size_t size, const char *format, va_list ap)
+{
+	return(shim_vsnprintf(buf, size, format, ap));
+}
+
+int
 snprintf(char *buf, size_t size, const char *format, ...)
 {
 	va_list	args;
 	int		ret;
 
 	va_start(args, format);
-	ret = vsnprintf(buf, size, format, args);
+	ret = shim_vsnprintf(buf, size, format, args);
 	va_end(args);
 	return(ret);
 }
@@ -479,7 +505,7 @@ sprintf(char *buf, const char *format, ...)
 	 *  実質無制限（size_t最大）としてvsnprintfへ委譲する．
 	 */
 	va_start(args, format);
-	ret = vsnprintf(buf, (size_t) -1, format, args);
+	ret = shim_vsnprintf(buf, (size_t) -1, format, args);
 	va_end(args);
 	return(ret);
 }

@@ -8,6 +8,9 @@
  *
  *  ★スタブである以上「呼ばれても何もしない」。M5Stack Basic の LCD 経路で
  *  実害が無いことは実機で確かめること。害が出たら実装を入れる。
+ *
+ *  __getreent は m5_lx6_reent.c へ分けてある（wifi 構成の wifi_stubs.c が
+ *  同じものを持ち、all-in-one では両方がリンクされるため）。
  */
 
 #include <stdint.h>
@@ -15,23 +18,6 @@
 #include <stdbool.h>
 #include "esp_err.h"
 #include "m5_stub_trace.h"
-
-/*
- *  ---- newlib リエントラント getter ----
- *
- *  ROM/newlib 経路が呼ぶ。wifi 構成では wifi/shim/wifi_stubs.c が同じものを
- *  持つので、両方をリンクする profile（all-in-one）では重複する。
- *  そのため本 TU は m5-unified のときだけビルドする（CMakeLists.txt 参照）。
- *  重複したら scripts/audit_duplicate_symbols.py が止める。
- */
-struct _reent;
-extern struct _reent *_impure_ptr;
-
-struct _reent *
-__getreent(void)
-{
-	return(_impure_ptr);
-}
 
 /*
  *  ---- GPIO プル制御 ----
