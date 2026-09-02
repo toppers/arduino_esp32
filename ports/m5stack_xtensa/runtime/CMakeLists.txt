@@ -859,6 +859,10 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
         "-lbt@@-lbtdm_app@@-lcoexist@@-lphy@@-lrtc@@"
         "-lstdc++@@-lm@@-Wl,--end-group")
     string(JOIN "" XIP_LINK_LIBGROUP ${XIP_LINK_LIBGROUP})
+    #  ROM の printf 系は使えない（理由は esp_shim_libc.c の __wrap_ 群の注記）。
+    #  呼び出し側ごと自前実装へ寄せる。
+    set(XIP_LINK_UFLAGS
+        "-Wl,--wrap=sprintf@@-Wl,--wrap=snprintf@@-Wl,--wrap=vsnprintf")
     list(APPEND XIP_EXTRA_DEPENDS ${BT_ARCHIVES})
     #  arduino_interrupt.c が参照する GPIO 等のレジスタ番地定義。
     set(XIP_EXTRA_TSCRIPTS "${ARDUINO_SDK_LD_ROOT}/${A1_CHIP_ARCH_NAME}.peripherals.ld")

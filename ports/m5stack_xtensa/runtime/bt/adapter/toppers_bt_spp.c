@@ -28,6 +28,8 @@
 #include "esp_spp_api.h"
 #include "esp_shim.h"
 #include "syssvc/logtask.h"
+
+extern void	esp_shim_coex_adapter_register(void);
 #include "toppers_bt_spp.h"
 
 /*
@@ -218,6 +220,20 @@ toppers_bt_spp_begin(const char *device_name)
 	spp_server_started = false;
 
 	cfg.mode = ESP_BT_MODE_CLASSIC_BT;
+
+	/*
+	 *  ★Register the coexistence adapter first.
+	 *
+	 *  On the LX6 the coex function table is not supplied by ROM or by any
+	 *  blob; esp_coex_adapter.c has to hand libcoexist.a its callbacks and
+	 *  then call coex_pre_init(). The Wi-Fi profile does this from
+	 *  toppers_wifi_core.c, which this profile does not link, and the
+	 *  controller calls coex_init()/coex_enable() regardless of whether
+	 *  Wi-Fi exists. Without it coex_enable() dereferences a null coex
+	 *  environment - seen on 2026-09-02 on a real M5Stack Basic as
+	 *  EXCCAUSE=28 at coex_core_enable+0x8, vaddr=0x30.
+	 */
+	esp_shim_coex_adapter_register();
 
 	err = esp_bt_controller_init(&cfg);
 	if (err != ESP_OK) {

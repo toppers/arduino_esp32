@@ -97,4 +97,36 @@
 #define CONFIG_BT_ALARM_MAX_NUM 16
 #endif
 
+/*
+ *  ★BR/EDR の接続数。同梱 sdkconfig は BLE 専用構成なので、BR/EDR 側の
+ *    本数がすべて 0 のまま来る（wifi/config/esp32/sdkconfig.h の
+ *    CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN_EFF ほか）。モードだけ BR_EDR へ
+ *    倒しても本数は 0 のままで、esp_bt_controller_init() が
+ *    ESP_ERR_INVALID_ARG(258) を返す。
+ *
+ *    2026-09-02、M5Stack Basic 実機で実測。コントローラ
+ *    (libbtdm_app.a) は cfg.mode の bit1 が立っているとき
+ *    cfg.bt_max_acl_conn を 1..7 で検査する（逆アセンブルで確認：
+ *    `l8ui a8,a2,22; addi a8,a8,-1; bgeui a8,7,<err>`）。0 は 0-1=255 と
+ *    なって範囲外に落ちる。
+ *
+ *    ACL 2 本は ESP-IDF の既定。SPP サーバは 1 本で足りるが、接続が
+ *    切り替わる間に 2 本並ぶ瞬間があるため既定に合わせる。
+ */
+#undef CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN_EFF
+#define CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN_EFF 2
+
+/*
+ *  SCO/eSCO（音声）は使わない。ESP-IDF も SCO 無効時は 0。
+ */
+#undef CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF
+#define CONFIG_BTDM_CTRL_BR_EDR_MAX_SYNC_CONN_EFF 0
+
+/*
+ *  暗号鍵長の下限。ESP-IDF の既定は 7 バイトで、範囲は 7..16。0 のまま
+ *  だと BIAS 攻撃対策の下限が無い状態になる。
+ */
+#undef CONFIG_BTDM_CTRL_BR_EDR_MIN_ENC_KEY_SZ_DFT_EFF
+#define CONFIG_BTDM_CTRL_BR_EDR_MIN_ENC_KEY_SZ_DFT_EFF 7
+
 #endif /* TOPPERS_BT_CLASSIC_SDKCONFIG_OVERRIDE_H */

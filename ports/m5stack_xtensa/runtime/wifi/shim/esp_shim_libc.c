@@ -493,6 +493,57 @@ snprintf(char *buf, size_t size, const char *format, ...)
 	return(ret);
 }
 
+/*
+ *  ★ROM が printf 系を横取りするので --wrap で取り返す。
+ *
+ *  esp32.rom.newlib-nano.ld は sprintf / snprintf / vsnprintf を
+ *  **素の代入**（`sprintf = 0x40056c08;`）で定義する。PROVIDE ではないので、
+ *  下にある我々の定義は黙って負ける——リンクは通り、シンボルは解決し、
+ *  呼び出しだけが ROM へ行く。
+ *
+ *  ROM 版は内部で ROM の __getreent() を呼び、これは _global_impure_ptr
+ *  (0x3ffae0b0、ROM の DRAM) が指す newlib の再入構造体を読む。本ポートは
+ *  そこを初期化しないので NULL のままで、2026-09-02 に M5Stack Basic 実機で
+ *  BlueDroid が sprintf を呼んだ瞬間に落ちた
+ *  （EXCCAUSE=28 LoadProhibited, vaddr=0, ROM sprintf+0x40 → ROM __getreent+0x8）。
+ *  ROM 内部の呼び出しなので __getreent 側を差し替えても届かない。
+ *
+ *  bt-classic では BlueDroid が 8 個以上のオブジェクトから sprintf を呼ぶ。
+ *  --wrap は「参照」を書き換えるので、リンカスクリプトの代入に関係なく
+ *  アーカイブ側の呼び出しごとここへ来る。
+ */
+#if defined(TOPPERS_BT_CLASSIC)
+int
+__wrap_vsnprintf(char *buf, size_t size, const char *format, va_list ap)
+{
+	return(shim_vsnprintf(buf, size, format, ap));
+}
+
+int
+__wrap_snprintf(char *buf, size_t size, const char *format, ...)
+{
+	va_list	args;
+	int		ret;
+
+	va_start(args, format);
+	ret = shim_vsnprintf(buf, size, format, args);
+	va_end(args);
+	return(ret);
+}
+
+int
+__wrap_sprintf(char *buf, const char *format, ...)
+{
+	va_list	args;
+	int		ret;
+
+	va_start(args, format);
+	ret = shim_vsnprintf(buf, (size_t) -1, format, args);
+	va_end(args);
+	return(ret);
+}
+#endif /* TOPPERS_BT_CLASSIC */
+
 int
 sprintf(char *buf, const char *format, ...)
 {

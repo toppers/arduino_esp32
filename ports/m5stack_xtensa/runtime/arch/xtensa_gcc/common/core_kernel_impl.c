@@ -337,12 +337,21 @@ default_exc_handler(void *p_excinf)
 		static const char hexd[] = "0123456789abcdef";
 		volatile uint32_t *fifo   = (volatile uint32_t *) 0x3FF40000U;
 		volatile uint32_t *status = (volatile uint32_t *) 0x3FF4001CU;
-		const char *lbl[] = { "\r\nEXC cause=", " pc=", " ps=", " a2=", " a3=",
+		uint32_t excvaddr;
+		const char *lbl[] = { "\r\nEXC cause=", " pc=", " ps=", " a0=",
+		                      " vaddr=", " a2=", " a3=",
 		                      " a8=", " a10=", " a12=", " a13=", "\r\n" };
-		uint32_t val[] = { pe->exccause, pe->pc, pe->ps, pe->a2, pe->a3,
-		                   pe->a8, pe->a10, pe->a12, pe->a13 };
+		uint32_t val[11];
 		int i, j;
-		for (i = 0; i < 9; i++) {
+
+		/*  a0 は戻り先、EXCVADDR は落ちたアドレス。PC だけでは ROM 内の
+		 *  どこかまでしか分からず、誰が呼んだかが出ない。 */
+		__asm__ __volatile__ ("rsr.excvaddr %0" : "=a" (excvaddr));
+		val[0] = pe->exccause; val[1] = pe->pc; val[2] = pe->ps;
+		val[3] = pe->a0; val[4] = excvaddr; val[5] = pe->a2;
+		val[6] = pe->a3; val[7] = pe->a8; val[8] = pe->a10;
+		val[9] = pe->a12; val[10] = pe->a13;
+		for (i = 0; i < 11; i++) {
 			const char *s = lbl[i];
 			while (*s != '\0') {
 				while (((*status >> 16) & 0xFFU) >= 120U) { }
@@ -353,7 +362,7 @@ default_exc_handler(void *p_excinf)
 				*fifo = (uint32_t) (uint8_t) hexd[(val[i] >> j) & 0xFU];
 			}
 		}
-		{ const char *s = lbl[9];
+		{ const char *s = lbl[11];
 		  while (*s != '\0') { while (((*status >> 16) & 0xFFU) >= 120U) { } *fifo = (uint32_t)(uint8_t)*s++; } }
 	}
 #endif
