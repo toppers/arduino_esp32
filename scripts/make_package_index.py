@@ -241,6 +241,31 @@ def board_names(boards_txt: Path) -> list[str]:
     return names
 
 
+def _project_website(owner: str, repo: str) -> str:
+    """The project URL for websiteURL / help.online.
+
+    --owner and --repo are required unless --base-url is given, so the release
+    path always has them.  The --base-url path (verify_package.py serving over
+    loopback) does not, and joining two empty strings produced the malformed
+    "https://github.com//".  Fall back to library.properties, which is the same
+    URL and is already the file check_release_artifacts.py holds the index
+    against.  Returning "" is better than a URL that goes nowhere.
+    """
+    if owner and repo:
+        return f"https://github.com/{owner}/{repo}"
+
+    props = Path(__file__).resolve().parent.parent / "library.properties"
+    try:
+        text = props.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key.strip() == "url":
+            return value.strip()
+    return ""
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Build the package index.")
     parser.add_argument("--version", required=True, help="platform version")
@@ -304,7 +329,7 @@ def main() -> int:
     base_url = args.base_url or (
         f"https://github.com/{args.owner}/{args.repo}/releases/download/{tag}")
     base_url = base_url.rstrip("/")
-    website = args.website or f"https://github.com/{args.owner}/{args.repo}"
+    website = args.website or _project_website(args.owner, args.repo)
     driver_version = args.driver_version or args.version
 
     platform_dir = Path(args.platform_dir)

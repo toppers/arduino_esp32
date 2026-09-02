@@ -53,12 +53,28 @@ MARKER = ".toppers-fmp3-platform.json"
 #
 #  The variant is named explicitly rather than taken from the source line,
 #  because it has to be rewritten into the m5stack: namespace anyway.
+#  ★Keyed by our board id, not by chip. Two boards can share a chip - the
+#  M5CoreS3 and the M5StickS3 are both ESP32-S3 and link the same stages - so
+#  a chip cannot name a board. Each entry carries the chip it needs stages for.
+#
+#    our board id: (chip, source board id in the M5Stack boards.txt,
+#                   display name, variant)
+#
+#  The variant is named explicitly rather than taken from the source line,
+#  because it has to be rewritten into the m5stack: namespace anyway.
 BOARDS = {
-    "esp32s3": ("m5stack_cores3", "m5cores3_fmp3",
-                "M5CoreS3 (TOPPERS/FMP3)", "m5stack_cores3"),
-    "esp32": ("m5stack_core", "m5core_fmp3",
-              "M5Core (TOPPERS/FMP3)", "m5stack_core"),
+    "m5cores3_fmp3": ("esp32s3", "m5stack_cores3",
+                      "M5CoreS3 (TOPPERS/FMP3)", "m5stack_cores3"),
+    "m5sticks3_fmp3": ("esp32s3", "m5stack_sticks3",
+                       "M5StickS3 (TOPPERS/FMP3)", "m5stack_sticks3"),
+    "m5core_fmp3": ("esp32", "m5stack_core",
+                    "M5Core (TOPPERS/FMP3)", "m5stack_core"),
 }
+
+
+def boards_for_chips(chips) -> list[str]:
+    """Our board ids for these chips, in BOARDS order."""
+    return [board for board, entry in BOARDS.items() if entry[0] in chips]
 
 MENU_ENTRIES = [
     ("minimal", "Minimal", "minimal"),
@@ -162,14 +178,14 @@ def _is_reparse_point(path: Path) -> bool:
         return False
 
 
-def board_lines(source_boards: Path, chip: str,
+def board_lines(source_boards: Path, board_id: str,
                 stage_root: Path) -> tuple[list[str], list[str]]:
     """Derive our board definition from the M5Stack one.
 
     Returns the menu declarations (shared by every board in a platform, so the
     caller emits them once) and the lines for this one board.
     """
-    source_id, board_id, display_name, variant = BOARDS[chip]
+    chip, source_id, display_name, variant = BOARDS[board_id]
     source_prefix = source_id + "."
     prefix = board_id + "."
 
@@ -307,8 +323,10 @@ def main(argv: list[str] | None = None) -> int:
     #  chip's own directory still installs just that board, which is what the
     #  older invocations do.
     #
+    chips_with_boards = {entry[0] for entry in BOARDS.values()}
     per_chip = {name: stage_root / name
-                for name in BOARDS if (stage_root / name).is_dir()}
+                for name in sorted(chips_with_boards)
+                if (stage_root / name).is_dir()}
     if per_chip:
         if args.chip_given:
             per_chip = {c: r for c, r in per_chip.items() if c in args.chip}
@@ -370,8 +388,10 @@ def main(argv: list[str] | None = None) -> int:
     #  would otherwise declare the menu twice.
     menu_lines: list[str] = []
     board_blocks: list[str] = []
-    for chip in chips:
-        menus, board = board_lines(source_boards, chip, per_chip[chip])
+    #  Boards, not chips: two boards can share one chip's stages.
+    for board_id in boards_for_chips(chips):
+        menus, board = board_lines(source_boards, board_id,
+                                   per_chip[BOARDS[board_id][0]])
         for line in menus:
             if line not in menu_lines:
                 menu_lines.append(line)
@@ -433,7 +453,9 @@ def main(argv: list[str] | None = None) -> int:
         '--gcc "{compiler.path}{compiler.c.cmd}" '
         '--esptool "{tools.esptool_py.path}/{tools.esptool_py.cmd}" '
         '--sdk-ld "{compiler.sdk.path}/ld" '
-        '--sdk-lib "{compiler.sdk.path}/lib"')
+        '--sdk-lib "{compiler.sdk.path}/lib" '
+        #  The board's own flash size, not the stage's; see fmp3_link.py.
+        '--flash-size "{build.flash_size}"')
     #  The inherited partition recipe runs "python3 gen_esp32part.py" on every
     #  host except Windows, which would put a Python requirement back on
     #  macOS and Linux after the driver was frozen to remove it.
@@ -474,8 +496,9 @@ def main(argv: list[str] | None = None) -> int:
 
     print("\nTOPPERS/FMP3 Arduino board platform installed.")
     print(f"  Platform: {platform_root}")
-    for chip in chips:
-        print(f"  Board:    {BOARDS[chip][2]}  ({chip})")
+    for board_id in boards_for_chips(chips):
+        chip, _, display_name, _ = BOARDS[board_id]
+        print(f"  Board:    {display_name}  ({chip})")
     print(f"  Stages:   {staged}")
     print("Restart Arduino IDE before selecting the board.")
     return 0

@@ -23,6 +23,7 @@
 #include <esp_log.h>
 #include <soc/rtc.h>
 #include <soc/soc.h>
+#include <soc/efuse_reg.h>
 #include "m5_periph_clk.h"
 
 #include "m5_stub_trace.h"			/* ★S2: M5_STUB_HIT（黙る no-op を作らない） */
@@ -170,9 +171,40 @@ void nvs_close(nvs_handle_t handle)
 esp_err_t esp_cache_msync(void *addr, size_t size, int flags)
 { M5_STUB_HIT("esp_cache_msync"); (void) addr; (void) size; (void) flags; return(ESP_OK); }
 
-/*  チップパッケージ版数：CoreS3 の autodetect 判定には未使用（0 で無害）。 */
+/*
+ *  チップパッケージ版数（efuse）。
+ *
+ *  ★これは長らく 0 固定のスタブだった（「CoreS3 の autodetect 判定には未使用」
+ *    というコメントつき）。その前提が誤りで，M5GFX の S3 用 autodetect は
+ *    本体が丸ごと switch (m5gfx::get_pkg_ver()) で，
+ *      case 0 : QFN56    → CoreS3 等の検出
+ *      case 1 : LGA56    → ESP32-S3-PICO ＝ StickS3 の検出
+ *      default: break;   → 何も検出せず board_unknown
+ *    という構造になっている。0 固定だと CoreS3 だけが偶然通り，StickS3 は
+ *    case 0 に落ちて必ず board_unknown（Display 幅 0）になっていた。
+ *
+ *  esp_efuse_read_field_blob() 一式（BLK 抽象・coding scheme）を持ち込まず，
+ *  読み出しレジスタを直接見る。ビット位置は ESP-IDF の esp_efuse_table.c と
+ *  soc/efuse_reg.h の双方で一致を確認してある。
+ */
 uint32_t esp_efuse_get_pkg_ver(void)
-{ M5_STUB_HIT("esp_efuse_get_pkg_ver"); return(0U); }
+{
+	uint32_t	pkg_ver;
+
+	M5_STUB_HIT("esp_efuse_get_pkg_ver");
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+	/*  PKG_VERSION = BLK1 bit117 幅3 ＝ RD_MAC_SPI_SYS_3 の [23:21]。 */
+	pkg_ver = REG_GET_FIELD(EFUSE_RD_MAC_SPI_SYS_3_REG, EFUSE_PKG_VERSION);
+#else
+	/*  LX6：CHIP_PACKAGE = BLK0 bit105 幅3 ＝ RDATA3 の [11:9]，
+	 *  上位 1bit が CHIP_PACKAGE_4BIT ＝ 同レジスタの bit2。 */
+	pkg_ver = REG_GET_FIELD(EFUSE_BLK0_RDATA3_REG, EFUSE_RD_CHIP_PACKAGE);
+	if ((REG_READ(EFUSE_BLK0_RDATA3_REG) & EFUSE_RD_CHIP_PACKAGE_4BIT) != 0U) {
+		pkg_ver |= 0x08U;
+	}
+#endif /* CONFIG_IDF_TARGET_ESP32S3 */
+	return(pkg_ver);
+}
 
 /*  CPU クロック設定取得：M5GFX は SPI クロック分周計算に freq_mhz を使う。
  *  プロジェクト既定（160MHz・PLL）を返す。 */
