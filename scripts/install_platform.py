@@ -67,7 +67,7 @@ EXPERIMENTAL_ENTRY = ("aio", "All-in-one (experimental)", "all-in-one")
 #  been done.
 EXPECTED_PROFILES = {
     "esp32s3": {"minimal", "m5-unified", "wifi-connect"},
-    "esp32": {"minimal", "wifi-connect"},
+    "esp32": {"minimal", "m5-unified", "wifi-connect"},
 }
 
 

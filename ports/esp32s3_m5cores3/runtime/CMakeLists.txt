@@ -586,11 +586,17 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/*.cpp"
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/misc/*.cpp"
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/panel/*.cpp"
+        #  platforms/esp32 は共通コードで、その上にチップ別のディレクトリが
+        #  重なる。LX6 では両者が同じディレクトリなので二重に並べない。
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/platforms/esp32/*.cpp"
-        "${M5GFX_SOURCE_ROOT}/lgfx/v1/platforms/esp32s3/*.cpp"
+        $<$<NOT:$<STREQUAL:${A1_CHIP_ARCH_NAME},esp32>>:${M5GFX_SOURCE_ROOT}/lgfx/v1/platforms/${A1_CHIP_ARCH_NAME}/*.cpp>
         "${M5GFX_SOURCE_ROOT}/lgfx/v1/touch/*.cpp")
     list(FILTER M5GFX_CPP_SOURCES EXCLUDE REGEX
-        "platforms/esp32/(Bus_EPD|Panel_EPD|Bus_Parallel8)\\.cpp$")
+        #  Panel_CVBS はコンポジット映像出力で、FreeRTOS の xTaskNotify /
+        #  xPortGetCoreID を直に使う。M5Stack Basic の画面は SPI の
+        #  ILI9342C なので要らない。S3 ではそもそも CONFIG_IDF_TARGET_ESP32 が
+        #  立たず中身が消えるため、除外しても S3 の出力は変わらない。
+        "platforms/esp32/(Bus_EPD|Panel_EPD|Bus_Parallel8|Panel_CVBS)\\.cpp$")
     #
     #  CJKフォント（lgfx/Fonts/efont・IPA）は既定で外す。1つでappパーティション
     #  (3MB)を超えるため到達不能で、事前ビルドステージに42MB積むだけになっていた
@@ -637,6 +643,10 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${RUNTIME_ROOT}/m5/shim/m5_libc_alloc_bridge.c"
         "${RUNTIME_ROOT}/m5/shim/m5_libcxx_glue.c"
         "${RUNTIME_ROOT}/m5/shim/m5_spi_bus_stub.c"
+        #  LX6 の m5 構成でだけ要るスタブ。__getreent を持つので、
+        #  wifi_stubs.c と同居する all-in-one では重複する。今は m5-unified
+        #  だけに入れる（LX6 の all-in-one は未対応）。
+        $<$<AND:$<STREQUAL:${A1_CHIP},esp32>,$<STREQUAL:${FMP3_RUNTIME_PROFILE},m5-unified>>:${RUNTIME_ROOT}/m5/shim/m5_lx6_stubs.c>
         "${RUNTIME_ROOT}/m5/shim/m5_stub_trace.c"
         "${RUNTIME_ROOT}/m5/shim/m5_unified_stubs.c"
         "${RUNTIME_ROOT}/m5/shim/esp_shim_intr.c")

@@ -30,7 +30,10 @@
 #include <hal/gpio_ll.h>
 #include <sil.h>
 #if defined(TOPPERS_ESP32_LX6)
-#include <soc/dport_reg.h>			/* 割込みマトリクスの MAP レジスタ（DPORT） */
+/*  dport_reg.h ではなく reg_base.h を読む。前者は soc/dport_access.h 経由で
+ *  sdkconfig.h を要求し、この TU の include 経路には無いため（wifi profile では
+ *  たまたま通るが m5 profile では通らない）。reg_base.h は #include を持たない。 */
+#include <soc/reg_base.h>			/* DR_REG_DPORT_BASE */
 #else
 #include <soc/interrupt_core0_reg.h>	/* 割込みマトリクスの MAP レジスタ */
 #endif
@@ -60,7 +63,11 @@
  *  DPORT_PRO_GPIO_INTERRUPT_MAP_REG = DR_REG_DPORT_BASE + 0x15C として与える。
  *  上のコメントの「0x3FF00104 + src*4」と符合する：source 0 の MAC が +0x104、
  *  GPIO は source 22 なので 0x104 + 22*4 = 0x15C。 */
-#define ARD_GPIO_MAP_REG	DPORT_PRO_GPIO_INTERRUPT_MAP_REG
+/*  SDK の DPORT_PRO_GPIO_INTERRUPT_MAP_REG と同じ値を、ベースだけ SDK から
+ *  取って組む。オフセットは 2 通りで確かめてある：
+ *    ・soc/esp32/register/soc/dport_reg.h が +0x15C と定義している
+ *    ・source 0（MAC）が +0x104 で、GPIO は source 22 → 0x104 + 22*4 = 0x15C */
+#define ARD_GPIO_MAP_REG	(DR_REG_DPORT_BASE + 0x15CU)
 #else
 #define ARD_GPIO_MAP_REG	INTERRUPT_CORE0_GPIO_INTERRUPT_PRO_MAP_REG
 #endif

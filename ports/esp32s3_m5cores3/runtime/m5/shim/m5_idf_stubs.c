@@ -23,7 +23,7 @@
 #include <esp_log.h>
 #include <soc/rtc.h>
 #include <soc/soc.h>
-#include <soc/system_reg.h>
+#include "m5_periph_clk.h"
 
 #include "m5_stub_trace.h"			/* ★S2: M5_STUB_HIT（黙る no-op を作らない） */
 
@@ -80,12 +80,12 @@ i2c_new_master_bus(const i2c_master_bus_config_t *bus_config,
 	m5_mark_u32("[MK] i2c_new_master_bus in  port=", 0x30U, (unsigned int) port);
 	/*  register 直アクセスが効くよう I2C ペリフェラルクロックを有効化（SYSTEM 直）。 */
 	if (port == 1) {
-		REG_SET_BIT(SYSTEM_PERIP_CLK_EN0_REG, SYSTEM_I2C_EXT1_CLK_EN);
-		REG_CLR_BIT(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_I2C_EXT1_RST);
+		REG_SET_BIT(M5_PERIP_CLK_EN_REG, M5_I2C_EXT1_CLK_EN);
+		REG_CLR_BIT(M5_PERIP_RST_EN_REG, M5_I2C_EXT1_RST);
 	}
 	else {
-		REG_SET_BIT(SYSTEM_PERIP_CLK_EN0_REG, SYSTEM_I2C_EXT0_CLK_EN);
-		REG_CLR_BIT(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_I2C_EXT0_RST);
+		REG_SET_BIT(M5_PERIP_CLK_EN_REG, M5_I2C_EXT0_CLK_EN);
+		REG_CLR_BIT(M5_PERIP_RST_EN_REG, M5_I2C_EXT0_RST);
 	}
 	if (ret_bus_handle != NULL) {
 		int idx = (port == 1) ? 1 : 0;

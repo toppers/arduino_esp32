@@ -101,7 +101,23 @@ extern "C" int32_t toppers_m5_begin(void)
     M5.Display.endWrite();
 
     m5_begin_trace_quiet();
-    return ((phase5Board == 10) || (phase5Board == 17)) ? 1 : -1;
+    /*
+     *  ここまで来たなら M5.begin も初期描画も終わっている。呼び出し元の
+     *  メッセージ（"M5.begin and initial LCD draw PASS"）が問うているのは
+     *  それであって、機種ではない。
+     *
+     *  以前は board が 10（board_M5StackCoreS3）か 17
+     *  （board_M5StackCoreS3SE）かだけを見ていた。CoreS3 しか対象が無い間は
+     *  同じ答えになるが、実際には「CoreS3 か？」を聞いており、M5Stack Basic
+     *  （board_M5Stack = 1）では**画面が 320x240 で認識され描画も済んでいる
+     *  のに FAILED**になった（2026-09-02 実機）。
+     *
+     *  判定は「機種が判別できた（board_unknown = 0 ではない）」かつ
+     *  「画面の大きさが取れている」に置き換える。CoreS3 はどちらも満たすので
+     *  従来と同じ答えになる。
+     */
+    return ((phase5Board != 0) && (phase5Width > 0) && (phase5Height > 0))
+               ? 1 : -1;
 }
 
 extern "C" void toppers_m5_update(void)

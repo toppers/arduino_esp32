@@ -268,6 +268,23 @@ adc_oneshot_read(adc_oneshot_unit_handle_t handle, adc_channel_t chan, int *out_
 	return(ESP_ERR_NOT_SUPPORTED);
 }
 
+/*  校正方式はチップで違う。S3 は curve fitting、無印ESP32(LX6) は
+ *  line fitting しか持たず、config 型も別（esp_adc/adc_cali_scheme.h）。
+ *  どちらも本ポートでは未対応で、M5 側は cali==nullptr なら raw を返す枝を
+ *  持つので、その通り NULL と ESP_ERR_NOT_SUPPORTED を返す。 */
+#if defined(TOPPERS_ESP32_LX6)
+esp_err_t
+adc_cali_create_scheme_line_fitting(const adc_cali_line_fitting_config_t *config,
+									adc_cali_handle_t *ret_handle)
+{
+	M5_STUB_HIT("adc_cali_create_scheme_line_fitting");
+	(void) config;
+	if (ret_handle != NULL) {
+		*ret_handle = NULL;
+	}
+	return(ESP_ERR_NOT_SUPPORTED);
+}
+#else
 esp_err_t
 adc_cali_create_scheme_curve_fitting(const adc_cali_curve_fitting_config_t *config,
 									 adc_cali_handle_t *ret_handle)
@@ -279,6 +296,7 @@ adc_cali_create_scheme_curve_fitting(const adc_cali_curve_fitting_config_t *conf
 	}
 	return(ESP_ERR_NOT_SUPPORTED);
 }
+#endif /* defined(TOPPERS_ESP32_LX6) */
 
 esp_err_t
 adc_cali_raw_to_voltage(adc_cali_handle_t handle, int raw, int *voltage)

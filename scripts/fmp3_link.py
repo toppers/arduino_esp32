@@ -194,12 +194,16 @@ def stage_objects(stage: Path, work: Path,
     return names
 
 
-def expander(stage: Path, sdk: dict[str, Path]):
+def expander(stage: Path, sdk: dict[str, Path], chip: str):
+    #  The peripherals script is named for the chip, and the M5Stack core ships
+    #  one tree per chip. Taking the name from the manifest rather than fixing
+    #  it here is what lets a second board's stage link at all: with esp32s3
+    #  baked in, an esp32 stage asks for a file that is not in its SDK.
     replacements = {
         "@STAGE@": str(stage.resolve()),
         "@SDK_LD_ROOT@": str(sdk["sdk_ld"]),
         "@SDK_LIBRARY_ROOT@": str(sdk["sdk_lib"]),
-        "@SDK_PERIPHERALS_LD@": str(sdk["sdk_ld"] / "esp32s3.peripherals.ld"),
+        "@SDK_PERIPHERALS_LD@": str(sdk["sdk_ld"] / f"{chip}.peripherals.ld"),
     }
 
     def expand(value: str) -> str:
@@ -535,7 +539,7 @@ def main(argv: list[str] | None = None) -> int:
                                               args.project_name)
     names = stage_objects(stage, work, arduino_objects)
 
-    expand = expander(stage, sdk)
+    expand = expander(stage, sdk, manifest["chip"])
     run(build_link_command(manifest, stage, sdk, expand), work, "Linking")
     run([str(sdk["esptool"]), "--chip", manifest["chip"], "elf2image",
          "--flash-mode", manifest["flashMode"],

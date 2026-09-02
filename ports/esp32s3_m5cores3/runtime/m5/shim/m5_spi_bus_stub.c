@@ -20,7 +20,7 @@
  *
  *  実装（design.md §4 の項目対応）:
  *    1. GPSPI2(FSPI) のモジュールクロック有効化＋リセット解除
- *       → SYSTEM_PERIP_CLK_EN0/RST_EN0 レジスタ直（SYSTEM_SPI2_CLK_EN/RST）。
+ *       → SYSTEM_PERIP_CLK_EN0/RST_EN0 レジスタ直（M5_SPI2_CLK_EN/RST）。
  *         ★これがクロックレジスタを実際に変化させる＝positive control の観測対象。
  *       ※既存 periph_ctrl.c（periph_module_enable/reset）の再利用は評価したが不採用：
  *         periph_ctrl.c は platform/os.h 等を esp/config/esp32/hal_stub_include から
@@ -40,7 +40,7 @@
 #include <driver/spi_common.h>
 #include <driver/spi_master.h>
 #include <soc/soc.h>
-#include <soc/system_reg.h>
+#include "m5_periph_clk.h"
 #include <soc/spi_reg.h>
 #include <soc/gpio_sig_map.h>
 #include <soc/io_mux_reg.h>			/* PIN_FUNC_GPIO */
@@ -139,17 +139,63 @@ spi_bus_initialize(spi_host_device_t host_id, const spi_bus_config_t *bus_config
 	s_m5_spi_bus_init_calls++;
 	m5_mark_u32("[MK] spi_bus_initialize in  #", 0x10U, s_m5_spi_bus_init_calls);
 
+#if defined(TOPPERS_ESP32_LX6)
+	/*
+	 *  無印ESP32(LX6) 版。S3 との違いは 3 つで、いずれもチップの構造差である。
+	 *
+	 *  (1) ホストを固定できない。M5GFX は CoreS3 では SPI2 を頼むが、
+	 *      M5Stack Basic の LCD は SCK=18/MOSI=23/MISO=19 ＝ VSPI 既定ピンで、
+	 *      autodetect は SPI3_HOST を渡してくる。よって host_id で選ぶ。
+	 *  (2) クロック／リセットは DPORT の SPI2/SPI3 それぞれのビット。
+	 *  (3) SPI_CLK_GATE_REG に相当するレジスタが**無い**（classic の spi_reg.h に
+	 *      その定義は存在しない）。S3 で無限ハングを避けるために要る
+	 *      マスタクロックゲートは classic には無く、DPORT のクロック許可だけで
+	 *      転送が動く。
+	 *
+	 *  GPIO マトリクスの信号番号は SPI2=HSPI 群 / SPI3=VSPI 群
+	 *  （soc/esp32/include/soc/gpio_sig_map.h）。
+	 */
+	{
+		uint32_t clk_en, rst_bit, clk_out, d_out, d_in, q_in;
+
+		if (host_id == SPI3_HOST) {
+			clk_en = DPORT_SPI3_CLK_EN; rst_bit = DPORT_SPI3_RST;
+			clk_out = VSPICLK_OUT_IDX;  d_out = VSPID_OUT_IDX;
+			d_in    = VSPID_IN_IDX;     q_in  = VSPIQ_IN_IDX;
+		}
+		else {
+			clk_en = DPORT_SPI2_CLK_EN; rst_bit = DPORT_SPI2_RST;
+			clk_out = HSPICLK_OUT_IDX;  d_out = HSPID_OUT_IDX;
+			d_in    = HSPID_IN_IDX;     q_in  = HSPIQ_IN_IDX;
+		}
+
+		REG_SET_BIT(M5_PERIP_CLK_EN_REG, clk_en);
+		REG_SET_BIT(M5_PERIP_RST_EN_REG, rst_bit);	/* reset assert */
+		REG_CLR_BIT(M5_PERIP_RST_EN_REG, rst_bit);	/* reset deassert */
+
+		if (bus_config != NULL) {
+			m5_spi_wire_out(bus_config->mosi_io_num, d_out);
+			/*  3線(SIO)読取で D 線から入力を取るため、S3 と同じく in も張る。 */
+			if (bus_config->mosi_io_num >= 0) {
+				esp_rom_gpio_connect_in_signal(
+					(uint32_t) bus_config->mosi_io_num, d_in, false);
+			}
+			m5_spi_wire_out(bus_config->sclk_io_num, clk_out);
+			m5_spi_wire_in(bus_config->miso_io_num,  q_in);
+		}
+	}
+#else /* defined(TOPPERS_ESP32_LX6) */
 	/*  項目1：GPSPI2 クロック有効化＋リセット解除（SYSTEM レジスタ直）。
-	 *  ★positive control の観測点：この 2 行で SYSTEM_PERIP_CLK_EN0_REG の
-	 *    SYSTEM_SPI2_CLK_EN ビットが 0→1 に変化する。 */
-	REG_SET_BIT(SYSTEM_PERIP_CLK_EN0_REG, SYSTEM_SPI2_CLK_EN);
-	REG_SET_BIT(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_SPI2_RST);		/* reset assert */
-	REG_CLR_BIT(SYSTEM_PERIP_RST_EN0_REG, SYSTEM_SPI2_RST);		/* reset deassert */
+	 *  ★positive control の観測点：この 2 行で M5_PERIP_CLK_EN_REG の
+	 *    M5_SPI2_CLK_EN ビットが 0→1 に変化する。 */
+	REG_SET_BIT(M5_PERIP_CLK_EN_REG, M5_SPI2_CLK_EN);
+	REG_SET_BIT(M5_PERIP_RST_EN_REG, M5_SPI2_RST);		/* reset assert */
+	REG_CLR_BIT(M5_PERIP_RST_EN_REG, M5_SPI2_RST);		/* reset deassert */
 
 	/*  項目1b（★1-6 追加・begin() 内 Bus_SPI::wait() 無限ハングの根本修正）：
 	 *  GPSPI2 の「機能マスタクロックゲート」を有効化する（SPI_CLK_GATE_REG）。
 	 *
-	 *  ★SYSTEM_SPI2_CLK_EN（上の SYSTEM レジスタ）は「SPI レジスタを読み書き
+	 *  ★M5_SPI2_CLK_EN（上の SYSTEM レジスタ）は「SPI レジスタを読み書き
 	 *    できる」バスクロックにすぎず，実際に転送を駆動する内部マスタクロックは
 	 *    別物である。ESP-IDF の実 spi_master は spi_bus_initialize 内で
 	 *    spi_ll_enable_clock（clk_en=1）＋ spi_hal_init→spi_ll_master_init
@@ -159,7 +205,7 @@ spi_bus_initialize(spi_host_device_t host_id, const spi_bus_config_t *bus_config
 	 *    本スタブはこれを欠いていたため，M5GFX が転送を開始（cmd.usr=1）しても
 	 *    機能クロックが動かず SPI_USR ビットが永久に落ちず，Bus_SPI::wait()
 	 *    （Bus_SPI.cpp:345 `while(*spi_cmd_reg & SPI_USR)`）が無限ループした。
-	 *    上の SYSTEM_SPI2_RST リセットは clk_gate を 0 に戻すので，リセット
+	 *    上の M5_SPI2_RST リセットは clk_gate を 0 に戻すので，リセット
 	 *    解除の「後」に立てる必要がある。
 	 *    - SPI_CLK_EN         : clk gate 有効（レジスタクロックゲート）
 	 *    - SPI_MST_CLK_ACTIVE : マスタモジュールクロック投入（★これが無いと無限ハング）
@@ -194,6 +240,8 @@ spi_bus_initialize(spi_host_device_t host_id, const spi_bus_config_t *bus_config
 		m5_spi_wire_in(bus_config->miso_io_num,  FSPIQ_IN_IDX);
 	}
 	(void) host_id;		/* CoreS3 は SPI2 固定 */
+#endif /* defined(TOPPERS_ESP32_LX6) */
+
 	m5_mark_u32("[MK] spi_bus_initialize out #", 0x11U, s_m5_spi_bus_init_calls);
 	return(ESP_OK);
 }
@@ -203,10 +251,20 @@ spi_bus_add_device(spi_host_device_t host_id,
 				   const spi_device_interface_config_t *dev_config,
 				   spi_device_handle_t *handle)
 {
-	(void) host_id;
-	/*  CS ピン配線（devcfg.spics_io_num）。 */
+	/*  CS ピン配線（devcfg.spics_io_num）。信号番号は spi_bus_initialize と
+	 *  同じ理由でチップとホストで変わる。 */
 	if (dev_config != NULL && dev_config->spics_io_num >= 0) {
+#if defined(TOPPERS_ESP32_LX6)
+		m5_spi_wire_out(dev_config->spics_io_num,
+						(host_id == SPI3_HOST) ? VSPICS0_OUT_IDX
+											   : HSPICS0_OUT_IDX);
+#else
+		(void) host_id;
 		m5_spi_wire_out(dev_config->spics_io_num, FSPICS0_OUT_IDX);
+#endif
+	}
+	else {
+		(void) host_id;
 	}
 	if (handle != NULL) {
 		*handle = (spi_device_handle_t)&s_m5_spi_dev_dummy;
