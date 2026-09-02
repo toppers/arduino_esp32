@@ -80,6 +80,19 @@ bt_intr_probe_cyc(intptr_t exinf)
 	syslog_2(LOG_NOTICE, "bt-probe: wifi_clk_en=%08x core_rst_en=%08x",
 			 (intptr_t) *(volatile uint32_t *) 0x3FF000CCU,
 			 (intptr_t) *(volatile uint32_t *) 0x3FF000D0U);
+	/*  BT ベースバンドのレジスタ。0x3FF510F8 は r_rf_btdm_bb_intc_init() が
+	 *  割込みイネーブルを書く先（逆アセンブルで確認）。全部 0 や 0xffffffff なら
+	 *  ペリフェラルがクロック/リセット的に生きていない。 */
+	syslog_4(LOG_NOTICE, "bt-probe: bb[0f8]=%08x bb[0a0]=%08x bb[040]=%08x em0=%08x",
+			 (intptr_t) *(volatile uint32_t *) 0x3FF510F8U,
+			 (intptr_t) *(volatile uint32_t *) 0x3FF510A0U,
+			 (intptr_t) *(volatile uint32_t *) 0x3FF51040U,
+			 (intptr_t) *(volatile uint32_t *) 0x3FFB0000U);
+	/*
+	 *  ★タスク状態をここから読むことはできない。ref_tsk() は周期ハンドラ
+	 *  （非タスク文脈）から E_CTX(-25) を返す。2026-09-02 に試して確認済み
+	 *  なので、次に調べる人は同じことを試さないこと。
+	 */
 	(void) logtask_flush(0U);
 }
 
