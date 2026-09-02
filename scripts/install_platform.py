@@ -81,6 +81,38 @@ EXPECTED_PROFILES = {
 }
 
 
+def warn_if_boards_manager_shadowed(arduino_data: Path) -> None:
+    """Say so when a Boards Manager copy occupies the same packager:arch.
+
+    ★While a sketchbook platform exists at hardware/toppers/esp32, arduino-cli
+    will not manage toppers:esp32 through Boards Manager at all: install,
+    uninstall and search all behave as if the platform did not exist, and the
+    error they give ("Platform 'toppers:esp32@x' not found") points at nothing.
+    The reverse also bites - a Boards Manager copy wins over this one, so a
+    freshly assembled platform is quietly not the one that gets built against.
+
+    Both directions cost real time to work out from the symptom, so say it
+    here rather than let the next person rediscover it.
+    """
+    installed = arduino_data / "packages" / "toppers" / "hardware" / "esp32"
+    #  Only a directory that actually holds a platform counts. A leftover or
+    #  renamed folder beside it is not one, and a warning that fires either
+    #  way says nothing.
+    versions = sorted(entry.name for entry in installed.glob("*")
+                      if (entry / "boards.txt").is_file()) \
+        if installed.is_dir() else []
+    if not versions:
+        return
+    print()
+    print("  Note: Boards Manager already has toppers:esp32 "
+          + ", ".join(versions))
+    print("  Both live under the same packager:architecture, and while this")
+    print("  sketchbook platform exists arduino-cli refuses to install,")
+    print("  uninstall or find the Boards Manager one - it reports the")
+    print("  platform as not found. The IDE will build against THIS copy.")
+    print("  To go back to the released package, remove "
+          "<sketchbook>/hardware/toppers")
+
 def default_sketchbook() -> Path:
     """arduino-cli's default user directory. Linux does not use Documents."""
     if sys.platform.startswith("linux"):
@@ -424,6 +456,10 @@ def main(argv: list[str] | None = None) -> int:
         "coreVersion": args.core_version,
         "chips": chips,
     }, indent=2) + "\n", encoding="utf-8")
+
+    #  <data>/packages/m5stack, so two levels up is the data directory.
+    warn_if_boards_manager_shadowed(
+        Path(sdk['packageRoot']).parent.parent)
 
     print("\nTOPPERS/FMP3 Arduino board platform installed.")
     print(f"  Platform: {platform_root}")
