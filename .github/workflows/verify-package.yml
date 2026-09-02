@@ -39,8 +39,29 @@ env:
 
 jobs:
   package:
-    name: Build the platform (Windows)
-    runs-on: windows-latest
+    #
+    #  Builds the platform both boards ship in.
+    #
+    #  This job used to run on Windows and drive New-Fmp3PrebuiltStages.ps1 and
+    #  Install-ArduinoIdeIntegration.ps1. Those are PowerShell reimplementations
+    #  of build_prebuilt_stages.py and install_platform.py, and only the Python
+    #  pair learned to handle two chips - install_platform.py's own header has
+    #  said for a while that the two of them are everything this job does and
+    #  that it no longer needs a Windows runner. Doing the second board twice,
+    #  in a language the maintainers cannot run outside CI, is how the two
+    #  copies drift apart; the PowerShell scripts stay for local Windows use.
+    #
+    #  One thing moves out rather than across: the partition-table check needs
+    #  gen_esp32part.exe as its reference and is Windows-only by construction.
+    #  It is its own job below.
+    #
+    #  ★The manifests this job writes now use LF where the Windows job wrote
+    #  CRLF. The content is the same - compared line by line against the v0.3.0
+    #  package - but the bytes of link-manifest.json differ from earlier
+    #  releases.
+    #
+    name: Build the platform
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,16 +73,13 @@ jobs:
 
       - uses: arduino/setup-arduino-cli@v2
 
-      - name: Install Ninja
-        #  cmake is preinstalled on windows-latest; ninja is not. The pip wheel
-        #  puts ninja.exe on PATH, which is what New-Fmp3PrebuiltStages.ps1
-        #  resolves by name.
-        run: python -m pip install --disable-pip-version-check ninja
+      - name: Install CMake and Ninja
+        run: python -m pip install --disable-pip-version-check cmake ninja
 
       - name: Install the M5Stack core and libraries
         run: |
-          arduino-cli core update-index --additional-urls "$env:M5STACK_INDEX"
-          arduino-cli core install "m5stack:esp32@$env:CORE_VERSION" --additional-urls "$env:M5STACK_INDEX"
+          arduino-cli core update-index --additional-urls "$M5STACK_INDEX"
+          arduino-cli core install "m5stack:esp32@$CORE_VERSION" --additional-urls "$M5STACK_INDEX"
           #  --no-deps is required. M5Unified 0.2.20 declares a bare
           #  "depends=M5GFX" with no version constraint, so without it the
           #  resolver installs the newest M5GFX and REPLACES the pinned one
@@ -69,56 +87,43 @@ jobs:
           #  m5-unified stage against those sources, so the pin above would be
           #  silently ignored. Observed on a Linux verify run 2026-08-29:
           #  "Replacing M5GFX@0.2.27 with M5GFX@0.2.28".
-          arduino-cli lib install --no-deps "M5GFX@$env:M5GFX_VERSION" "M5Unified@$env:M5UNIFIED_VERSION"
+          arduino-cli lib install --no-deps "M5GFX@$M5GFX_VERSION" "M5Unified@$M5UNIFIED_VERSION"
 
-      - name: Build the prebuilt stages
+      - name: Build the prebuilt stages for both chips
         run: |
-          #  Select-Object -First 1 and Trim() are load-bearing. PowerShell
-          #  captures native command output as an ARRAY of lines, and the
-          #  trailing newline makes this a two-element array whose second
-          #  element is empty. Interpolating that joins the elements with a
-          #  space, so "$sketchbook/libraries/..." came out as
-          #    C:\Users\<runner>\Documents\Arduino /libraries/M5GFX/src
-          #  and the path check failed with that exact string.
-          $sketchbook = (arduino-cli config get directories.user |
-                         Select-Object -First 1).Trim()
-          if ([string]::IsNullOrWhiteSpace($sketchbook)) {
-              throw "arduino-cli did not report directories.user"
-          }
-          ./scripts/New-Fmp3PrebuiltStages.ps1 `
-            -Chip esp32s3 `
-            -CoreVersion $env:CORE_VERSION `
-            -M5GfxSource "$sketchbook/libraries/M5GFX/src" `
-            -M5UnifiedSource "$sketchbook/libraries/M5Unified/src"
+          sketchbook=$(arduino-cli config get directories.user)
+          test -n "$sketchbook" || { echo "arduino-cli did not report directories.user"; exit 1; }
+          for chip in esp32s3 esp32; do
+            python scripts/build_prebuilt_stages.py \
+              --chip "$chip" \
+              --core-version "$CORE_VERSION" \
+              --m5gfx-source "$sketchbook/libraries/M5GFX/src" \
+              --m5unified-source "$sketchbook/libraries/M5Unified/src"
+          done
 
       - name: Assemble the platform
+        #  The parent stage root, so both chips' boards go into one platform.
         run: |
-          ./scripts/Install-ArduinoIdeIntegration.ps1 `
-            -Sketchbook "${{ github.workspace }}/ci-sketchbook" `
-            -PrebuiltStageRoot "${{ github.workspace }}/build/prebuilt/esp32s3" `
-            -PythonExecutable (Get-Command python).Source `
-            -CoreVersion $env:CORE_VERSION `
-            -Chip esp32s3
-
-      - name: Check the partition table conversion
-        #  The driver reimplements gen_esp32part so that macOS and Linux do not
-        #  need python3 for the partition recipe. This is the only job with the
-        #  reference implementation to compare against, and the verify jobs
-        #  cannot catch a divergence because their runners have python3.
-        run: |
-          ./scripts/Test-PartitionTable.ps1 `
-            -PythonExecutable (Get-Command python).Source
+          python scripts/install_platform.py \
+            --sketchbook "${{ github.workspace }}/ci-sketchbook" \
+            --core-version "$CORE_VERSION" \
+            --prebuilt-stage-root "${{ github.workspace }}/build/prebuilt"
 
       - name: Check what is in the platform
         #  A stage missing here becomes a build failure four jobs later, so fail
         #  now with a readable message.
-        shell: bash
         run: |
           root=ci-sketchbook/hardware/toppers/esp32
           test -f "$root/boards.txt" || { echo "no boards.txt"; exit 1; }
-          for p in minimal m5-unified wifi-connect; do
-            test -f "$root/fmp3-prebuilt/esp32s3/$p/link-manifest.json" \
-              || { echo "missing stage: $p"; exit 1; }
+          for board in m5cores3_fmp3 m5core_fmp3; do
+            grep -q "^$board\.name=" "$root/boards.txt" \
+              || { echo "missing board: $board"; exit 1; }
+          done
+          for chip in esp32s3 esp32; do
+            for p in minimal m5-unified wifi-connect; do
+              test -f "$root/fmp3-prebuilt/$chip/$p/link-manifest.json" \
+                || { echo "missing stage: $chip/$p"; exit 1; }
+            done
           done
           #  gen_esp32part.exe is not shipped any more, so nothing may depend
           #  on it. The verify jobs cannot catch this: their runners have
@@ -131,10 +136,13 @@ jobs:
           test ! -f "$root/tools/gen_esp32part.exe"             || { echo "gen_esp32part.exe is back in the platform"; exit 1; }
 
           #  The stages must not carry paths from this runner, or the archive is
-          #  not host-independent.
+          #  not host-independent. check_host_paths.py is the thorough version;
+          #  this catches a Windows drive letter that slipped through a Windows
+          #  build, and costs nothing here.
           if grep -rlE '[A-Za-z]:[\\/]' "$root/fmp3-prebuilt" --include='*.json' --include='*.rsp'; then
             echo "a stage references an absolute path"; exit 1
           fi
+          python scripts/check_host_paths.py "$root"
           du -sh "$root"
 
       - uses: actions/upload-artifact@v4
@@ -142,6 +150,33 @@ jobs:
           name: platform
           path: ci-sketchbook/hardware/toppers/esp32
           if-no-files-found: error
+
+  partition-table:
+    #  Windows-only by construction: gen_esp32part.exe is the reference the
+    #  driver's own conversion is compared against, and the verify jobs cannot
+    #  catch a divergence because their runners have python3 and would take the
+    #  other branch of the recipe. It needs the M5Stack core, not the platform,
+    #  so it does not depend on the package job.
+    name: Partition table conversion (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install the M5Stack core
+        run: |
+          arduino-cli core update-index --additional-urls "$env:M5STACK_INDEX"
+          arduino-cli core install "m5stack:esp32@$env:CORE_VERSION" --additional-urls "$env:M5STACK_INDEX"
+
+      - name: Check the partition table conversion
+        run: |
+          ./scripts/Test-PartitionTable.ps1 `
+            -PythonExecutable (Get-Command python).Source
 
   verify:
     name: Install and build (${{ matrix.host }})

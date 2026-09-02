@@ -55,6 +55,13 @@ PLACEHOLDER = re.compile(rb"<[A-Za-z_-]{2,}>|\{[A-Za-z0-9_.]+\}|%[A-Z_]+%|\$[A-Z
 #  findings. Objects are deliberately NOT here: they are where the leak was.
 SKIP_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".zip", ".gz", ".bz2"}
 
+#  Files a platform directory carries but the archive does not. Keep this in
+#  step with EXCLUDED_FROM_ARCHIVE in make_package_index.py: scanning a
+#  platform directory should ask what ships, and .toppers-fmp3-platform.json
+#  records where the platform was assembled FROM - absolute paths on purpose,
+#  and never distributed.
+NOT_DISTRIBUTED = {".toppers-fmp3-platform.json", "boards.txt.bak"}
+
 
 def contexts(data: bytes) -> list[str]:
     """Every host-path match with a little text around it, placeholders aside."""
@@ -94,6 +101,8 @@ def scan(target: Path, problems: list[str]) -> int:
     if target.is_dir():
         for path in sorted(target.rglob("*")):
             if not path.is_file():
+                continue
+            if path.name in NOT_DISTRIBUTED:
                 continue
             relative = path.relative_to(target)
             #  Judged on the path RELATIVE to the target, so that scanning a
