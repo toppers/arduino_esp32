@@ -725,6 +725,54 @@ esp_intr_alloc(int source, int flags, intr_handler_t handler, void *arg,
 	}
 	esp_shim_bt_intr_alloc_count++;
 
+	/*
+	 *  ★内部ソース（負値）はマトリクスを通らない。
+	 *
+	 *  ESP-IDF は ETS_INTERNAL_*_INTR_SOURCE を負値で表し、CPU 割込み番号は
+	 *  Xtensa 側で固定である（esp_intr_alloc.h）。ESP32 BT コントローラは
+	 *  ETS_INTERNAL_SW1_INTR_SOURCE(-5) を要求し、これは CPU 割込み 29
+	 *  （SW1・レベル3）に当たる。
+	 *
+	 *  旧実装は負値を素通しし、LEVEL3 フラグが無いために線 1 へ載せたうえ、
+	 *  マトリクスの MAP レジスタを 0x3FF00104 + (-5)*4 = 0x3FF000F0
+	 *  （読み出し専用の INTR_STATUS_1）へ書こうとしていた。ハンドラは線 1 に
+	 *  付き、コントローラが上げる SW1 は誰も受けない。2026-09-02 実測で
+	 *  esp_bt_controller_enable() が返らない状態がこれ。
+	 */
+	if (source < 0) {
+		int32_t	internal_line;
+
+		switch (source) {
+		case -1: internal_line = 6;  break;	/* TIMER0 */
+		case -2: internal_line = 15; break;	/* TIMER1 */
+		case -3: internal_line = 16; break;	/* TIMER2 */
+		case -4: internal_line = 7;  break;	/* SW0    */
+		case -5: internal_line = 29; break;	/* SW1    */
+		case -6: internal_line = 11; break;	/* PROFILING */
+		default: internal_line = -1; break;
+		}
+		if (internal_line < 0) {
+			syslog_1(LOG_ERROR, "bt: unknown internal intr source %d",
+					 (int_t) source);
+			return(-1);
+		}
+		cpu_line = (uint32_t) internal_line;
+		slot = &bt_intr_slot[(idx < 2U) ? idx : 1U];
+		if (idx < 2U) {
+			esp_shim_bt_last_intr_line[idx] = cpu_line;
+		}
+		slot->used = 1;
+		slot->source = source;
+		slot->cpu_line = cpu_line;
+		/*  マトリクスは触らない。CPU 側にハンドラを置いて許可するだけ。 */
+		esp_shim_set_isr((int32_t) cpu_line, (void *) isr_fn, isr_arg);
+		(void) ena_int((INTNO) cpu_line);
+		if (ret_handle != NULL) {
+			*ret_handle = (intr_handle_t) slot;
+		}
+		return(ESP_OK);
+	}
+
 	if (level3) {
 		/*  BTコントローラが要求するESP_INTR_FLAG_LEVEL3を実際にXtensa
 		 *  Level-3として配線する（BT_INTR_CPU_LINE3_A/_B定義部参照）。  */

@@ -19,6 +19,7 @@
 #include <kernel.h>
 #include <stdint.h>
 #include <stddef.h>
+#include <t_syslog.h>
 #include "esp_shim.h"			/* esp_shim_set_isr */
 #include "target_timer.h"		/* TOPPERS_ESP32_CPU_FREQ_MHZ */
 
@@ -43,14 +44,34 @@ xt_set_interrupt_handler(int n, xt_handler f, void *arg)
  *  xt_ints_on：mask で指定されたCPU割込み線を許可する。
  *  FMP3 の ena_int() は1本ずつなので、立っているビットを走査して許可する。
  */
+/*  何を許可しようとしたか。プローブ(-DTOPPERS_BT_INTR_PROBE)が読む。 */
+volatile uint32_t	bt_probe_ints_on_mask;
+volatile uint32_t	bt_probe_ints_on_calls;
+volatile int32_t	bt_probe_ena_ercd[32];
+volatile uint32_t	bt_probe_intenable_after;
+
 void
 xt_ints_on(unsigned int mask)
 {
 	unsigned int	i;
 
+	bt_probe_ints_on_mask |= mask;
+	bt_probe_ints_on_calls++;
 	for (i = 0U; i < 32U; i++) {
 		if ((mask & (1UL << i)) != 0U) {
-			(void) ena_int((INTNO) i);
+			ER	ercd = ena_int((INTNO) i);
+
+			bt_probe_ena_ercd[i] = (int32_t) ercd;
+			__asm__ __volatile__ ("rsr.intenable %0"
+								  : "=a" (bt_probe_intenable_after));
+			/*  ★旧実装はこの戻り値を捨てていた。ena_int() は cfg が
+			 *  宣言していない線では失敗し、コントローラは黙って待ち続ける。
+			 *  2026-09-02 に線 29 がこれで有効化されていなかった。 */
+			if (ercd < 0) {
+				syslog_2(LOG_ERROR,
+						 "bt: ena_int(%d) failed (%d); declare it in esp_shim.cfg",
+						 (intptr_t) i, (intptr_t) ercd);
+			}
 		}
 	}
 }

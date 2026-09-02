@@ -175,12 +175,22 @@
  *  いる（target_timer.h等参照）．DEF_INHを静的登録できるのは既知の線
  *  のみ＝blobが使う線はcfg（esp_shim.cfg）に列挙する．
  */
+#if defined(TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
+/*  ★BT Classic は CPU 割込み 29 も使う。
+ *  ESP32 の BT コントローラは esp_intr_alloc(ETS_INTERNAL_SW1_INTR_SOURCE) を
+ *  呼び、xt_ints_on() のマスクにも bit29 を立てる（実測 0x200001a0）。
+ *  Xtensa ESP32 で SW1 は CPU 割込み 29（レベル3）。27 止まりだと
+ *  esp_shim_set_isr() が "out of range" で弾き、ena_int(29) も cfg 未宣言で
+ *  失敗する——どちらも黙って失敗し、コントローラが永久に待つ。 */
+#define ESP_SHIM_MAX_WIFI_INTNO   29
+#else
 #define ESP_SHIM_MAX_WIFI_INTNO   27  /* 1〜15をblob用に開放。23/27はBTコントローラの
 									Level-3割込み（BT-4調査、esp_intr_alloc()の
 									ESP_INTR_FLAG_LEVEL3対応）専用に予約
 									（bt_shim.cが明示的に配線、blobが動的に選ぶ
 									範囲ではないため16〜22等との衝突は無い。
 									.claude/plans/sparkling-forging-taco.md参照） */
+#endif
 
 /*
  *  cfg（esp_shim.cfg）から参照する関数（実体はesp_shim.c）
@@ -198,6 +208,9 @@ extern void esp_shim_inthdr_7(void);
 extern void esp_shim_inthdr_8(void);
 extern void esp_shim_inthdr_23(void);
 extern void esp_shim_inthdr_27(void);
+#if defined(TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
+extern void esp_shim_inthdr_29(void);
+#endif
 #endif /* TOPPERS_MACRO_ONLY */
 
 #endif /* ESP_SHIM_CFG_H */

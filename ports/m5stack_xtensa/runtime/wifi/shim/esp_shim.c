@@ -2170,6 +2170,11 @@ void esp_shim_inthdr_8(void) { shim_int_dispatch(8); }
  */
 void esp_shim_inthdr_23(void) { shim_int_dispatch(23); }
 void esp_shim_inthdr_27(void) { shim_int_dispatch(27); }
+#if defined(TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
+/*  CPU 割込み 29 = Xtensa SW1。ESP32 の BT コントローラが
+ *  ETS_INTERNAL_SW1_INTR_SOURCE として使う。 */
+void esp_shim_inthdr_29(void) { shim_int_dispatch(29); }
+#endif
 
 /*
  *		初期化

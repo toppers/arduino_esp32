@@ -30,6 +30,7 @@
 #include "syssvc/logtask.h"
 
 extern void	esp_shim_coex_adapter_register(void);
+extern void	esp_shim_bt_clock_init(void);
 #include "toppers_bt_spp.h"
 
 /*
@@ -234,6 +235,24 @@ toppers_bt_spp_begin(const char *device_name)
 	 *  EXCCAUSE=28 at coex_core_enable+0x8, vaddr=0x30.
 	 */
 	esp_shim_coex_adapter_register();
+
+	/*
+	 *  ★Ungate the BT clock and release the BT reset first.
+	 *
+	 *  ESP-IDF's bt.c expects periph_module_enable(PERIPH_BT_MODULE) to do
+	 *  this, but this port's periph_ctrl.c has that entire function body
+	 *  behind __PERIPH_CTRL_ALLOW_LEGACY_API, which nothing defines - it is a
+	 *  no-op, and silently so. bt_shim.c carries esp_shim_bt_clock_init() for
+	 *  exactly this, writing the DPORT clock-enable and reset registers, and
+	 *  says it must be called immediately before controller init.
+	 *
+	 *  Without it the baseband stays in reset: on 2026-09-02 on a real
+	 *  M5Stack Basic the routing was programmed (src 4 -> line 8, src 6 and 7
+	 *  -> line 5), the CPU lines were enabled (INTENABLE=0x000601e2) and the
+	 *  handlers were installed, yet DPORT_PRO_INTR_STATUS never showed a
+	 *  single BT source pending and esp_bt_controller_enable() waited forever.
+	 */
+	esp_shim_bt_clock_init();
 
 	err = esp_bt_controller_init(&cfg);
 	if (err != ESP_OK) {

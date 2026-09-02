@@ -31,4 +31,9 @@
  *  へ移した（実装は esp/shim/esp_timer_shim.c）。BT/BLE 構成での値
  *  （16／5／4096）は不変。 */
 
+/*  割込み発火の周期プローブ（bt_intr_probe.c、-DTOPPERS_BT_INTR_PROBE）。 */
+#ifdef TOPPERS_BT_INTR_PROBE
+extern void bt_intr_probe_cyc(intptr_t exinf);
+#endif
+
 #endif /* BT_CFG_H */
