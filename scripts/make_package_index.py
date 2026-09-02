@@ -54,6 +54,13 @@ M5STACK_TOOL_DEPENDENCIES = [
     ("m5stack", "esp-x32", "2601"),
     ("m5stack", "esptool_py", "5.2.0"),
     ("m5stack", "esp32s3-libs", "3.3.8"),
+    #  ★The M5Core board links against the ESP32 (LX6) SDK, which is a
+    #  separate tool from the S3 one. It was missing while the platform held
+    #  only the CoreS3, and stayed missing when the second board was added -
+    #  it went unnoticed because this machine already had the tool installed
+    #  for other work, so the platform installed and built anyway. On a clean
+    #  machine the M5Core builds would have failed at the first include.
+    ("m5stack", "esp32-libs", "3.3.8"),
 ]
 
 DRIVER_TOOL_NAME = "fmp3-link"

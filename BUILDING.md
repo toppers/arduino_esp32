@@ -108,3 +108,29 @@ python scripts/check_host_paths.py <platform または zip>
   `ports/m5stack_xtensa/runtime/CMakeLists.txt` の分岐、
   `install_platform.py` のメニュー定義、`packaging/release-allowlist.json`、
   `scripts/verify_package.py` の `PROFILES` を揃えてください。
+
+## リリース経路の検証（`scripts/verify_package.py`）
+
+パッケージを組み、Boards Manager 経由で入れ直し、両ボード×全構成を建て直す。
+
+```sh
+python3 -m venv ~/.venvs/toppers-verify
+~/.venvs/toppers-verify/bin/pip install pyinstaller
+~/.venvs/toppers-verify/bin/python scripts/verify_package.py \
+    --platform-dir <プラットフォーム> --arduino-cli ~/bin/arduino-cli \
+    --skip-core --skip-libraries
+```
+
+PyInstaller はリンクドライバの凍結に要る。多くのディストリの Python は
+外部管理（PEP 668）なので venv で入れること。
+
+**`--platform-dir` はスケッチブックの外を指すこと。** `<sketchbook>/hardware/
+toppers/esp32` に置いたままだと、arduino-cli はそれをスケッチブック
+プラットフォームとして扱い、Boards Manager 側の `toppers:esp32` を
+「見つからない」と言う（install も uninstall も効かない）。検証するときは
+別の場所へコピーして、スケッチブック側は一時的にどける。
+
+同じ理由で、`~/.arduino15/packages/` に `toppers` の Boards Manager 版が
+残っていると、その `installed.json` を arduino-cli が読み続けて古い index の
+URL を掴む（実測: 消したはずのポートへ HEAD を投げ続けた）。検証中は
+`~/.arduino15/packages/` の**外**へ出しておくこと。

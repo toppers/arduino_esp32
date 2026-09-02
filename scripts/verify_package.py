@@ -309,6 +309,30 @@ def main() -> int:
         #
         subprocess.run(cli + ["core", "uninstall", "toppers:esp32"],
                        capture_output=True, text=True)
+        #
+        #  ★Drop the download cache too, for the same reason one step up.
+        #  arduino-cli keeps downloaded archives and checks them against the
+        #  index by hash. A previous run - or a real release of the same
+        #  version - leaves toppers-esp32-<version>.zip there, and the install
+        #  then dies with "archive hash differs from hash in index" instead of
+        #  fetching the archive this run just built (2026-09-02). Uninstalling
+        #  the platform does not clear it.
+        #
+        subprocess.run(cli + ["cache", "clean"], capture_output=True, text=True)
+        #
+        #  `cache clean` does not touch <data>/staging/packages, which is where
+        #  arduino-cli actually keeps downloaded archives. A stale
+        #  toppers-esp32-<version>.zip there is compared against the index by
+        #  hash and the install dies with "archive hash differs from hash in
+        #  index" - having quietly skipped the download of the archive this run
+        #  built. Only our own archives are removed; other packages' downloads
+        #  are none of this script's business.
+        #
+        staging = Path.home() / ".arduino15" / "staging" / "packages"
+        for stale in staging.glob(f"toppers-esp32-{args.version}.zip"):
+            stale.unlink()
+        for stale in staging.glob("fmp3-link-*.zip"):
+            stale.unlink()
         run(cli + ["core", "install", f"toppers:esp32@{args.version}",
                    "--additional-urls", urls], "installing the FMP3 platform")
         if not args.skip_libraries:
