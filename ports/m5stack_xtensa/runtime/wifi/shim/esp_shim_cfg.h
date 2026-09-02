@@ -116,7 +116,24 @@
  *  ヒープサイズ（静的配列．Wi-Fi blobは実測で数十KBを要求する）
  */
 #ifndef ESP_SHIM_HEAP_SIZE
+#if defined(TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
+/*
+ *  ★bt-classic は 124KB では DRAM に入らない。
+ *
+ *  この profile の DRAM は BT コントローラの exchange memory
+ *  (CONFIG_BTDM_RESERVE_DRAM = 0xdb5c) ぶん狭い（esp32_xip_btc.ld 冒頭）。
+ *  一方 124KB という値は Wi-Fi blob の実測要求から来ており、この profile は
+ *  Wi-Fi blob を一切リンクしない。124KB のままだと .bss が DRAM を
+ *  35,988 バイト超過する（2026-09-02 実測）。
+ *
+ *  80KB は「入る最小」ではなく「入る上で余裕を残した値」で、BlueDroid の
+ *  実際のピークは未計測。実機で詰めるときは bt_stubs.c の
+ *  esp_shim_heap_largest_free_block() を見ること。
+ */
+#define ESP_SHIM_HEAP_SIZE  (80 * 1024)
+#else
 #define ESP_SHIM_HEAP_SIZE  (124 * 1024)
+#endif
 #endif
 
 /*

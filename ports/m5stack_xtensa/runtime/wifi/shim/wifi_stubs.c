@@ -50,8 +50,12 @@ void phy_param_track_tot(_Bool en_wifi, _Bool en_ble_154) { (void)en_wifi; (void
 /*  coex PTI取得。libcoexistが参照。WiFi単独では調停不要。0返し。 */
 int coex_pti_get(uint32_t event, uint8_t *pti) { (void)event; if(pti)*pti=0; return(0); }
 
-/*  BT RF/BB レジスタ初期化。libcoexistが参照。W1(WiFi単独)では未使用。no-op。 */
+/*  BT RF/BB レジスタ初期化。libcoexistが参照。W1(WiFi単独)では未使用なので
+ *  no-op で足りるが、bt-classic では libbtdm_app.a が本物を持つ（そちらを
+ *  使わないと RF が上がらない）。二重定義になるのでこちらを畳む。 */
+#if !defined(TOPPERS_BT_CLASSIC)
 void btdm_rf_bb_reg_init(void) { }
+#endif
 
 /*  coex関数テーブルへのポインタ。S3ではROM変数(coexist_funcs=0x3fcef828)だが
  *  無印はROM/blob非提供。esp_coex_adapter.c が coex_pre_init() で正しい実体を

@@ -37,7 +37,12 @@ from arduino_sdk import SdkError, resolve, tool_executable  # noqa: E402
 SHIPPED_PROFILES = ["minimal", "m5-unified", "wifi-connect"]
 #  'all-in-one' is EXPERIMENTAL: M5Unified + SMP + Wi-Fi in one
 #  runtime. Not in the default set and not shipped.
-ALL_PROFILES = SHIPPED_PROFILES + ["all-in-one"]
+#  bt-classic is LX6 only: the ESP32-S3 has no Bluetooth Classic at all, so
+#  it is not a profile the CoreS3 board can offer. build() refuses it for any
+#  other chip rather than producing a stage no board can select.
+CHIP_ONLY_PROFILES = {"bt-classic": "esp32"}
+
+ALL_PROFILES = SHIPPED_PROFILES + ["all-in-one", "bt-classic"]
 
 #  profile -> (application name, application directory, is it outside ports/)
 APPLICATIONS = {
@@ -45,6 +50,7 @@ APPLICATIONS = {
     "m5-unified": ("phase5_m5_app", "phase5", True),
     "wifi-connect": ("phase9_wifi_connect_app", "wifi_connect", False),
     "all-in-one": ("allinone_app", "allinone", True),
+    "bt-classic": ("bt_classic_app", "bt_classic", False),
 }
 #  Only m5-unified has a self-test application; the others build the same thing
 #  either way. The self-test adds a monitor task that prints PASS or FAILED, and
@@ -52,7 +58,7 @@ APPLICATIONS = {
 #  Boards Manager package are built WITHOUT it.
 SELF_TEST_APPLICATIONS = {"m5-unified": "phase5_m5_selftest"}
 
-NEEDS_SDK_HEADERS = {"m5-unified", "wifi-connect", "all-in-one"}
+NEEDS_SDK_HEADERS = {"m5-unified", "wifi-connect", "all-in-one", "bt-classic"}
 NEEDS_M5_SOURCES = {"m5-unified", "all-in-one"}
 
 
@@ -169,6 +175,13 @@ def main(argv: list[str] | None = None) -> int:
     #  The toolchain has to be first on PATH for CMake's compiler probe.
     env = dict(os.environ)
     env["PATH"] = str(Path(compiler).parent) + os.pathsep + env.get("PATH", "")
+
+    wrong_chip = sorted(name for name in args.profiles
+                        if CHIP_ONLY_PROFILES.get(name, args.chip) != args.chip)
+    if wrong_chip:
+        raise SystemExit(
+            "; ".join(f"the {name} profile is {CHIP_ONLY_PROFILES[name]} only, "
+                      f"not {args.chip}" for name in wrong_chip))
 
     results = []
     for name in args.profiles:

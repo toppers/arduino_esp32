@@ -207,6 +207,23 @@ SECTIONS
     *(.xt_except_table .gcc_except_table*)
     *(.eh_frame .eh_frame.* .eh_frame_hdr)
     *(.xt.lit .xt.lit.* .xt.prop .xt.prop.*)
+
+    /*  4 byte alignment is required: esp_run_init_array() reads these as an
+     *  array of 32-bit function pointers, so an unaligned table makes it call
+     *  something else entirely.  Seen on 2026-09-02 on a real M5Stack Basic
+     *  with the m5-wifi script (__ctors_start=0x3f412fb2), which faulted with
+     *  EXCCAUSE=20 InstrFetchProhibited PC=0x00000074. */
+    . = ALIGN(4);
+    __init_array_start = ABSOLUTE(.);
+    KEEP(*(SORT_BY_INIT_PRIORITY(.init_array.*)))
+    KEEP(*(.init_array))
+    __init_array_end = ABSOLUTE(.);
+    . = ALIGN(4);
+    __ctors_start = ABSOLUTE(.);
+    KEEP(*(SORT_BY_INIT_PRIORITY(.ctors.*)))
+    KEEP(*(.ctors))
+    __ctors_end = ABSOLUTE(.);
+
     . = ALIGN(4);
     _flash_rodata_end = ABSOLUTE(.);
   } > DROM

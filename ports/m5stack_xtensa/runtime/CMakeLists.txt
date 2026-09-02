@@ -78,7 +78,7 @@ endif()
 #    D-4d で初期化を一本化して初めて実物が入り、実機で 18 AP を検出することを
 #    確認したうえで畳んだ。
 #
-if(NOT FMP3_RUNTIME_PROFILE MATCHES "^(minimal|m5-unified|wifi-connect|all-in-one)$")
+if(NOT FMP3_RUNTIME_PROFILE MATCHES "^(minimal|m5-unified|wifi-connect|all-in-one|bt-classic)$")
     message(FATAL_ERROR
         "FMP3_RUNTIME_PROFILE must be minimal, m5-unified, wifi-connect, or all-in-one")
 endif()
@@ -124,7 +124,12 @@ elseif(A1_CHIP STREQUAL "esp32")
     #  esp32_xip_m5.ld は EM 領域を除いた 232KB で、将来 M5+BT 構成を作る
     #  ときのために上流が残しているもの。BT profile を足すときは
     #  そちらか esp32_xip_btc.ld へ分岐すること。
-    set(A1_XIP_LD_NAME esp32_xip_m5_wifi.ld)
+    #  BT だけは EM 領域を空ける必要があるので別のスクリプトを使う。
+    if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+        set(A1_XIP_LD_NAME esp32_xip_btc.ld)
+    else()
+        set(A1_XIP_LD_NAME esp32_xip_m5_wifi.ld)
+    endif()
     set(A1_CHIP_ROM_LD esp32.rom.ld)
     #  LX6 の hardware_init_hook は既定で banner を出したところで無限ループする
     #  （元は QEMU PoC の T1 スコープ）。Arduino ランタイムは sta_ker まで進む。
@@ -156,7 +161,7 @@ set(FMP3_COMPILE_DEFS
     TOPPERS_BOOT_SEAM
     ${A1_CHIP_DEFS})
 set(FMP3_INCLUDE_DIRS "${FMP3_APPLICATION_DIR}")
-if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|wifi-connect|all-in-one)$")
+if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|wifi-connect|all-in-one|bt-classic)$")
     foreach(required
             ARDUINO_SDK_INCLUDE_ROOT
             ARDUINO_SDK_LIBRARY_ROOT)
@@ -182,6 +187,15 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|wifi-connect|all-in-one)$")
         "${CMAKE_CURRENT_LIST_DIR}/wifi/config/${A1_CHIP_ARCH_NAME}"
         #  attachInterrupt の cfg 片とその定数ヘッダ。
         "${CMAKE_CURRENT_LIST_DIR}/arduino")
+    if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+        #  bt.cfg（BT タスク・割込み）の置き場。
+        list(APPEND FMP3_INCLUDE_DIRS "${CMAKE_CURRENT_LIST_DIR}/bt")
+        #  ★seam_objects 側にも要る。esp_shim_bt_crit_wifi.c は Wi-Fi 専用の
+        #    critical section 実装で、bt_shim.c の本実装と二重定義になる。
+        #  cfg パスにも要る（esp_shim.cfg の CRE_FLG がこれで出る）。
+        list(APPEND FMP3_COMPILE_DEFS
+            TOPPERS_BT_CLASSIC TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
+    endif()
 endif()
 
 #
@@ -357,7 +371,10 @@ endif()
 target_link_libraries(seam_objects PRIVATE seam_common)
 add_dependencies(seam_objects generate_cfg_gen_files)
 
-if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
+#  bt-classic joins this list because it compiles against the same ESP-IDF
+#  headers; the Wi-Fi specific pieces below are harmless to it and the shim
+#  headers it does need are here.
+if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one|bt-classic)$")
     set(WIFI_INCLUDE_DIRS
         #  attachInterrupt の定数ヘッダ。
         "${RUNTIME_ROOT}/arduino"
@@ -426,38 +443,66 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
     #  with the wifi-scan profile: it stood in for the supplicant that profile
     #  did not link, and this one links the real thing.
     #
+    #
+    #  ここから下は 2 段に分かれる。
+    #
+    #    (a) ESP-IDF 供給の共通土台（shim と PHY）。bt-classic にも要る——
+    #        BlueDroid と BT コントローラは Wi-Fi と同じ FreeRTOS shim / PHY を使う。
+    #    (b) Wi-Fi 本体（アダプタ・coex・wifi_init）。bt-classic では
+    #        **リンクしてはいけない**。Wi-Fi アーカイブを引かない profile に
+    #        これらが混ざると esp_wifi_* / coex_* が丸ごと未定義になる（実測 59 件）。
+    #
     target_sources(seam_objects PRIVATE
-        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_scan.c")
-    target_compile_definitions(wifi_common INTERFACE
-        TOPPERS_ESP_WIFI_WPA2)
-    target_sources(seam_objects PRIVATE
-        #  Shared Wi-Fi bring-up. Both adapters used to own a
-        #  private esp_wifi_init()/esp_wifi_start() and a private copy of the
-        #  pinned WPA callback table, which is what stopped them from being
-        #  linked into one profile.
-        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_core.c"
-        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_optional_stubs.c"
-        "${RUNTIME_ROOT}/wifi/shim/esp_shim_bt_crit_wifi.c"
         "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_mtx.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_sem.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_tsk.c"
-        "${RUNTIME_ROOT}/wifi/shim/esp_wifi_adapter.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_libc.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_blobglue.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_event_shim.c"
-        "${RUNTIME_ROOT}/wifi/shim/wifi_stubs.c"
-        "${RUNTIME_ROOT}/wifi/shim/esp_coex_adapter.c"
         "${RUNTIME_ROOT}/wifi/hal_src/periph_ctrl.c"
         "${RUNTIME_ROOT}/wifi/hal_src/phy_common.c"
         "${RUNTIME_ROOT}/wifi/hal_src/phy_init.c"
         "${RUNTIME_ROOT}/wifi/hal_src/phy_init_data.c"
-        "${RUNTIME_ROOT}/wifi/hal_src/esp_wifi_regulatory.c"
-        "${RUNTIME_ROOT}/wifi/hal_src/wifi_init.c"
-        "${RUNTIME_ROOT}/wifi/hal_src/wifi_lib_printf.c"
         "${RUNTIME_ROOT}/wifi/hal_src/phy_lib_printf.c"
+        #  名前に反して PHY/RTC 用のスタブ集（esp_timer_*・gpio_config・
+        #  rtc_init_clk ほか）。phy_common.c が要求するので Wi-Fi 無しでも要る。
+        "${RUNTIME_ROOT}/wifi/shim/wifi_stubs.c"
+        #  BT コントローラも coex の調停 API を無条件で呼ぶので Wi-Fi 無しでも要る。
+        "${RUNTIME_ROOT}/wifi/shim/esp_coex_adapter.c"
         )
+    if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+        #  BlueDroid の FreeRTOS キューの実体。Wi-Fi は osi テーブル経由で
+        #  キューを使うため引かない（他 profile の stage を変えないよう限定する）。
+        target_sources(seam_objects PRIVATE
+            "${RUNTIME_ROOT}/wifi/shim/esp_shim_ring.c")
+        #  seam_objects 側にも要る（wifi_stubs.c が BT ブロブと衝突する
+        #  no-op を畳むのに見ている）。bt_common の同名定義とは別経路。
+        target_compile_definitions(wifi_common INTERFACE
+            TOPPERS_BT_CLASSIC TOPPERS_ESP32_BT_BLUEDROID_CLASSIC)
+    endif()
+    if(NOT FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+        target_compile_definitions(wifi_common INTERFACE
+            TOPPERS_ESP_WIFI_WPA2)
+        target_sources(seam_objects PRIVATE
+            #  Scan and connect share one bring-up (toppers_wifi_core.c), so
+            #  both adapters live in this one profile. Both used to own a
+            #  private esp_wifi_init()/esp_wifi_start() and a private copy of
+            #  the pinned WPA callback table, which is what stopped them from
+            #  being linked into one profile.
+            "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_scan.c"
+            "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_core.c"
+            "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_optional_stubs.c"
+            #  Wi-Fi 専用の critical section 実装。bt-classic では bt_shim.c が
+            #  per-core mux つきの本実装を持つので外す（二重定義になる）。
+            "${RUNTIME_ROOT}/wifi/shim/esp_shim_bt_crit_wifi.c"
+            "${RUNTIME_ROOT}/wifi/shim/esp_wifi_adapter.c"
+            "${RUNTIME_ROOT}/wifi/hal_src/esp_wifi_regulatory.c"
+            "${RUNTIME_ROOT}/wifi/hal_src/wifi_init.c"
+            "${RUNTIME_ROOT}/wifi/hal_src/wifi_lib_printf.c"
+            )
+    endif()
     target_link_libraries(seam_objects PRIVATE wifi_common)
 
     if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
@@ -693,6 +738,73 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
     add_dependencies(m5_runtime_objects generate_cfg_gen_files)
 endif()
 
+#
+#  Bluetooth Classic (SPP). LX6 only - the ESP32-S3 has no BT Classic - and
+#  built from the tree imported from upstream esp/bt.
+#
+#  The two *_diag.c files are upstream's tracing hooks, behind options there
+#  and not built here; they are kept so the option can be added back without
+#  another import.
+#
+#  sdkconfig_override/ comes FIRST on the include path: BlueDroid needs a
+#  different configuration from the Wi-Fi side, and whichever sdkconfig.h is
+#  found first wins. libc_override/ supplies the few headers the BlueDroid
+#  sources expect and this port does not otherwise have.
+#
+if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+    if(NOT A1_CHIP STREQUAL "esp32")
+        message(FATAL_ERROR
+            "the bt-classic profile is esp32 (LX6) only; the ESP32-S3 has no "
+            "Bluetooth Classic (got A1_CHIP=${A1_CHIP})")
+    endif()
+    add_library(bt_common INTERFACE)
+    target_compile_definitions(bt_common INTERFACE
+        ESP_PLATFORM
+        ${A1_CHIP_IDF_DEFS}
+        CONFIG_ESP_PHY_ENABLED=1
+        TOPPERS_ESPIDF_SUPPLY
+        #  ★名前に反して「Bluetooth を有効にする」スイッチである。この sdkconfig.h
+        #    では CONFIG_BT_ENABLED / CONFIG_BTDM_* が丸ごとこの #ifdef の配下に
+        #    あり、立てないと esp_bt.h が「bluetooth is not enabled」分岐に落ちる。
+        #    BLE か BR/EDR かは bt/classic/sdkconfig_override が
+        #    CONFIG_BTDM_CTRL_MODE_BLE_ONLY を外して BR_EDR_ONLY に付け替える。
+        CONFIG_ESPRESSIF_BLE
+        #  上流のゲート名。esp_shim_cfg.h の ESP_SHIM_NUM_FLG と esp_shim.cfg の
+        #  CRE_FLG（SPP の tx_event_group 用イベントフラグプール）がこれを見る。
+        TOPPERS_ESP32_BT_BLUEDROID_CLASSIC
+        TOPPERS_BT_CLASSIC)
+    target_compile_options(bt_common INTERFACE
+        -Wno-error=implicit-function-declaration)
+    target_include_directories(bt_common INTERFACE
+        #  kernel_cfg.h (cfg が吐く) はここ。
+        "${GENERATED_DIR}"
+        "${RUNTIME_ROOT}/bt/classic/sdkconfig_override"
+        "${RUNTIME_ROOT}/bt/classic/libc_override"
+        "${RUNTIME_ROOT}/bt/classic"
+        "${RUNTIME_ROOT}/bt/adapter"
+        "${RUNTIME_ROOT}/bt"
+        "${RUNTIME_ROOT}/bt/stub/include"
+        #  BlueDroid's own headers.  The stack itself is not built from source:
+        #  the M5Stack core ships it compiled, as libbt.a (host) beside
+        #  libbtdm_app.a (controller), so this runtime only supplies the shims
+        #  those two archives call into.
+        "${ARDUINO_SDK_INCLUDE_ROOT}/bt/common/osi/include"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/bt/common/api/include/api"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/bt/host/bluedroid/api/include/api"
+        "${ARDUINO_SDK_INCLUDE_ROOT}/bt/include/esp32/include"
+        ${WIFI_INCLUDE_DIRS})
+
+    file(GLOB BT_SOURCES
+        "${RUNTIME_ROOT}/bt/*.c"
+        "${RUNTIME_ROOT}/bt/classic/*.c"
+        "${RUNTIME_ROOT}/bt/adapter/*.c"
+        "${RUNTIME_ROOT}/bt/shim/*.c")
+    list(FILTER BT_SOURCES EXCLUDE REGEX "_diag\\.c$")
+    add_library(bt_objects OBJECT ${BT_SOURCES})
+    target_link_libraries(bt_objects PRIVATE seam_common bt_common)
+    add_dependencies(bt_objects generate_cfg_gen_files)
+endif()
+
 set(CONSUMER_OBJECTS
     "$<TARGET_OBJECTS:seam_objects>;"
     "$<TARGET_OBJECTS:seam_start>;"
@@ -702,6 +814,9 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
 endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
     list(APPEND CONSUMER_OBJECTS "$<TARGET_OBJECTS:net_objects>")
+endif()
+if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+    list(APPEND CONSUMER_OBJECTS "$<TARGET_OBJECTS:bt_objects>")
 endif()
 if(DEFINED ARDUINO_OBJECTS AND NOT "${ARDUINO_OBJECTS}" STREQUAL "")
     foreach(arduino_object IN LISTS ARDUINO_OBJECTS)
@@ -722,6 +837,32 @@ set(XIP_LINK_UFLAGS "")
 set(XIP_LINK_LIBGROUP "-lstdc++@@-lm")
 set(XIP_EXTRA_TSCRIPTS "")
 set(XIP_EXTRA_DEPENDS "")
+if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+    #  BlueDroid はソースからは組まない。M5Stack コアが host を libbt.a (lib/)、
+    #  controller を libbtdm_app.a (ld/) として同梱しており、この runtime は
+    #  その2つが呼ぶ FreeRTOS/ESP-IDF 側の shim だけを供給する。
+    set(BT_ARCHIVES
+        "${ARDUINO_SDK_LIBRARY_ROOT}/libbt.a"
+        "${ARDUINO_SDK_LIBRARY_ROOT}/libcoexist.a"
+        "${ARDUINO_SDK_LD_ROOT}/libbtdm_app.a"
+        "${ARDUINO_SDK_LD_ROOT}/libphy.a"
+        "${ARDUINO_SDK_LD_ROOT}/librtc.a")
+    foreach(archive IN LISTS BT_ARCHIVES)
+        if(NOT EXISTS "${archive}")
+            message(FATAL_ERROR "Arduino Bluetooth archive not found: ${archive}")
+        endif()
+    endforeach()
+    set(XIP_LINK_LIBGROUP
+        "-L${ARDUINO_SDK_LIBRARY_ROOT}@@"
+        "-L${ARDUINO_SDK_LD_ROOT}@@"
+        "-Wl,--start-group@@"
+        "-lbt@@-lbtdm_app@@-lcoexist@@-lphy@@-lrtc@@"
+        "-lstdc++@@-lm@@-Wl,--end-group")
+    string(JOIN "" XIP_LINK_LIBGROUP ${XIP_LINK_LIBGROUP})
+    list(APPEND XIP_EXTRA_DEPENDS ${BT_ARCHIVES})
+    #  arduino_interrupt.c が参照する GPIO 等のレジスタ番地定義。
+    set(XIP_EXTRA_TSCRIPTS "${ARDUINO_SDK_LD_ROOT}/${A1_CHIP_ARCH_NAME}.peripherals.ld")
+endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
     set(WIFI_ARCHIVES
         "${ARDUINO_SDK_LIBRARY_ROOT}/libnet80211.a"
@@ -913,6 +1054,9 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
 endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
     list(APPEND PREBUILT_CONSUMER_OBJECTS "$<TARGET_OBJECTS:net_objects>")
+endif()
+if(FMP3_RUNTIME_PROFILE STREQUAL "bt-classic")
+    list(APPEND PREBUILT_CONSUMER_OBJECTS "$<TARGET_OBJECTS:bt_objects>")
 endif()
 
 #  消費側オブジェクトはコマンドラインではなくファイルで渡す。

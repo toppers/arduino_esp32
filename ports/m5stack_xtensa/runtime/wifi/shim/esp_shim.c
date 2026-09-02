@@ -1525,10 +1525,19 @@ esp_shim_probe_dump(void)
 }
 #endif /* TOPPERS_STACK_PROBE */
 
+/*
+ *  ★2026-09-02: 本体を _pinned 側へ移した。
+ *
+ *  従来はコア指定を受け取らず ESP_SHIM_TASK_NO_AFFINITY を直書きしていた。
+ *  プリビルドの BlueDroid は xTaskCreatePinnedToCore() をコア指定つきで
+ *  呼ぶため、その指定を捨てずに渡せる入口が要る。従来名は NO_AFFINITY
+ *  固定のラッパとして残してあるので、Wi-Fi 側の挙動は変わらない。
+ */
 int32_t
-esp_shim_task_create(void (*entry)(void *), const char *name,
+esp_shim_task_create_pinned(void (*entry)(void *), const char *name,
 					 uint32_t stack_size, void *param,
-					 uint32_t freertos_prio, void **task_handle)
+					 uint32_t freertos_prio, void **task_handle,
+					 uint32_t core_id)
 {
 	uint_t		i = ESP_SHIM_NUM_TSK;
 	uint_t		slot = ESP_SHIM_NUM_TSK;
@@ -1660,7 +1669,7 @@ esp_shim_task_create(void (*entry)(void *), const char *name,
 	SHIM_DBG_U(esp_shim_heap_free_size());
 	SHIM_DBG_BTENV();
 	SHIM_DBG_STR(">>\r\n");
-	if (!esp_shim_tsk_activate(t->tskid, ESP_SHIM_TASK_NO_AFFINITY)) {
+	if (!esp_shim_tsk_activate(t->tskid, core_id)) {
 		(void) esp_shim_tsk_terminate(t->tskid);
 		{
 			SHIM_LOCK();
@@ -1677,6 +1686,16 @@ esp_shim_task_create(void (*entry)(void *), const char *name,
 		*task_handle = (void *)t;
 	}
 	return(1);
+}
+
+int32_t
+esp_shim_task_create(void (*entry)(void *), const char *name,
+					 uint32_t stack_size, void *param,
+					 uint32_t freertos_prio, void **task_handle)
+{
+	return(esp_shim_task_create_pinned(entry, name, stack_size, param,
+									   freertos_prio, task_handle,
+									   ESP_SHIM_TASK_NO_AFFINITY));
 }
 
 void

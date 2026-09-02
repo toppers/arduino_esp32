@@ -12,7 +12,7 @@
  *  排他が成立する(BT のような per-core mux は不要)。TOPPERS_ESPIDF_SUPPLY 時
  *  のみ有効(baseline/BTビルドとは二重定義しない)。
  */
-#if defined(TOPPERS_ESPIDF_SUPPLY)
+#if defined(TOPPERS_ESPIDF_SUPPLY) && !defined(TOPPERS_BT_CLASSIC)
 #include <stdint.h>
 #include "esp_shim.h"
 
@@ -38,4 +38,4 @@ esp_shim_bt_exit_critical(void *mux)
 		esp_shim_int_restore(wc_saved_state);
 	}
 }
-#endif /* TOPPERS_ESPIDF_SUPPLY */
+#endif /* TOPPERS_ESPIDF_SUPPLY && !TOPPERS_BT_CLASSIC */
