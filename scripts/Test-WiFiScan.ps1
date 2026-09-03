@@ -35,7 +35,12 @@ param(
     [string]$M5ArduinoRoot = '',
     [string]$ArduinoBuildPath = '',
     [string]$BuildDirectory = '',
-    [string]$Fqbn = 'm5stack:esp32:m5stack_cores3',
+    #  -Chip picks the board's default FQBN and the toolchain's name; -Fqbn
+    #  overrides the former. Defaults keep this test's CoreS3 behaviour.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
+    [string]$Fqbn = '',
     [switch]$SkipBuild
 )
 
@@ -44,17 +49,27 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
+if ([string]::IsNullOrWhiteSpace($Fqbn)) {
+    $Fqbn = switch ($Chip) {
+        'esp32' { 'm5stack:esp32:m5stack_core' }
+        default { 'm5stack:esp32:m5stack_cores3' }
+    }
+}
+#  Only a non-default chip gets a suffix, so the esp32s3 paths are unchanged.
+$chipSuffix = if ($Chip -eq 'esp32s3') { '' } else { "-$Chip" }
 if ([string]::IsNullOrWhiteSpace($ArduinoBuildPath)) {
-    $ArduinoBuildPath = Join-Path $M5ArduinoRoot 'build\arduino-phase7-wifi-scan'
+    $ArduinoBuildPath = Join-Path $M5ArduinoRoot `
+        "build\arduino-phase7-wifi-scan$chipSuffix"
 }
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
-    $BuildDirectory = Join-Path $M5ArduinoRoot 'build\phase7-wifi-scan-native'
+    $BuildDirectory = Join-Path $M5ArduinoRoot `
+        "build\phase7-wifi-scan-native$chipSuffix"
 }
 
 $recipeScript = Join-Path $M5ArduinoRoot 'scripts\Invoke-SketchLinkRecipe.ps1'
 $sketch = Join-Path $M5ArduinoRoot 'examples\WiFiScan'
 $toolchainBin = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin'
-$nm = Join-Path $toolchainBin 'xtensa-esp32s3-elf-nm.exe'
+$nm = Join-Path $toolchainBin "xtensa-$Chip-elf-nm.exe"
 
 foreach ($required in @($ArduinoCli, $recipeScript, $sketch, $nm)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -74,6 +89,7 @@ $commonRecipeArguments = @(
     #  Both Wi-Fi adapters - connect and scan - are compiled into this one
     #  profile, so it is what carries wifi/adapter/toppers_wifi_scan.c.
     '-Profile wifi-connect'
+    "-Chip $Chip"
 ) -join ' '
 
 if (-not $SkipBuild) {

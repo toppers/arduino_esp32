@@ -14,7 +14,12 @@ param(
     [string]$M5ArduinoRoot = '',
     [string]$ArduinoBuildPath = '',
     [string]$FmpBuildDirectory = '',
-    [string]$Fqbn = 'm5stack:esp32:m5stack_cores3',
+    #  -Chip picks the board's default FQBN and the toolchain's name; -Fqbn
+    #  overrides the former. Defaults keep this test's CoreS3 behaviour.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
+    [string]$Fqbn = '',
     [switch]$ReuseArduinoObjects
 )
 
@@ -23,16 +28,28 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
+if ([string]::IsNullOrWhiteSpace($Fqbn)) {
+    $Fqbn = switch ($Chip) {
+        'esp32' { 'm5stack:esp32:m5stack_core' }
+        default { 'm5stack:esp32:m5stack_cores3' }
+    }
+}
+#  Only a non-default chip gets a suffix, so the esp32s3 paths stay exactly
+#  what they were - other tests read these directories by name.
+$chipSuffix = if ($Chip -eq 'esp32s3') { '' } else { "-$Chip" }
 if ([string]::IsNullOrWhiteSpace($ArduinoBuildPath)) {
-    $ArduinoBuildPath = Join-Path $M5ArduinoRoot 'build\arduino-phase4-m5unified'
+    $ArduinoBuildPath = Join-Path $M5ArduinoRoot `
+        "build\arduino-phase4-m5unified$chipSuffix"
 }
 if ([string]::IsNullOrWhiteSpace($FmpBuildDirectory)) {
-    $FmpBuildDirectory = Join-Path $M5ArduinoRoot 'build\phase4-seam-s3-m5'
+    $FmpBuildDirectory = Join-Path $M5ArduinoRoot `
+        "build\phase4-seam-s3-m5$chipSuffix"
 }
 
 $recipeScript = Join-Path $M5ArduinoRoot 'scripts\Invoke-SketchLinkRecipe.ps1'
 $sketch = Join-Path $M5ArduinoRoot 'examples\M5UnifiedLink'
-$nm = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin\xtensa-esp32s3-elf-nm.exe'
+$nm = Join-Path $M5StackPackage `
+    "tools\esp-x32\2601\bin\xtensa-$Chip-elf-nm.exe"
 
 foreach ($required in @($ArduinoCli, $recipeScript, $sketch, $nm)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -52,6 +69,7 @@ $commonRecipeArguments = @(
     #  phase4 includes freertos/FreeRTOS.h; the m5-unified profile is the
     #  one that puts a FreeRTOS shim on the include path.
     '-Profile m5-unified'
+    "-Chip $Chip"
 ) -join ' '
 
 if ($ReuseArduinoObjects) {

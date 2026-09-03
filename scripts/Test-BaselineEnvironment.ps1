@@ -70,7 +70,15 @@ function Invoke-VersionCommand {
 }
 
 $arduinoCore = Join-Path $M5StackPackage 'hardware\esp32\3.3.8'
-$toolchain = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin\xtensa-esp32s3-elf-gcc.exe'
+#  Both chips, because the suite now builds for both. Checking only the S3
+#  compiler said the environment was complete on a machine that could not
+#  build a thing for the M5Core.
+$toolchains = [ordered]@{
+    'esp32s3' = Join-Path $M5StackPackage `
+        'tools\esp-x32\2601\bin\xtensa-esp32s3-elf-gcc.exe'
+    'esp32' = Join-Path $M5StackPackage `
+        'tools\esp-x32\2601\bin\xtensa-esp32-elf-gcc.exe'
+}
 $esptool = Join-Path $M5StackPackage 'tools\esptool_py\5.2.0\esptool.exe'
 $boardFile = Join-Path $arduinoCore 'boards.txt'
 $platformFile = Join-Path $arduinoCore 'platform.txt'
@@ -84,9 +92,12 @@ Test-RequiredPath 'fmp3_core submodule' (
 Test-RequiredPath 'vendored runtime' (
     Join-Path $SourceTree 'ports\m5stack_xtensa\runtime\CMakeLists.txt') | Out-Null
 Test-RequiredPath 'M5Stack Arduino core 3.3.8' $arduinoCore | Out-Null
-Test-RequiredPath 'M5CoreS3 boards.txt' $boardFile | Out-Null
+Test-RequiredPath 'M5Stack boards.txt' $boardFile | Out-Null
 Test-RequiredPath 'M5Stack platform.txt' $platformFile | Out-Null
-Test-RequiredPath 'Xtensa ESP32-S3 compiler' $toolchain | Out-Null
+foreach ($entry in $toolchains.GetEnumerator()) {
+    Test-RequiredPath ('Xtensa {0} compiler' -f $entry.Key) $entry.Value |
+        Out-Null
+}
 Test-RequiredPath 'esptool' $esptool | Out-Null
 Test-RequiredPath 'CMake' $CMake | Out-Null
 Test-RequiredPath 'Ninja' $Ninja | Out-Null
@@ -97,7 +108,9 @@ Write-Host 'Versions'
 Write-Host '--------'
 Invoke-VersionCommand 'CMake' $CMake
 Invoke-VersionCommand 'Ninja' $Ninja
-Invoke-VersionCommand 'Xtensa GCC' $toolchain
+foreach ($entry in $toolchains.GetEnumerator()) {
+    Invoke-VersionCommand ('Xtensa GCC ({0})' -f $entry.Key) $entry.Value
+}
 Invoke-VersionCommand 'esptool' $esptool @('version')
 Invoke-VersionCommand 'Arduino CLI' $ArduinoCli @('version')
 
@@ -133,15 +146,26 @@ if ($repoPresent) {
     }
 }
 
+#  The M5Stack boards this port derives its own from. m5stack_core is the
+#  plain M5Core (LX6); the suite builds for it too now, so its absence is a
+#  failure rather than something discovered later in a compile.
+$derivedBoards = [ordered]@{
+    'm5stack_cores3' = 'M5CoreS3'
+    'm5stack_core' = 'M5Core'
+}
 if (Test-Path -LiteralPath $boardFile) {
-    $coreS3 = Select-String -LiteralPath $boardFile -Pattern '^m5stack_cores3\.'
-    if (-not $coreS3) {
-        Write-Host '[FAIL] m5stack_cores3 board definition was not found'
-        $failures.Add('m5stack_cores3 board definition')
-    }
-    else {
-        Write-Host ''
-        Write-Host ('[OK]   M5CoreS3 board definition: {0} entries' -f $coreS3.Count)
+    Write-Host ''
+    foreach ($board in $derivedBoards.GetEnumerator()) {
+        $entries = Select-String -LiteralPath $boardFile `
+            -Pattern ('^{0}\.' -f $board.Key)
+        if (-not $entries) {
+            Write-Host ('[FAIL] {0} board definition was not found' -f $board.Key)
+            $failures.Add(('{0} board definition' -f $board.Key))
+        }
+        else {
+            Write-Host ('[OK]   {0} board definition: {1} entries' -f
+                $board.Value, $entries.Count)
+        }
     }
 }
 

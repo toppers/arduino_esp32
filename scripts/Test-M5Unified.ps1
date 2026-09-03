@@ -14,7 +14,12 @@ param(
     [string]$M5ArduinoRoot = '',
     [string]$ArduinoBuildPath = '',
     [string]$FmpBuildDirectory = '',
-    [string]$Fqbn = 'm5stack:esp32:m5stack_cores3',
+    #  -Chip picks the board's default FQBN and the toolchain's name; -Fqbn
+    #  overrides the former. Defaults keep this test's CoreS3 behaviour.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
+    [string]$Fqbn = '',
     [switch]$ReuseArduinoObjects
 )
 
@@ -23,17 +28,29 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
+if ([string]::IsNullOrWhiteSpace($Fqbn)) {
+    $Fqbn = switch ($Chip) {
+        'esp32' { 'm5stack:esp32:m5stack_core' }
+        default { 'm5stack:esp32:m5stack_cores3' }
+    }
+}
+#  Only a non-default chip gets a suffix, so the esp32s3 paths stay exactly
+#  what they were - other tests read these directories by name.
+$chipSuffix = if ($Chip -eq 'esp32s3') { '' } else { "-$Chip" }
 if ([string]::IsNullOrWhiteSpace($ArduinoBuildPath)) {
-    $ArduinoBuildPath = Join-Path $M5ArduinoRoot 'build\arduino-phase5-m5unified'
+    $ArduinoBuildPath = Join-Path $M5ArduinoRoot `
+        "build\arduino-phase5-m5unified$chipSuffix"
 }
 if ([string]::IsNullOrWhiteSpace($FmpBuildDirectory)) {
-    $FmpBuildDirectory = Join-Path $M5ArduinoRoot 'build\phase5-seam-s3-m5'
+    $FmpBuildDirectory = Join-Path $M5ArduinoRoot `
+        "build\phase5-seam-s3-m5$chipSuffix"
 }
 
 $recipeScript = Join-Path $M5ArduinoRoot 'scripts\Invoke-SketchLinkRecipe.ps1'
 $sketch = Join-Path $M5ArduinoRoot 'examples\M5Unified'
 $applicationDirectory = Join-Path $M5ArduinoRoot 'fmp_app\phase5'
-$nm = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin\xtensa-esp32s3-elf-nm.exe'
+$nm = Join-Path $M5StackPackage `
+    "tools\esp-x32\2601\bin\xtensa-$Chip-elf-nm.exe"
 
 foreach ($required in @($ArduinoCli, $recipeScript, $sketch, $applicationDirectory, $nm)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -51,6 +68,7 @@ $commonRecipeArguments = @(
     "-FmpApplicationDirectory `"$applicationDirectory`""
     '-FmpApplicationName phase5_m5_selftest'
     '-Profile m5-unified'
+    "-Chip $Chip"
 ) -join ' '
 
 if ($ReuseArduinoObjects) {
@@ -128,9 +146,15 @@ foreach ($forbiddenSymbol in @('app_main', 'vTaskStartScheduler', 'loopTask(void
     }
 }
 
+#  One wrapper fewer on the M5Core, and the difference is the hardware.
+#  __wrap__ZN4lgfx2v112Touch_FT5x064initEv wraps the CoreS3's capacitive touch
+#  controller; the M5Core has no touch panel, so M5GFX never instantiates
+#  Touch_FT5x06 and there is nothing to wrap. Everything else is common.
+$expectedWrappers = if ($Chip -eq 'esp32') { 12 } else { 13 }
 $wrapped = @($defined | Select-String -SimpleMatch ' T __wrap__')
-if ($wrapped.Count -ne 13) {
-    throw "Expected 13 M5.begin/update wrappers, found $($wrapped.Count)."
+if ($wrapped.Count -ne $expectedWrappers) {
+    throw ("Expected $expectedWrappers M5.begin/update wrappers for " +
+        "-Chip $Chip, found $($wrapped.Count).")
 }
 
 $undefined = @(& $nm -u $elf)
@@ -162,5 +186,6 @@ Write-Host 'M5Unified integration passed static validation.'
 Get-FileHash -Algorithm SHA256 $elf, $bin |
     ForEach-Object { Write-Host ('  {0}  {1}' -f $_.Hash, $_.Path) }
 Write-Host '  M5.begin(), LCD, update/touch, IMU, RTC, and PMIC paths are reachable.'
-Write-Host '  All 13 M5.begin/update diagnostic wrappers are linked.'
+Write-Host ('  All {0} M5.begin/update diagnostic wrappers are linked.' -f
+    $expectedWrappers)
 Write-Host '  Arduino app_main and the FreeRTOS scheduler are absent.'

@@ -33,7 +33,12 @@ param(
     #  Install-ArduinoIdeIntegration.ps1 both default to the same place.
     [string]$Sketchbook = '',
 
-    [string]$Fqbn = 'toppers:esp32:m5cores3_fmp3'
+    #  -Chip picks this port's board FQBN and the toolchain's name; -Fqbn
+    #  overrides the former. install_platform.py names the boards.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
+    [string]$Fqbn = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,7 +47,14 @@ if ([string]::IsNullOrWhiteSpace($LibraryRoot)) {
     $LibraryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
-    $BuildDirectory = Join-Path $LibraryRoot 'build\arduino-phase1'
+    $BuildDirectory = Join-Path $LibraryRoot `
+        ("build\arduino-phase1" + $(if ($Chip -eq 'esp32s3') { '' } else { "-$Chip" }))
+}
+if ([string]::IsNullOrWhiteSpace($Fqbn)) {
+    $Fqbn = switch ($Chip) {
+        'esp32' { 'toppers:esp32:m5core_fmp3' }
+        default { 'toppers:esp32:m5cores3_fmp3' }
+    }
 }
 if ([string]::IsNullOrWhiteSpace($Sketchbook)) {
     $documents = [Environment]::GetFolderPath('MyDocuments')
@@ -53,7 +65,8 @@ if ([string]::IsNullOrWhiteSpace($Sketchbook)) {
 }
 
 $sketch = Join-Path $LibraryRoot 'examples\LibraryInfo'
-$nm = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin\xtensa-esp32s3-elf-nm.exe'
+$nm = Join-Path $M5StackPackage `
+    "tools\esp-x32\2601\bin\xtensa-$Chip-elf-nm.exe"
 
 foreach ($required in @($ArduinoCli, $sketch, $nm)) {
     if (-not (Test-Path -LiteralPath $required)) {
