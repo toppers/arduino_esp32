@@ -56,7 +56,7 @@ esp32(LX6) 側が通ったことで、直前コミット e485cc2 が「未検証
 | `Test-RecipeOverride.ps1` | **FAIL** | ★14。★3 は解消したが、単体で建つアプリが無い（★13） |
 | `Test-Regression.ps1` | **FAIL** | 修正後に通しで再実行: `Arduino library PASS 215.4s` → 2 本目 `recipe override FAIL 33.3s` で abort（★14）。初回は 1 本目（★2）で止まっていた |
 | `Test-ArduinoReleasePackage.ps1` | 初回 **FAIL** → ★2・★5・★6・★8・★9 を直して **PASS** | ZIP SHA-256 `CCAE66401CE961982C70A7AD9D3FA0B62A07FC6716C4A33AB6C9C22FFC1DE8E4` |
-| `Test-Hardware.ps1` | 初回 **FAIL** → ★15・★16 を直して **PASS** | 4 回連続 `EXIT=0`。queue/FromISR/セマフォ枯渇の 3 検査すべて PASS |
+| `Test-Hardware.ps1` | 初回 **FAIL** → ★15・★16・★19 を直して **PASS** | 8 回連続 `EXIT=0`。★16 だけでは 2/6 で落ちていた |
 | `Test-M5UnifiedHardware.ps1` | 初回 **FAIL** → ★10 を直して **PASS** | 3 回連続 `EXIT=0` |
 | `Test-DualCoreHardware.ps1` | 初回 **FAIL** → ★10・★11 を直して **PASS** | 3 回連続 `EXIT=0` |
 | `Test-Touch.ps1` | **PASS** | `first touch x=211 y=83`、60 秒で 91 検出。1 回目は判定窓の外で押していたため FAIL（★17） |
@@ -770,7 +770,46 @@ RTOS API boundary probe PASS
 揃えた。取り込みループの早期終了条件も同じ全一致で、**一度も早期終了できず
 毎回 `-CaptureSeconds` を待ち切っていた**ので、これも揃えた。
 
-修正後 **4 回連続 `EXIT=0`**:
+**★16 の修正だけでは足りなかった。** 当時 4 回連続 `EXIT=0` を確認して収めたが、
+それは代表的な標本ではなかった。`origin/main` 追従後に測り直すと **2/6 で落ちた**。
+末尾に賭けた照合も、末尾ごと潰れる run があるからである:
+
+```
+[APIProbe] FreeRTOS API boundary probe Psp_shim: acre_sem failed ercd=-34 ...
+```
+
+`probe P` で切れて別の書き手に奪われ、`PASS` が消えている。原因は
+`fmp_app/phase4/phase4_freertos_app.c` の側にあった。`phase4_log` は
+`target_fput_log` で 1 文字ずつポートへ直接書き、`esp_shim` は `syslog` と
+logtask 経由で書く。両者に排他は無い。そして
+`phase8_semaphore_probe()` は直前に `esp_shim: acre_sem failed` を**意図的に**
+何本も出させるので、衝突は偶発ではなく構造的に起こりやすい。判定行は一度しか
+出ないため、その 1 行を失うと答えを失う。★10 で直した 2 本が安定なのは、
+繰り返し出るマーカーの**回数**を見ていて 1 行の生存に依存しないから。
+
+判定を出す前に logtask を吐き切らせた（`vTaskDelay(300ms)`。phase4 は
+self-test で出荷物ではない）。**8 回連続 `EXIT=0`**:
+
+```
+COM hardware probe passed.
+  Queue empty/full/FIFO/reset: PASS
+  FromISR compatibility wrappers (task-context invocation): PASS
+  Semaphore and queue pool exhaustion/reuse: PASS
+```
+
+なお接頭辞の欠けは残っている。8 回すべてで判定行はこう届く:
+
+```
+e] FreeRTOS API boundary probe PASS
+```
+
+`[APIProb` の 8 文字がきっかり欠けており、**毎回同じ量**である。ばらつきが
+無いので logtask との競合ではなく、FIFO かバッファ境界の類だと思われるが、
+**特定していない。** 分かっているのは、末尾は 8 回すべて無傷だったこと。
+つまり ★16 の「末尾一致」は接頭辞が常に欠けるから必要で、今回の drain 待ちは
+末尾まで潰れるのを止めるために必要で、**両方が要る**。
+
+（★16 修正直後の記録）
 
 ```
 COM hardware probe passed.
@@ -823,6 +862,37 @@ VENDID `0x11` / FIRMID `0x10` or `0x12`。この値は panel の init コマン�
 
 一致するのが正しい。`ARDUINO_ARCHIVE` はスケッチリンク経路でしか消費されず、
 ステージ生成には入らないため。
+
+### ★18 2 つのインストーラが知っているボードが食い違っている（未修正・別件）
+
+この run の作業を `origin/main` に追いついた時点で見つかったもので、**この run の
+変更が招いたものではない**。上流が 3 枚目のボード M5StickS3 を入れた
+（`3de123c` 以降）ことで、既にあった分岐が露わになった。
+
+| インストーラ | 経路 | 知っているボード |
+| --- | --- | --- |
+| `scripts/install_platform.py` | 出荷・CI | 3 枚（`m5cores3_fmp3` / `m5core_fmp3` / `m5sticks3_fmp3`） |
+| `scripts/Install-ArduinoIdeIntegration.ps1` | legacy ZIP | M5StickS3 を知らない（`grep -c stick` = 0） |
+
+上流の `4247b19 Say three boards where the metadata still said two` は
+メタデータの整合を取ったコミットだが、PowerShell 側は対象外だったらしい。
+
+**未修正。** legacy ZIP 経路が 3 枚目を提供すべきかどうか自体が判断を含み、
+この run で検証していない領域なので、記録に留めて別途とする。
+`Test-ArduinoReleasePackage.ps1` は PowerShell 側インストーラを使うので、
+直すならそのテストの boards.txt 照合も一緒に見ること。
+
+### ★19 判定行が壊れる真因は logtask との無排他な同時書き込み（この run で修正済み）
+
+★16 の節に書いた。要点だけ再掲すると: `phase4_log` は logtask を経由せず
+ポートへ直接書き、`esp_shim` は `syslog` 経由で書く。排他が無く、しかも
+`phase8_semaphore_probe()` が直前にエラーログを意図的に大量に出す。判定行は
+一度しか出ないので壊れると答えが失われる。判定前に `vTaskDelay(300ms)` で
+logtask を吐き切らせて 8/8 になった。
+
+**★16 の教訓のほう**が残す価値がある。「4 回連続通ったので直った」と結論した
+のが早すぎた。1/3 の確率で落ちるものは 4 回で 20% ほどの確率で全部通る。
+間欠的なものを直したと言うなら、**直す前の失敗率を測って**から言うべきだった。
 
 ### ★7 BOM 無しの `.ps1` に非 ASCII を書くと Windows PowerShell 5.1 が壊す
 
@@ -892,6 +962,7 @@ BOM 無し・非 ASCII ゼロになった。`Build-SeamS3M5.ps1` は今回の書
 | `scripts/Test-M5UnifiedHardware.ps1` | 同上（★10・★11） |
 | `scripts/Test-Hardware.ps1` | リセットを EN パルスへ（★11）。判定を末尾一致へ、取り込みループの早期終了も同じ形へ（★16） |
 | `fmp_app/phase4/phase4_freertos_app.cfg` | 旧静的セマフォプールを `AID_SEM(4)` ＋ガード 1 本へ移行（★15） |
+| `fmp_app/phase4/phase4_freertos_app.c` | 判定を出す前に logtask を吐き切らせる（★19） |
 | `scripts/Test-Touch.ps1` | 同上（★11。★3 のため未検証） |
 
 ★3・★4 は直していない。どちらも「どう直すか」がテストの意図や配布形態の

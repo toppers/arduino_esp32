@@ -218,6 +218,27 @@ phase4_freertos_probe_task(EXINF exinf)
     phase8_queue_probe();
     phase8_semaphore_probe();
 
+    /*
+     *  Let the log task drain before the verdict.
+     *
+     *  phase4_log writes to the port directly, one character at a time,
+     *  while esp_shim reports through syslog and the log task. Nothing
+     *  serialises the two, so a line written while the log task is draining
+     *  comes out shredded - and phase8_semaphore_probe() has just provoked a
+     *  burst of "esp_shim: acre_sem failed" on purpose, which is what makes
+     *  the collision likely rather than incidental. The verdict is printed
+     *  exactly once, so losing that one line loses the answer:
+     *
+     *      [APIProbe] FreeRTOS API boundary probe Psp_shim: acre_sem fail...
+     *      obe] FreeRTOS API boundary probe PASS
+     *
+     *  Both of those are this line, from two different runs, and
+     *  Test-Hardware.ps1 misread it two runs in six. The other hardware
+     *  tests do not suffer this: they count repeated markers rather than
+     *  relying on a single line surviving.
+     */
+    vTaskDelay(pdMS_TO_TICKS(300U));
+
     if (phase4_freertos_probe_failures == 0U) {
         phase4_log("[APIProbe] FreeRTOS API boundary probe PASS\n");
     }
