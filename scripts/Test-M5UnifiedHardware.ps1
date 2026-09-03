@@ -21,6 +21,14 @@
 
 [CmdletBinding()]
 param(
+    #  CoreS3 only, by decision. This test flashes an image that
+    #  Test-ArduinoReleasePackage.ps1 built from the legacy library ZIP, and
+    #  the legacy path is CoreS3-only - see the note in
+    #  scripts/Install-ArduinoIdeIntegration.ps1 and A-2 in
+    #  docs/windows-tests/backlog.md. Multi-board coverage belongs to the
+    #  stage path, so there is no -Chip here: pointing this at the M5Core
+    #  would mean taking its image from somewhere else, which changes what
+    #  the test validates.
     [string]$Port = 'COM4',
     [int]$Baud = 115200,
     [int]$CaptureSeconds = 80,

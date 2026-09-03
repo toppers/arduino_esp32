@@ -49,21 +49,50 @@ Arduino への参照なし）。テストはそれを `-Profile minimal` で建�
 これで `Test-Regression.ps1` も **7/7 PASS（149.7 秒）** になり、赤かった 2 本が
 両方解消した。
 
-### A-2 2 つのインストーラが知っているボードが食い違う（★18）
+### A-2 legacy ZIP は CoreS3 専用、多ボードは stage 経路のみ — 決定済み
 
-| インストーラ | 経路 | 知っているボード |
+2 つのインストーラが出すボードが食い違っていた:
+
+| インストーラ | 経路 | 出すボード |
 | --- | --- | --- |
-| `scripts/install_platform.py` | 出荷・CI | 3 枚（`m5cores3_fmp3` / `m5core_fmp3` / `m5sticks3_fmp3`） |
-| `scripts/Install-ArduinoIdeIntegration.ps1` | legacy ZIP | M5StickS3 を知らない |
+| `scripts/install_platform.py` | stage（Boards Manager パッケージ） | 3 枚、表駆動 |
+| `scripts/Install-ArduinoIdeIntegration.ps1` | legacy ZIP | 1 枚（`m5cores3_fmp3` 直書き） |
 
-上流の M5StickS3 追加（`3de123c` 以降）が、既にあった分岐を露わにしたもの。
-`4247b19 Say three boards where the metadata still said two` はメタデータの
-整合を取ったコミットだが PowerShell 側は対象外だったらしい。
+当初これを「M5StickS3 が漏れている」と書いたが、実態は 2 枚分の差で、
+M5Core が Python 側に入った時点から開いていた。上流の M5StickS3 追加
+（`3de123c` 以降）がそれを 2 枚に広げただけである。
 
-**判断が要る点**: legacy ZIP 経路が 3 枚目を提供すべきなのか。提供するなら
-`Test-ArduinoReleasePackage.ps1` の boards.txt 照合も一緒に見ること。
-提供しないなら、そう決めた理由を PowerShell 側に書いておくべき
-（でないと次に見た人が「漏れ」として直す）。
+**決定: legacy ZIP は CoreS3 専用のままとし、多ボードは stage 経路だけで
+支える。** 根拠は 2 経路の位置づけの差にある:
+
+| | legacy | stage |
+| --- | --- | --- |
+| 利用者の前提 | CMake / Ninja / Python | ツールチェーンと esptool だけ |
+| OS | PowerShell 実装のみ＝Windows 専用 | 3 OS |
+| ボード | 1 枚 | 3 枚（表駆動） |
+| 位置づけ | `install_platform.py` が「移植せず拒否する」と明記 | 本命 |
+
+`install_platform.py` は legacy 経路を意図的に実装していない
+（「is not ported and is refused here rather than half-supported」）。
+その位置づけに 1 ボードは整合している。
+
+決定を `Install-ArduinoIdeIntegration.ps1` の該当箇所に書いた——直書きを
+「一般化して直す」対象と誤解されないように。legacy 経路が将来別のボードを
+運ぶなら、それはこの決定の変更であって表の欠落ではない。
+
+**`library.properties` の `sentence=` は直さない。** 一度「3 ボードと謳って
+いるのに 1 ボードしか出さないのは矛盾」と書いたが、それは
+`library.properties` を ZIP 専用のものと見なした誤りだった。実際は
+`install_platform.py` と `make_package_index.py`（`LIBRARY_ITEMS`）の両方が
+使っており、Boards Manager パッケージについては 3 ボードで**正しい**。
+浮いているのは ZIP のファイル名（`ToppersFMP3-M5CoreS3-*.zip`）だけで、
+CoreS3 専用と決めた以上それは正しい名前である。
+
+**帰結**: `Test-M5UnifiedHardware.ps1` と `Test-DualCoreHardware.ps1` は
+legacy ZIP の成果物を焼くので **CoreS3 専用のまま**とし、`-Chip` を付けない。
+両者にその旨を書いた。M5Core の実機で「パッケージされた例題」を確かめたく
+なったら、イメージを stage 経路から取ることになり、それはこの 2 本の検証対象
+そのものを変える判断になる（下の B-4 と同じ話）。
 
 ## B. スイートの穴（`README.md` の「★対象外」）
 
@@ -153,10 +182,22 @@ bt-classic     183    1.9 build\prebuilt\esp32t-classic          EXIT=0
 `tools/bt/spp_echo_test.py` で済ませている。スイートには `bt-classic` を
 建てる／焼くテストが 1 本も無いので、B-1 と同じ話になる。
 
-### B-4 複数ボードが 1 パッケージに入った Release ZIP
+### B-4 複数ボードの Release ZIP — 非目標になった（A-2 の決定より）
 
-`Test-ArduinoReleasePackage.ps1` は CoreS3 の FQBN しか建てない。
-ボードが 3 枚になったので、A-2 と合わせて見るのが自然。
+`Test-ArduinoReleasePackage.ps1` が CoreS3 の FQBN しか建てないのは、
+A-2 で legacy ZIP を CoreS3 専用と決めたので**穴ではなく仕様**になった。
+
+代わりに残るのは別の穴である。**3 ボードを運ぶ出荷物（stage 経路の Boards
+Manager パッケージ）を、Windows のスイートは 1 本も検証していない。**
+`Test-ArduinoReleasePackage.ps1` は legacy ZIP を、それ以外のホスト側テストは
+seam 経路を見ており、`install_platform.py` が組んだプラットフォームから
+スケッチを建てるテストが無い。今日それを手で 1 回やった
+（`runs/2026-09-02-first-windows-run.md` の「スイート外」節）が、
+一度の確認はテストではない。
+
+Linux 側の `scripts/verify_package.py` はまさにそれを 3 ボード分やっている。
+Windows で重ねる価値があるのは、PowerShell のステージビルド・Windows の
+arduino-cli・gen_esp32part というホスト経路そのものだけである。
 
 ## C. テスト基盤の質
 

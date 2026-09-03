@@ -220,6 +220,21 @@ foreach ($toolFile in $toolFiles) {
     }
 }
 
+#  ONE board, the CoreS3, and that is a decision rather than an oversight.
+#
+#  scripts/install_platform.py emits three - m5cores3_fmp3, m5core_fmp3 and
+#  m5sticks3_fmp3 - from a table, and it is the one that builds the Boards
+#  Manager package. This script is the only implementation of the legacy path,
+#  where the FMP3 runtime is compiled from source during every sketch build:
+#  it needs CMake, Ninja and Python on the user's machine, it is PowerShell so
+#  it works on Windows only, and install_platform.py refuses to port it rather
+#  than half-support it. Multi-board support belongs to the stage path; the
+#  legacy path stays CoreS3-only.
+#
+#  So: do not "fix" the hardcoded m5stack_cores3 below by generalising it.
+#  If the legacy path should ever carry another board, that is a change of
+#  this decision, not a missing table.
+#  Recorded in docs/windows-tests/backlog.md as A-2.
 $sourceBoardLines = Get-Content -LiteralPath $sourceBoards -Encoding utf8 |
     Where-Object {
         $_ -match '^menu\.' -or $_ -match '^m5stack_cores3\.'

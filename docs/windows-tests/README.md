@@ -64,19 +64,26 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
 
 ## ★対象外（既知の穴）
 
-**15 本すべて CoreS3(ESP32-S3) 前提**で、次はどれも検証していない:
+ホスト側 7 本と `Test-Hardware.ps1` は `-Chip esp32s3|esp32` を取り、
+どちらのボードでも通る。それ以外は CoreS3 前提のままで、次は検証していない:
 
-- **M5Core (ESP32/LX6) ボード** — minimal / m5-unified / wifi-connect / all-in-one
-  （2026-09-02 の run で m5-unified だけは実機まで通した。スイート外の確認なので
-  ここは穴のまま残す: `runs/2026-09-02-first-windows-run.md` の「スイート外」節）
+- ~~**M5Core (ESP32/LX6) ボード**~~ — ホスト側 7 本と `Test-Hardware.ps1` は
+  `-Chip esp32` で通る（`backlog.md` の B-1）。残るのは
+  `Test-M5UnifiedHardware.ps1` / `Test-DualCoreHardware.ps1` で、legacy ZIP の
+  成果物を焼くため CoreS3 専用のまま。`Test-Touch.ps1` は M5Core に
+  タッチパネルが無いので対象外
 - **M5StickS3 ボード** — 上流で追加された 3 枚目
   （`scripts/install_platform.py` は知っているが、ここのテストは 1 本も触らない）
-- **`bt-classic` profile と `BluetoothSPP` 例題** — M5Core 専用。
-  ランタイム側は受け付けるのに `New-Fmp3PrebuiltStages.ps1` の `-Profiles` の
-  ValidateSet に無いので、Windows ではステージを作る口が塞がっている。
+- **`bt-classic` profile の `BluetoothSPP` 例題** — M5Core 専用。
+  ステージは Windows でも建つようになった（`backlog.md` の B-3。
+  `New-Fmp3PrebuiltStages.ps1 -Chip esp32 -Profiles bt-classic`）が、
+  それを建てる／焼くテストは 1 本も無い。
   Linux 側では `tools/bt/spp_echo_test.py` で実機確認済み
-- **複数ボードが 1 パッケージに入った状態** — `Test-ArduinoReleasePackage.ps1` は
-  CoreS3 の FQBN しか建てない。ボードは 3 枚になっている
+- **stage 経路の Boards Manager パッケージ** — 3 ボードを運ぶ出荷物は
+  `install_platform.py` が組むこちらだが、それからスケッチを建てるテストが
+  1 本も無い。`Test-ArduinoReleasePackage.ps1` は legacy ZIP を見ており、
+  その ZIP は CoreS3 専用と決めた（`backlog.md` の A-2）ので、
+  そちらが CoreS3 だけなのは穴ではなく仕様
 
 Linux 側で通っている `scripts/verify_package.py`（3 ボード分を建てる）と
 役割が重なる部分もあるが、**Windows のホスト経路そのもの**（PowerShell の
