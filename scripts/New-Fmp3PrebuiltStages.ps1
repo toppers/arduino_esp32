@@ -130,7 +130,7 @@ function Find-ToolFile {
     return $found[0].FullName
 }
 
-#  ★The toolchain is named for the chip. Hardcoding the S3 one made
+#  The toolchain is named for the chip. Hardcoding the S3 one made
 #  -Chip esp32 build with the wrong compiler while the parameter said
 #  otherwise - it was accepted and silently wrong.
 $toolchainCompiler = Find-ToolFile `
