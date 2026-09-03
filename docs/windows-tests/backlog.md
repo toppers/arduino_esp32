@@ -192,7 +192,7 @@ Processor 1 start.
 `library.properties` の `name=` は ZIP のファイル名でもあるため
 影響範囲を確かめる必要がある。**未修正・要判断。**
 
-### B-3 `bt-classic` — ステージを作る口は開いた（例題の実機確認は未）
+### B-3 `bt-classic` — ステージも例題も実機の SPP 往復まで確認した
 
 **Windows でステージを作れなかったのは PowerShell 側の取り残しだった。**
 ランタイム側は最初から `bt-classic` を受け付け
@@ -208,23 +208,56 @@ Python 側を写した。ValidateSet に `bt-classic` を追加し、アプリ�
 （S3 に Bluetooth Classic は無いので、どのボードも選べないステージを作っても
 意味がない）。
 
-実測:
-
 ```
 $ New-Fmp3PrebuiltStages.ps1 -Chip esp32s3 -Profiles bt-classic
-bt-classic is LX6 only: the ESP32-S3 has no Bluetooth Classic,
-so -Chip esp32s3 cannot build it. Use -Chip esp32.        EXIT=1
-
+bt-classic is LX6 only: ... Use -Chip esp32.               EXIT=1
 $ New-Fmp3PrebuiltStages.ps1 -Chip esp32 -Profiles bt-classic
-bt-classic     183    1.9 build\prebuilt\esp32t-classic          EXIT=0
+bt-classic     183    1.9                                  EXIT=0
 ```
 
 同じ ValidateSet にありながら Windows で一度も建てていなかった
 `all-in-one` も確認した: `all-in-one 163 5.2`（esp32s3）で通る。
 
-**残っている穴**: `BluetoothSPP` 例題の実機確認。M5Core が必要で、Linux 側は
-`tools/bt/spp_echo_test.py` で済ませている。スイートには `bt-classic` を
-建てる／焼くテストが 1 本も無いので、B-1 と同じ話になる。
+例題のビルドは `Test-StagePlatform.ps1` が M5Core 向けにやる（B-4）。
+
+**実機の SPP 往復も Windows から確認した。** M5Core（COM31、
+Bluetooth MAC `5c:01:3b:0c:ca:44`）に焼くとサーバが立つ:
+
+```
+bt: controller enabled
+bt: bluedroid initialised
+bt: bluedroid enabled
+bt: SPP server up as M5Stack-SPP
+[BluetoothSPP] discoverable as M5Stack-SPP
+```
+
+Linux 側の `tools/bt/spp_echo_test.py` は `AF_BLUETOOTH`/`BTPROTO_RFCOMM` を
+直接使うので Windows では成立しない。Windows ではペアリング後に割り当てられる
+**送信用 COM ポート**を使う。今回は `COM34`（`PNPDeviceID` に
+`5C013B0CCA44` が入っているので、どの機体のポートかはそれで判別できる）。
+ペアリングは Windows の設定から手で行う必要があり、PowerShell からはできない。
+
+Linux 側と同じく **positive control 付き**で測った:
+
+```
+real     : match=True    received=echo: spp-roundtrip-2
+
+control  : match=False   (1 byte corrupted on purpose; must be False)
+long     : sent=140  received=155 bytes  starts-with-echo=True
+```
+
+140 バイト送ると 155 バイト返るのは仕様どおり——例題は 128 バイトのバッファで
+行を組み立てて満杯で吐き出すので、127 バイトを超えると 2 回に分かれ、
+それぞれに `echo: ` が付く。
+
+**注意**: この例題のサーバは `ESP_SPP_SEC_NONE` で、**認証なしで誰でも
+接続できる**。例題自身がそう警告している。確認が済んだら別のイメージを
+焼いておくこと。
+
+**副産物**: Windows のデバイス名が **`M5Sta`** と 5 文字で切れている
+（`BTHENUM\DEV_5C013B0CCA44`）。例題は `M5Stack-SPP` を渡しており、
+SPP サーバのログもそう出る。EIR の名前長の扱いが疑わしいが、**追っていない。**
+接続と往復には影響していない。
 
 ### B-4 stage 経路の出荷物を建てるテスト — 新設した（B-2 も同時に埋まった）
 

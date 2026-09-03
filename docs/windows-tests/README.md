@@ -80,9 +80,10 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
     M5StickS3 を対象にしていない**——確認は手で行った
   - **`Test-StagePlatform.ps1` は焼かない**。3 ボード分のイメージを建てて
     静的に検証するだけ
-- **`bt-classic` の `BluetoothSPP` を実機で焼く**確認。例題のビルドは
-  `Test-StagePlatform.ps1` が M5Core 向けにやるが、焼いて SPP を通す確認は
-  Linux 側の `tools/bt/spp_echo_test.py` だけ
+- **`bt-classic` の実機 SPP をスイートに入れる**。往復は Windows から確認
+  済み（`backlog.md` の B-3）だが、**ペアリングが手作業**なのでテストに
+  できていない。Windows には Linux の `AF_BLUETOOTH`/`BTPROTO_RFCOMM` に
+  相当するものが無く、ペアリング後の送信用 COM ポート経由になる
 - **M5StickS3 の `m5-unified`**。動かないことが
   `docs/m5sticks3-m5unified.md` に記録されており、`Test-StagePlatform.ps1` の
   matrix にも入れていない（入れれば偽を主張することになる）。直ったら足すこと
