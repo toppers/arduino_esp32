@@ -142,13 +142,55 @@ esp32s3 のパスは 1 バイトも変えない）。各テストは LX6 に向�
 多ボードの世界では、この 2 本が検証している対象が出荷物とずれている可能性が
 ある。A-2 / B-4 の判断材料。
 
-### B-2 M5StickS3 がスイートに無い — 埋まった（B-4 で）
+### B-2 M5StickS3 — ビルドも実機起動も確認した
 
 上流が追加した 3 枚目。`install_platform.py` は知っているのに Windows 側の
 テストは 1 本も触っていなかった。`Test-StagePlatform.ps1` が minimal と
 wifi-connect を建てるようになった（B-4）。
 
-`m5-unified` は入れていない理由が B-4 にある。**実機で焼いた確認はまだ無い。**
+**実機でも焼いて起動を確認した。** 個体は
+`ESP32-S3-PICO-1 (LGA56) rev v0.2`、内蔵 8MB フラッシュ＋8MB PSRAM、
+MAC `14:c1:9f:d5:20:5c`（CoreS3 の QFN56 とは別パッケージ）。COM32。
+焼きは `arduino-cli upload` を使った——プラットフォーム自身の設定で焼くので
+フラッシュ容量を推測せずに済む（StickS3 は 8MB、CoreS3 は 16MB）。
+
+minimal（LibraryInfo）:
+
+```
+TOPPERS/FMP3 Kernel Release 3.4.0 for ESP32-S3-DevKitC-1
+Processor 1 start.
+[Arduino] task=2 processor=1
+ToppersFMP3-M5CoreS3
+version: 0.3.0
+FMP3 kernel linked: yes
+```
+
+`Processor 1 start.` だけなのは minimal が単一プロセッサ構成だからで、
+期待どおり。
+
+wifi-connect（WiFiConnect）:
+
+```
+TOPPERS/FMP3 Kernel Release 3.4.0 for ESP32-S3-DevKitC-1
+Processor 1 start.
+[Arduino] task=3 processor=1
+[WiFiConnect] Set WIFI_SSID before uploading
+[Arduino] setup complete
+```
+
+資格情報未設定時の振る舞いとして正しい。
+
+`m5-unified` は試していない。動かないことが
+`docs/m5sticks3-m5unified.md` に記録されているため（理由は B-4）。
+
+**副産物**: LibraryInfo の出力が M5StickS3 上で
+`ToppersFMP3-M5CoreS3` / `TOPPERS/FMP3 runtime for M5Stack CoreS3` と出る。
+`libraryInfo()` が返すのは `library.properties` の `name=` と説明文で、
+それが CoreS3 に固定されているためである。3 ボードを支持する以上、他の 2 枚の
+上では誤解を招く。A-2 で「ZIP の名前が CoreS3 なのは正しい」と判断したが、
+**その名前が実機の出力にまで出てくる**のは別の話で、直すなら
+`library.properties` の `name=` は ZIP のファイル名でもあるため
+影響範囲を確かめる必要がある。**未修正・要判断。**
 
 ### B-3 `bt-classic` — ステージを作る口は開いた（例題の実機確認は未）
 

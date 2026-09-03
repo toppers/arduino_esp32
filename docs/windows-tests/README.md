@@ -75,7 +75,9 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
     成果物を焼くので **CoreS3 専用のまま**（legacy は CoreS3 専用と決めた:
     `backlog.md` の A-2）
   - `Test-Touch.ps1` は CoreS3 のみ。M5Core と M5StickS3 にタッチパネルは無い
-  - **M5StickS3 は 1 本も焼いていない**。ビルドは通るが実機確認が無い
+  - M5StickS3 は minimal と wifi-connect を実機で起動確認した
+    （`backlog.md` の B-2）。ただし**スイートの実機テストは 1 本も
+    M5StickS3 を対象にしていない**——確認は手で行った
   - **`Test-StagePlatform.ps1` は焼かない**。3 ボード分のイメージを建てて
     静的に検証するだけ
 - **`bt-classic` の `BluetoothSPP` を実機で焼く**確認。例題のビルドは
