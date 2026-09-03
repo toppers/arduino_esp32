@@ -26,7 +26,14 @@ param(
     #  rest with 1), so asking for both would let them disagree.
     [ValidateSet('minimal', 'm5-unified', 'wifi-connect', 'all-in-one',
         'bt-classic')]
-    [string]$Profile = 'minimal'
+    [string]$Profile = 'minimal',
+
+    #  Which chip the image is for. Forwarded to Build-SeamS3M5.ps1 and used
+    #  for the toolchain's name, which carries the chip. Hardcoding esp32s3
+    #  here is what kept the whole host-side path CoreS3-only even after
+    #  Build-SeamS3M5.ps1 learned -Chip.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -91,7 +98,7 @@ if ($Mode -eq 'Link') {
     if ($archivedObjects.Count -gt 0) {
         $toolchainCompiler = Get-ChildItem -LiteralPath (Join-Path `
             $env:LOCALAPPDATA 'Arduino15\packages\m5stack\tools\esp-x32') `
-            -Recurse -Filter 'xtensa-esp32s3-elf-gcc.exe' -File |
+            -Recurse -Filter "xtensa-$Chip-elf-gcc.exe" -File |
             Sort-Object FullName -Descending | Select-Object -First 1
         if ($null -eq $toolchainCompiler) {
             throw 'The Xtensa toolchain was not found below tools\esp-x32.'
@@ -117,6 +124,7 @@ if ($Mode -eq 'Link') {
         -File $buildScript `
         -BuildDirectory $FmpBuildDirectory `
         -Profile $Profile `
+        -Chip $Chip `
         -ApplicationDirectory $FmpApplicationDirectory `
         -ApplicationName $FmpApplicationName `
         -ExternalObjects ($externalObjects -join '|') `

@@ -51,7 +51,17 @@ if(A1_CHIP STREQUAL "esp32s3")
   set(A1_FLASH_SIZE 16MB)
   set(A1_TWO_PASS   ON)   # 2パス PADDR 自己整合（flash_cache_init.o あり）
 elseif(A1_CHIP STREQUAL "esp32")
-  set(A1_XIP_LD  "${REPO}/fmp3/target/esp32_devkitc_gcc/esp32_xip.ld")
+  #  ★呼び出し側の -DXIP_LD を使う（esp32s3 分岐と同じ）。
+  #  ここは外部 fmp3_esp_idf ツリーの配置を前提に
+  #      "${REPO}/fmp3/target/esp32_devkitc_gcc/esp32_xip.ld"
+  #  を組み立てていた。runtime を vendored にした際に取り残され、しかも
+  #  現在の CMakeLists は -DREPO を渡さないので ${REPO} は空になり、
+  #      cannot open linker script file /fmp3/target/esp32_devkitc_gcc/esp32_xip.ld
+  #  で必ず失敗していた。ステージ生成（fmp3_prebuilt）は画像をリンクしない
+  #  ので露出せず、LX6 のスケッチリンク経路が初めて走ったときに出た。
+  #  リンカスクリプト名は呼び出し側が profile ごとに決めている
+  #  （CMakeLists.txt の A1_XIP_LD_NAME: esp32_xip_m5_wifi.ld / esp32_xip_btc.ld）。
+  set(A1_XIP_LD  "${XIP_LD}")
   set(A1_ROMLDS  esp32.rom.ld esp32.rom.api.ld esp32.rom.libc-funcs.ld
                  esp32.rom.libgcc.ld esp32.rom.newlib-data.ld esp32.rom.newlib-nano.ld)
   set(A1_FLASH_FREQ 40m)

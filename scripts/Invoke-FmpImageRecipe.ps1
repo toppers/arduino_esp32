@@ -42,7 +42,11 @@ param(
     #  that stand alone. Empty means the profile default, which will only work
     #  for a profile whose default is standalone.
     [string]$ApplicationDirectory = '',
-    [string]$ApplicationName = ''
+    [string]$ApplicationName = '',
+
+    #  Forwarded to Build-SeamS3M5.ps1, which takes the same parameter.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,7 +74,8 @@ if ($Mode -eq 'Link') {
         -BuildDirectory $FmpBuildDirectory `
         -Profile $Profile `
         -ApplicationDirectory $ApplicationDirectory `
-        -ApplicationName $ApplicationName
+        -ApplicationName $ApplicationName `
+        -Chip $Chip
     if ($LASTEXITCODE -ne 0) {
         throw "FMP3 build failed (exit=$LASTEXITCODE)"
     }

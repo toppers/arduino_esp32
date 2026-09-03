@@ -14,7 +14,13 @@ param(
     [string]$M5ArduinoRoot = '',
     [string]$ArduinoBuildPath = '',
     [string]$FmpBuildDirectory = '',
-    [string]$Fqbn = 'm5stack:esp32:m5stack_cores3'
+    #  -Chip picks the board's default FQBN and the toolchain's name; -Fqbn
+    #  overrides the former. Defaults keep the CoreS3 behaviour this test had
+    #  before it could be pointed at anything else.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
+    [string]$Fqbn = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,16 +28,30 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
+#  Only a non-default chip gets a suffix, so the esp32s3 paths stay exactly
+#  what they were - Test-Hardware.ps1 and Test-Touch.ps1 read sibling
+#  directories by name. Without a suffix the two chips would overwrite each
+#  other's build.
+$chipSuffix = if ($Chip -eq 'esp32s3') { '' } else { "-$Chip" }
 if ([string]::IsNullOrWhiteSpace($ArduinoBuildPath)) {
-    $ArduinoBuildPath = Join-Path $M5ArduinoRoot 'build\arduino-phase3-bridge'
+    $ArduinoBuildPath = Join-Path $M5ArduinoRoot `
+        "build\arduino-phase3-bridge$chipSuffix"
 }
 if ([string]::IsNullOrWhiteSpace($FmpBuildDirectory)) {
-    $FmpBuildDirectory = Join-Path $M5ArduinoRoot 'build\phase3-seam-s3-m5'
+    $FmpBuildDirectory = Join-Path $M5ArduinoRoot `
+        "build\phase3-seam-s3-m5$chipSuffix"
 }
 
 $recipeScript = Join-Path $M5ArduinoRoot 'scripts\Invoke-SketchLinkRecipe.ps1'
 $sketch = Join-Path $M5ArduinoRoot 'examples\Fmp3Minimal'
-$nm = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin\xtensa-esp32s3-elf-nm.exe'
+if ([string]::IsNullOrWhiteSpace($Fqbn)) {
+    $Fqbn = switch ($Chip) {
+        'esp32' { 'm5stack:esp32:m5stack_core' }
+        default { 'm5stack:esp32:m5stack_cores3' }
+    }
+}
+$nm = Join-Path $M5StackPackage `
+    "tools\esp-x32\2601\bin\xtensa-$Chip-elf-nm.exe"
 
 foreach ($required in @($ArduinoCli, $recipeScript, $sketch, $nm)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -48,6 +68,7 @@ $commonRecipeArguments = @(
     "-FmpBuildDirectory `"$FmpBuildDirectory`""
     #  phase3_arduino_app is the minimal runtime's own application.
     '-Profile minimal'
+    "-Chip $Chip"
 ) -join ' '
 $linkPattern = "$commonRecipeArguments -Mode Link"
 $objcopyPattern = "$commonRecipeArguments -Mode Objcopy"
