@@ -550,6 +550,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--esptool", default="", help="esptool executable")
     parser.add_argument("--sdk-ld", default="", help="SDK ld directory")
     parser.add_argument("--sdk-lib", default="", help="SDK lib directory")
+    #  ★The flash size is a property of the board, not of the stage.
+    #  Two boards can share one chip's stages and not share a flash part: the
+    #  M5CoreS3 has 16MB and the M5StickS3 8MB, and both link the esp32s3
+    #  stages. The manifest can only carry one value, so the board's own
+    #  build.flash_size wins when the recipe passes it.
+    parser.add_argument("--flash-size", default="",
+                        help="board flash size; overrides the manifest")
     parser.add_argument("--arduino-data", default="",
                         help="Arduino data directory holding packages/")
     parser.add_argument("--core-version", default="3.3.8")
@@ -611,7 +618,7 @@ def main(argv: list[str] | None = None) -> int:
     run([str(sdk["esptool"]), "--chip", manifest["chip"], "elf2image",
          "--flash-mode", manifest["flashMode"],
          "--flash-freq", manifest["flashFreq"],
-         "--flash-size", manifest["flashSize"],
+         "--flash-size", args.flash_size or manifest["flashSize"],
          "-o", "app_xip.bin", "fmp_xip.elf"], work, "elf2image")
 
     destination_elf = build_path / f"{args.project_name}.elf"

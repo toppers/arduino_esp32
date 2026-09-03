@@ -188,9 +188,33 @@ spi_bus_initialize(spi_host_device_t host_id, const spi_bus_config_t *bus_config
 	/*  項目1：GPSPI2 クロック有効化＋リセット解除（SYSTEM レジスタ直）。
 	 *  ★positive control の観測点：この 2 行で M5_PERIP_CLK_EN_REG の
 	 *    M5_SPI2_CLK_EN ビットが 0→1 に変化する。 */
-	REG_SET_BIT(M5_PERIP_CLK_EN_REG, M5_SPI2_CLK_EN);
-	REG_SET_BIT(M5_PERIP_RST_EN_REG, M5_SPI2_RST);		/* reset assert */
-	REG_CLR_BIT(M5_PERIP_RST_EN_REG, M5_SPI2_RST);		/* reset deassert */
+	/*  ★StickS3 対応：ホストは SPI2 固定ではない。M5GFX は CoreS3 では
+	 *  SPI2_HOST を頼むが，StickS3 の LCD は MOSI=39/SCLK=40/DC=45/CS=41 で
+	 *  `bus_cfg.spi_host = SPI3_HOST`（M5GFX.cpp の board_M5StickS3 分岐）。
+	 *  ここを SPI2 決め打ちにしていたため，StickS3 では GPSPI3 のクロックが
+	 *  入らず（かつピンが FSPI 側へ配線され），M5GFX が転送を開始しても
+	 *  SPI_USR が落ちず Bus_SPI::writeData で無限ループした（実機で
+	 *  ROM の Saved PC から確認）。 */
+	{
+		uint32_t	clk_en   = (host_id == SPI3_HOST) ? SYSTEM_SPI3_CLK_EN
+													  : M5_SPI2_CLK_EN;
+		uint32_t	rst_bit  = (host_id == SPI3_HOST) ? SYSTEM_SPI3_RST
+													  : M5_SPI2_RST;
+		/*  SPI_CLK_GATE_REG の index は M5GFX の spi_port と同じ
+		 *  （spi_host + 1）。SPI2_HOST=1→2（GPSPI2）, SPI3_HOST=2→3（GPSPI3）。 */
+		int			port     = (host_id == SPI3_HOST) ? 3 : 2;
+		uint32_t	clk_out  = (host_id == SPI3_HOST) ? SPI3_CLK_OUT_IDX
+													  : FSPICLK_OUT_IDX;
+		uint32_t	d_out    = (host_id == SPI3_HOST) ? SPI3_D_OUT_IDX
+													  : FSPID_OUT_IDX;
+		uint32_t	d_in     = (host_id == SPI3_HOST) ? SPI3_D_IN_IDX
+													  : FSPID_IN_IDX;
+		uint32_t	q_in     = (host_id == SPI3_HOST) ? SPI3_Q_IN_IDX
+													  : FSPIQ_IN_IDX;
+
+	REG_SET_BIT(M5_PERIP_CLK_EN_REG, clk_en);
+	REG_SET_BIT(M5_PERIP_RST_EN_REG, rst_bit);		/* reset assert */
+	REG_CLR_BIT(M5_PERIP_RST_EN_REG, rst_bit);		/* reset deassert */
 
 	/*  項目1b（★1-6 追加・begin() 内 Bus_SPI::wait() 無限ハングの根本修正）：
 	 *  GPSPI2 の「機能マスタクロックゲート」を有効化する（SPI_CLK_GATE_REG）。
@@ -216,11 +240,11 @@ spi_bus_initialize(spi_host_device_t host_id, const spi_bus_config_t *bus_config
 	 *    SPI_CLK_EN|SPI_MST_CLK_ACTIVE|SPI_MST_CLK_SEL = 0x7 を読み返すはず。
 	 *  レジスタ index=2 は GPSPI2（M5GFX の spi_port = spi_host+1 = 2 と一致。
 	 *  REG_SPI_BASE(2)=DR_REG_SPI2_BASE=0x60024000）。 */
-	REG_SET_BIT(SPI_CLK_GATE_REG(2), SPI_CLK_EN | SPI_MST_CLK_ACTIVE | SPI_MST_CLK_SEL);
+	REG_SET_BIT(SPI_CLK_GATE_REG(port), SPI_CLK_EN | SPI_MST_CLK_ACTIVE | SPI_MST_CLK_SEL);
 
 	/*  項目2：GPIO マトリクス配線（MOSI=FSPID_out/in, SCLK=FSPICLK_out, MISO=FSPIQ_in）。 */
 	if (bus_config != NULL) {
-		m5_spi_wire_out(bus_config->mosi_io_num, FSPID_OUT_IDX);
+		m5_spi_wire_out(bus_config->mosi_io_num, d_out);
 		/*  ★1-7（getBoard()=0 根本修正）：MOSI(FSPID) には out に加えて in も配線する。
 		 *  M5GFX の CoreS3 は spi_3wire=true。3線(SIO)モードのパネル ID 読取
 		 *  （_read_panel_id → Bus_SPI::beginRead が SPI_SIO を立てる, Bus_SPI.cpp:1033）は
@@ -234,12 +258,12 @@ spi_bus_initialize(spi_host_device_t host_id, const spi_bus_config_t *bus_config
 		 *  I2C 両経路健全・電源投入ブロック到達を AW9523 読み返しで実測，残る失敗は本読取経路）。 */
 		if (bus_config->mosi_io_num >= 0) {
 			esp_rom_gpio_connect_in_signal((uint32_t)bus_config->mosi_io_num,
-										   FSPID_IN_IDX, false);
+										   d_in, false);
 		}
-		m5_spi_wire_out(bus_config->sclk_io_num, FSPICLK_OUT_IDX);
-		m5_spi_wire_in(bus_config->miso_io_num,  FSPIQ_IN_IDX);
+		m5_spi_wire_out(bus_config->sclk_io_num, clk_out);
+		m5_spi_wire_in(bus_config->miso_io_num,  q_in);
 	}
-	(void) host_id;		/* CoreS3 は SPI2 固定 */
+	}
 #endif /* defined(TOPPERS_ESP32_LX6) */
 
 	m5_mark_u32("[MK] spi_bus_initialize out #", 0x11U, s_m5_spi_bus_init_calls);
@@ -259,8 +283,9 @@ spi_bus_add_device(spi_host_device_t host_id,
 						(host_id == SPI3_HOST) ? VSPICS0_OUT_IDX
 											   : HSPICS0_OUT_IDX);
 #else
-		(void) host_id;
-		m5_spi_wire_out(dev_config->spics_io_num, FSPICS0_OUT_IDX);
+		m5_spi_wire_out(dev_config->spics_io_num,
+						(host_id == SPI3_HOST) ? SPI3_CS0_OUT_IDX
+											   : FSPICS0_OUT_IDX);
 #endif
 	}
 	else {
