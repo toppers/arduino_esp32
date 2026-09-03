@@ -47,14 +47,30 @@ $linkPattern = @(
     '-ProjectName "{build.project_name}"'
     "-M5ArduinoRoot `"$M5ArduinoRoot`""
     "-FmpBuildDirectory `"$FmpBuildDirectory`""
-    #  A standalone application: this test publishes the FMP3 image WITHOUT
-    #  linking the sketch, so an application that needs the Arduino bridge
-    #  cannot link. What is asserted below is the mechanism - the published
-    #  ELF/BIN equal the FMP3 ones, the application survives at merged offset
-    #  0x10000, FMP3 symbols are present and Arduino/FreeRTOS ones are not -
-    #  so which standalone application it is does not matter.
-    "-ApplicationDirectory `"$M5ArduinoRoot\fmp_app\phase5`""
-    '-ApplicationName phase5_m5_selftest'
+    #  The one application that references no Arduino object at all.
+    #
+    #  This test publishes the FMP3 image WITHOUT linking the sketch, which is
+    #  the whole property it exists to assert - Test-SketchBridge.ps1 already
+    #  checks everything else here (the published ELF/BIN equalling the FMP3
+    #  ones, the application surviving at merged offset 0x10000, the FMP3
+    #  symbols present and the Arduino/FreeRTOS ones absent), and it checks
+    #  them with the sketch linked. Take the sketch out of the link and this
+    #  test says something no other one does; leave it in and it is a
+    #  duplicate.
+    #
+    #  It used to name phase5_m5_selftest, which cannot link that way: every
+    #  other application's cfg creates ARDUINO_TASK, whose body
+    #  toppers_arduino_task lives in src/bridge/ArduinoSketchBridge.cpp, an
+    #  object the Arduino builder produces. So this stopped at
+    #      undefined reference to `toppers_arduino_task'
+    #  fmp_app/standalone exists for this: an application with its own task
+    #  and no reference to Arduino.
+    "-ApplicationDirectory `"$M5ArduinoRoot\fmp_app\standalone`""
+    '-ApplicationName standalone_app'
+    #  minimal, not the recipe's m5-unified default: the application depends on
+    #  neither Arduino nor M5Unified, and saying so here keeps the claim narrow
+    #  (and the build far shorter than compiling M5GFX for nothing).
+    '-Profile minimal'
 ) -join ' '
 
 $objcopyPattern = @(
