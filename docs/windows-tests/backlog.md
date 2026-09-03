@@ -142,11 +142,13 @@ esp32s3 のパスは 1 バイトも変えない）。各テストは LX6 に向�
 多ボードの世界では、この 2 本が検証している対象が出荷物とずれている可能性が
 ある。A-2 / B-4 の判断材料。
 
-### B-2 M5StickS3 がスイートに無い（README の穴リストにも未記載）
+### B-2 M5StickS3 がスイートに無い — 埋まった（B-4 で）
 
-上流が追加した 3 枚目。`install_platform.py` は知っているが Windows 側の
-テストは 1 本も触らない。**B-1 と同じ穴が 1 枚増えた状態**で、README の
-「★対象外」にも書かれていないので、まず書くべき。
+上流が追加した 3 枚目。`install_platform.py` は知っているのに Windows 側の
+テストは 1 本も触っていなかった。`Test-StagePlatform.ps1` が minimal と
+wifi-connect を建てるようになった（B-4）。
+
+`m5-unified` は入れていない理由が B-4 にある。**実機で焼いた確認はまだ無い。**
 
 ### B-3 `bt-classic` — ステージを作る口は開いた（例題の実機確認は未）
 
@@ -182,22 +184,50 @@ bt-classic     183    1.9 build\prebuilt\esp32t-classic          EXIT=0
 `tools/bt/spp_echo_test.py` で済ませている。スイートには `bt-classic` を
 建てる／焼くテストが 1 本も無いので、B-1 と同じ話になる。
 
-### B-4 複数ボードの Release ZIP — 非目標になった（A-2 の決定より）
+### B-4 stage 経路の出荷物を建てるテスト — 新設した（B-2 も同時に埋まった）
 
 `Test-ArduinoReleasePackage.ps1` が CoreS3 の FQBN しか建てないのは、
 A-2 で legacy ZIP を CoreS3 専用と決めたので**穴ではなく仕様**になった。
+そこで浮かび上がったのが本当の穴だった: **3 ボードを運ぶ出荷物（stage 経路の
+プラットフォーム）から、スケッチを建てるテストが 1 本も無かった。**
 
-代わりに残るのは別の穴である。**3 ボードを運ぶ出荷物（stage 経路の Boards
-Manager パッケージ）を、Windows のスイートは 1 本も検証していない。**
-`Test-ArduinoReleasePackage.ps1` は legacy ZIP を、それ以外のホスト側テストは
-seam 経路を見ており、`install_platform.py` が組んだプラットフォームから
-スケッチを建てるテストが無い。今日それを手で 1 回やった
-（`runs/2026-09-02-first-windows-run.md` の「スイート外」節）が、
-一度の確認はテストではない。
+`scripts/Test-StagePlatform.ps1` を新設した。`install_platform.py` に
+プラットフォームを組ませ、隔離した sketchbook から 3 ボード分を建てる。
+Windows 固有でここしか通らないのは鎖のほうで、**`New-Fmp3PrebuiltStages.ps1`
+が作ったステージ → この機械で組んだプラットフォーム → Windows の arduino-cli
+→ リンクドライバ経由の gen_esp32part**。Linux 側は
+`scripts/verify_package.py` が同じ役を果たす。
 
-Linux 側の `scripts/verify_package.py` はまさにそれを 3 ボード分やっている。
-Windows で重ねる価値があるのは、PowerShell のステージビルド・Windows の
-arduino-cli・gen_esp32part というホスト経路そのものだけである。
+各ビルドで seam 経路のテストと**同じ性質**を主張する（`_start` /
+`_kernel_start_dispatch` / `sta_ker` の存在、`app_main` /
+`vTaskStartScheduler` / `loopTask` の不在、merged 0x10000 でのバイト一致）。
+これで「stage 経路も同種のイメージを作る」と言える。
+
+**9 ビルド PASS**:
+
+```
+m5cores3_fmp3  minimal     LibraryInfo   156560
+m5cores3_fmp3  m5          M5Unified     ------
+m5cores3_fmp3  wificonnect WiFiConnect   600080
+m5sticks3_fmp3 minimal     LibraryInfo   156560
+m5sticks3_fmp3 wificonnect WiFiConnect   600080
+m5core_fmp3    minimal     LibraryInfo   153728
+m5core_fmp3    m5          M5Unified     282272
+m5core_fmp3    wificonnect WiFiConnect   619104
+m5core_fmp3    btclassic   BluetoothSPP  571056
+```
+
+**B-2（M5StickS3 がスイートに無い）はこれで埋まった。** `BluetoothSPP` を
+建てるのも初めてで、B-3 で開けた口がここで使われている。
+
+matrix は事実に合わせてある。**M5StickS3 に `m5-unified` は入れていない**:
+動かないことと原因が `docs/m5sticks3-m5unified.md` に記録されているので、
+入れれば偽を主張することになる。直ったら足すこと。
+
+**残っている穴は「焼く」側に偏った。** このテストは建てるだけで焼かない。
+M5StickS3 は 1 本も焼いていない。`BluetoothSPP` を焼いて SPP を通す確認も
+無い（Linux 側の `tools/bt/spp_echo_test.py` だけ）。README の「★対象外」を
+その形に書き直した。
 
 ## C. テスト基盤の質
 

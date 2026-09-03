@@ -6,7 +6,7 @@ PowerShell のテスト群は Windows でしか走らない。Linux/macOS の CI
 
 実施したら `runs/` に記録を残すこと（書式は下の「記録の書き方」）。
 
-**2026-09-02 の初回実施では、15 本のうち通ったのは 2 本だけだった。**
+**2026-09-02 の初回実施では、当時の 15 本のうち通ったのは 2 本だけだった。**
 残りは環境ではなくリポジトリ側の欠落で止まっており、その大半をその run の中で
 直した（現在 PASS 9・FAIL 3・未実行 1）。何がどう壊れていて何を直したかは
 `runs/2026-09-02-first-windows-run.md` に出力ごと書いてある。走らせる前に
@@ -55,7 +55,8 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
 | `Test-WiFiScan.ps1` | ホスト | CoreS3 | 資格情報不要 Wi-Fi スキャンの静的検証 |
 | `Test-PartitionTable.ps1` | ホスト | – | ドライバのパーティション表変換を `gen_esp32part` と突合 |
 | `Test-RecipeOverride.ps1` | ホスト | – | FreeRTOS を混ぜずに ELF を包めることの実証 |
-| `Test-Regression.ps1` | ホスト | CoreS3 | 上記ホスト側をまとめて回す |
+| `Test-Regression.ps1` | ホスト | CoreS3 / M5Core | 上記ホスト側をまとめて回す（`-Chip`） |
+| `Test-StagePlatform.ps1` | ホスト | **3 ボード** | `install_platform.py` が組んだプラットフォームからスケッチを建てる。出荷経路 |
 | `Test-ArduinoReleasePackage.ps1` | 実機 | CoreS3 | Release ZIP を隔離環境で生成・導入・コンパイル |
 | `Test-Hardware.ps1` | 実機 | CoreS3 | API プローブを焼いてシリアル判定 |
 | `Test-M5UnifiedHardware.ps1` | 実機 | CoreS3 | M5Unified 例題を焼いてシリアル判定 |
@@ -64,26 +65,25 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
 
 ## ★対象外（既知の穴）
 
-ホスト側 7 本と `Test-Hardware.ps1` は `-Chip esp32s3|esp32` を取り、
-どちらのボードでも通る。それ以外は CoreS3 前提のままで、次は検証していない:
+初回実施の時点では 15 本すべて CoreS3 前提だった。いまはホスト側 7 本と
+`Test-Hardware.ps1` が `-Chip esp32s3|esp32` を取り、`Test-StagePlatform.ps1`
+が 3 ボード分を建てる。閉じた穴の経緯は `backlog.md`（B-1 / B-2 / B-3 / B-4）
+にある。残っているのは次:
 
-- ~~**M5Core (ESP32/LX6) ボード**~~ — ホスト側 7 本と `Test-Hardware.ps1` は
-  `-Chip esp32` で通る（`backlog.md` の B-1）。残るのは
-  `Test-M5UnifiedHardware.ps1` / `Test-DualCoreHardware.ps1` で、legacy ZIP の
-  成果物を焼くため CoreS3 専用のまま。`Test-Touch.ps1` は M5Core に
-  タッチパネルが無いので対象外
-- **M5StickS3 ボード** — 上流で追加された 3 枚目
-  （`scripts/install_platform.py` は知っているが、ここのテストは 1 本も触らない）
-- **`bt-classic` profile の `BluetoothSPP` 例題** — M5Core 専用。
-  ステージは Windows でも建つようになった（`backlog.md` の B-3。
-  `New-Fmp3PrebuiltStages.ps1 -Chip esp32 -Profiles bt-classic`）が、
-  それを建てる／焼くテストは 1 本も無い。
-  Linux 側では `tools/bt/spp_echo_test.py` で実機確認済み
-- **stage 経路の Boards Manager パッケージ** — 3 ボードを運ぶ出荷物は
-  `install_platform.py` が組むこちらだが、それからスケッチを建てるテストが
-  1 本も無い。`Test-ArduinoReleasePackage.ps1` は legacy ZIP を見ており、
-  その ZIP は CoreS3 専用と決めた（`backlog.md` の A-2）ので、
-  そちらが CoreS3 だけなのは穴ではなく仕様
+- **実機は CoreS3 と M5Core だけ、しかも項目が偏っている**
+  - `Test-M5UnifiedHardware.ps1` / `Test-DualCoreHardware.ps1` は legacy ZIP の
+    成果物を焼くので **CoreS3 専用のまま**（legacy は CoreS3 専用と決めた:
+    `backlog.md` の A-2）
+  - `Test-Touch.ps1` は CoreS3 のみ。M5Core と M5StickS3 にタッチパネルは無い
+  - **M5StickS3 は 1 本も焼いていない**。ビルドは通るが実機確認が無い
+  - **`Test-StagePlatform.ps1` は焼かない**。3 ボード分のイメージを建てて
+    静的に検証するだけ
+- **`bt-classic` の `BluetoothSPP` を実機で焼く**確認。例題のビルドは
+  `Test-StagePlatform.ps1` が M5Core 向けにやるが、焼いて SPP を通す確認は
+  Linux 側の `tools/bt/spp_echo_test.py` だけ
+- **M5StickS3 の `m5-unified`**。動かないことが
+  `docs/m5sticks3-m5unified.md` に記録されており、`Test-StagePlatform.ps1` の
+  matrix にも入れていない（入れれば偽を主張することになる）。直ったら足すこと
 
 Linux 側で通っている `scripts/verify_package.py`（3 ボード分を建てる）と
 役割が重なる部分もあるが、**Windows のホスト経路そのもの**（PowerShell の
