@@ -809,6 +809,21 @@ VENDID `0x11` / FIRMID `0x10` or `0x12`。この値は panel の init コマン�
 ことが今回はっきりした。個体差か revision 差と思われる。追う必要は無いが、
 ログに毎回出るものなので書いておく。
 
+### ランタイム CMakeLists 変更後のステージ再生成（回帰なし）
+
+★6 で `ports/m5stack_xtensa/runtime/CMakeLists.txt` に `ARDUINO_ARCHIVE` を
+通したが、この CMakeLists は Linux 側の `build_prebuilt_stages.py` も使う
+共有コードなので、`fmp3_prebuilt` ターゲットを壊していないことを確かめた。
+両チップを `-Clean` から再生成し、オブジェクト数は変更前と一致:
+
+| チップ | minimal | m5-unified | wifi-connect |
+| --- | --- | --- | --- |
+| esp32s3 | 47 | 138 | 74 |
+| esp32 (LX6) | 48 | 139 | 75 |
+
+一致するのが正しい。`ARDUINO_ARCHIVE` はスケッチリンク経路でしか消費されず、
+ステージ生成には入らないため。
+
 ### ★7 BOM 無しの `.ps1` に非 ASCII を書くと Windows PowerShell 5.1 が壊す
 
 ★6 を直す過程で自分で踏んだので書いておく。`Invoke-PortableFmp3Recipe.ps1` は
