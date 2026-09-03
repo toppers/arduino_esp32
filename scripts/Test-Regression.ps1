@@ -87,8 +87,7 @@ foreach ($test in $tests) {
         Seconds = $elapsed
     })
     if ($exitCode -ne 0) {
-        $results | Format-Table -AutoSize
-        throw "$($test.Name) failed (exit=$exitCode)."
+        Write-Host ('*** {0} FAILED (exit={1}); continuing.' -f $test.Name, $exitCode)
     }
 }
 
@@ -97,3 +96,16 @@ Write-Host 'Host-side regression summary'
 $results | Format-Table -AutoSize
 Write-Host ('Total: {0:N1} seconds' -f ((Get-Date) - $started).TotalSeconds)
 Write-Host 'QEMU, visual LCD/touch checks, and credentialed Wi-Fi are not part of this run.'
+
+#  Every test runs, and the verdict comes at the end.
+#  This used to throw on the first failure, which meant one red test hid the
+#  state of every test after it: a run that stopped on the second of seven said
+#  nothing about the other five, and they had to be re-run one at a time by
+#  hand to write down a result for each. A later test may fail because an
+#  earlier one did not produce what it needed - the summary shows that, which
+#  is more use than not knowing.
+$failed = @($results | Where-Object { $_.Result -eq 'FAIL' })
+if ($failed.Count -gt 0) {
+    throw ('{0} of {1} host-side test(s) failed: {2}' -f
+        $failed.Count, $results.Count, (($failed | ForEach-Object { $_.Test }) -join ', '))
+}

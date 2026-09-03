@@ -69,12 +69,16 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
 - **M5Core (ESP32/LX6) ボード** — minimal / m5-unified / wifi-connect / all-in-one
   （2026-09-02 の run で m5-unified だけは実機まで通した。スイート外の確認なので
   ここは穴のまま残す: `runs/2026-09-02-first-windows-run.md` の「スイート外」節）
+- **M5StickS3 ボード** — 上流で追加された 3 枚目
+  （`scripts/install_platform.py` は知っているが、ここのテストは 1 本も触らない）
 - **`bt-classic` profile と `BluetoothSPP` 例題** — M5Core 専用。
+  ランタイム側は受け付けるのに `New-Fmp3PrebuiltStages.ps1` の `-Profiles` の
+  ValidateSet に無いので、Windows ではステージを作る口が塞がっている。
   Linux 側では `tools/bt/spp_echo_test.py` で実機確認済み
-- **2 ボードが 1 パッケージに入った状態** — `Test-ArduinoReleasePackage.ps1` は
-  CoreS3 の FQBN しか建てない
+- **複数ボードが 1 パッケージに入った状態** — `Test-ArduinoReleasePackage.ps1` は
+  CoreS3 の FQBN しか建てない。ボードは 3 枚になっている
 
-Linux 側で通っている `scripts/verify_package.py`（26 ビルド・2 ボード）と
+Linux 側で通っている `scripts/verify_package.py`（3 ボード分を建てる）と
 役割が重なる部分もあるが、**Windows のホスト経路そのもの**（PowerShell の
 ステージビルド、Windows の arduino-cli、gen_esp32part）はここでしか通らない。
 

@@ -53,24 +53,27 @@ esp32(LX6) 側が通ったことで、直前コミット e485cc2 が「未検証
 | `Test-Smp.ps1` | 初回 **FAIL** → ★3・★12 を直して **PASS** | profile `m5-unified`、`TNUM_PRCID=2` |
 | `Test-WiFiScan.ps1` | 初回 **FAIL** → ★3・★4・★12 を直して **PASS** | profile `wifi-connect`、clean ビルドからも確認 |
 | `Test-PartitionTable.ps1` | **PASS** | 47 CSV byte identical、malformed 7 種すべて両実装で reject 一致 |
-| `Test-RecipeOverride.ps1` | **FAIL** | ★14。★3 は解消したが、単体で建つアプリが無い（★13） |
-| `Test-Regression.ps1` | **FAIL** | 修正後に通しで再実行: `Arduino library PASS 215.4s` → 2 本目 `recipe override FAIL 33.3s` で abort（★14）。初回は 1 本目（★2）で止まっていた |
+| `Test-RecipeOverride.ps1` | 初回 **FAIL** → ★3・★14 を直して **PASS** | `fmp_app/standalone` を新設（★13 の解消）。詳細は `../backlog.md` の A-1 |
+| `Test-Regression.ps1` | 初回 **FAIL** → **PASS** | 7/7・149.7 秒。最初の失敗で abort する作りも直した（`../backlog.md` の C-1） |
 | `Test-ArduinoReleasePackage.ps1` | 初回 **FAIL** → ★2・★5・★6・★8・★9 を直して **PASS** | ZIP SHA-256 `CCAE66401CE961982C70A7AD9D3FA0B62A07FC6716C4A33AB6C9C22FFC1DE8E4` |
 | `Test-Hardware.ps1` | 初回 **FAIL** → ★15・★16・★19 を直して **PASS** | 8 回連続 `EXIT=0`。★16 だけでは 2/6 で落ちていた |
 | `Test-M5UnifiedHardware.ps1` | 初回 **FAIL** → ★10 を直して **PASS** | 3 回連続 `EXIT=0` |
 | `Test-DualCoreHardware.ps1` | 初回 **FAIL** → ★10・★11 を直して **PASS** | 3 回連続 `EXIT=0` |
 | `Test-Touch.ps1` | **PASS** | `first touch x=211 y=83`、60 秒で 91 検出。1 回目は判定窓の外で押していたため FAIL（★17） |
 
-**最終的な内訳: PASS 13 本 / FAIL 2 本 / 未実行 0 本。** 初回実行時点では
+**最終的な内訳: PASS 15 本 / FAIL 0 本 / 未実行 0 本。** 初回実行時点では
 PASS 2 本だった。
+
+（この run の直後に `Test-RecipeOverride.ps1` と `Test-Regression.ps1` も
+解消した。経緯は `../backlog.md` の A-1 と C-1。）
 
 実機 5 本は最初いずれも「上流のホスト側テストが焼く .bin を作れない」ため
 未実行だったが、その上流を直したことで全部実行でき、全部 PASS した
 （CoreS3 / COM24 / MAC `44:1B:F6:E2:73:AC`）。
 
-残る FAIL は `Test-RecipeOverride.ps1`（★14）と、それで abort する
-`Test-Regression.ps1` の 2 本だけ。★14 は「単体で建つアプリが無い」（★13）に
-依存していて、直すには設計上の判断が要るので今回は触っていない。
+★14 は「単体で建つアプリが無い」（★13）に依存していて、直すには設計上の
+判断が要るため**この run では触らなかった**。判断の内容と結論は
+`../backlog.md` の A-1 にある。
 
 ## 分かったこと
 

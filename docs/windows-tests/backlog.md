@@ -9,25 +9,45 @@
 
 ## A. 判断が要るもの（設計上の問いを含む）
 
-### A-1 `Test-RecipeOverride.ps1` — 15 本で唯一の FAIL（★14 / ★13）
+### A-1 `Test-RecipeOverride.ps1`（★14 / ★13）— 解決済み
 
-`Test-Regression.ps1` もこれで abort するので、実質 2 本が赤いまま。
+**当初この項目には「方向が二つあり、(a) ブリッジのオブジェクトを繋ぐ /
+(b) 単体で建つアプリを新設」と書いていたが、(a) の評価が誤っていた。**
+コードを読み直すと、(a) はこのテストの唯一の存在意義を消す道だった。
 
-判定内容そのもの（published ELF/BIN が FMP3 のものと一致、`_start` /
-`_kernel_start_dispatch` / `sta_ker` があり `app_main` /
-`vTaskStartScheduler` / `loopTask(void*)` が無い）は、スケッチのオブジェクトを
-繋いでも壊れない。禁止シンボルは M5Stack コアの Arduino main が持ち込むもので、
-override がまさにそれを置き換えているからである。詰まっているのは
-「Arduino タスクを作らない単体で建つアプリが無い」（★13）という前提のほう。
+`Test-SketchBridge.ps1` がこのテストの主張を**既に全部**検証している:
 
-方向が二つあり、**どちらもこのテストの存在意義に関わる**:
-
-| | 内容 | 代償 |
+| 主張 | RecipeOverride | SketchBridge |
 | --- | --- | --- |
-| (a) | ブリッジ（＋スケッチ）のオブジェクトを繋ぐ | `Invoke-FmpImageRecipe.ps1` が `Invoke-SketchLinkRecipe.ps1` とほぼ同一になり、2 本を分けている理由が「どの recipe 行を override するか」だけになる |
-| (b) | Arduino タスクを作らない最小アプリを新設 | 製品に入らないテスト専用アプリが 1 本増える |
+| merged 0x10000 でのバイト一致 | ある | ある |
+| `_start` / `_kernel_start_dispatch` / `sta_ker` の存在 | ある | ある |
+| `app_main` / `vTaskStartScheduler` / `loopTask` の不在 | ある | ある |
+| `recipe.objcopy.bin.pattern` の override | ある | ある |
+| **スケッチのオブジェクトを一切リンクしない** | ある | **無い** |
 
-先に決めるべきは「このテストは何を守っているのか」。それが決まれば実装は小さい。
+差異は最後の 1 行だけ。ブリッジを繋げばその差異が消えて
+`Test-SketchBridge.ps1` の重複になる。したがって決めるべきは 1 点だった:
+
+> スケッチがリンクに一切関与せずとも FMP3 イメージを arduino-cli 経由で
+> publish できることは、独立したテストに値する性質か。
+
+**値するとして (b) を採った。** Arduino が一切関与しないところまで FMP3 が
+独立していることは、この移植の設計上の主張そのもので、機械で守る場所が他に
+無い。
+
+実際の失敗も確認した。`undefined reference to 'toppers_arduino_task'` で、
+`toppers_arduino_task` は `src/bridge/ArduinoSketchBridge.cpp` にある。
+**アプリの cfg 7 本すべてが `ARDUINO_TASK` を作る**ので、単体で建つものが
+1 つも無かった（★13）。
+
+`fmp_app/standalone/` を新設した（`.c` / `.cfg` / `.h`、自分のタスク 1 本、
+Arduino への参照なし）。テストはそれを `-Profile minimal` で建てる
+（M5 にも依存しないので主張を狭く保てるうえ、M5GFX を無駄に建てない）。
+
+**PASS。** `スケッチが 0 バイト（0%）を使っています` が主張そのもの。
+
+これで `Test-Regression.ps1` も **7/7 PASS（149.7 秒）** になり、赤かった 2 本が
+両方解消した。
 
 ### A-2 2 つのインストーラが知っているボードが食い違う（★18）
 
@@ -82,12 +102,29 @@ Linux 側は `tools/bt/spp_echo_test.py` で実機確認済み。
 
 ## C. テスト基盤の質
 
-### C-1 `Test-Regression.ps1` が最初の失敗で abort する
+### C-1 `Test-Regression.ps1` が最初の失敗で abort する — 解決済み
 
-失敗した 1 本で `throw` するので、**残りが通るのか落ちるのかが分からない**。
-2026-09-02 の run では 2 回とも 1〜2 本目で止まり、以降は 1 本ずつ手で回した。
-全部走らせて最後に PASS/FAIL を集計するほうが、実施記録を書くうえでも有用。
-`$results` を集めて表にする作りは既にあるので、`throw` を最後に移すだけ。
+失敗した 1 本で `throw` していたので、**残りが通るのか落ちるのかが分からな
+かった**。2026-09-02 の run では 2 回とも 1〜2 本目で止まり、以降は 1 本ずつ
+手で回した。全部走らせて最後に集計するようにした。`$results` を表にする作りは
+既にあったので、`throw` を末尾へ移して落ちた本数と名前を出すだけで済んだ。
+
+先のテストが落ちたせいで後のテストが落ちることはあり得るが、それは表に出る。
+分からないより有用である。実測:
+
+```
+Arduino library                 PASS      13.5
+recipe override                 FAIL      21.2
+sketch bridge                   PASS      21.6
+API boundary and M5Unified link PASS      85.2
+M5Unified integration           PASS        69
+SMP                             PASS      24.7
+credential-free Wi-Fi scan      PASS      29.6
+1 of 7 host-side test(s) failed: recipe override
+```
+
+（この表は A-1 を直す前のもの。7 本走ったことと集計が出ることを示すため
+そのまま残す。A-1 を直した後は 7/7 PASS・149.7 秒。）
 
 ### C-2 人の操作が要る実機テストの時刻整合（★17 の教訓）
 
