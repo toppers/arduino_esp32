@@ -1,6 +1,22 @@
 <#
 .SYNOPSIS
     Uploads the packaged M5Unified example and validates its serial result.
+
+.DESCRIPTION
+    Judged on what the SHIPPING image prints. It used to require
+        [M5] board=... display=320x240 pmic=4 battery_mV=...
+        [M5] 60-second M5Unified integration PASS
+    which only fmp_app/phase5/phase5_m5_selftest.c emits. The stages that go
+    into the Boards Manager package are built WITHOUT -SelfTest (see
+    New-Fmp3PrebuiltStages.ps1), and this script flashes the .bin that
+    Test-ArduinoReleasePackage.ps1 produced from that package, so those
+    markers could never appear. The first required marker,
+    "M5.begin and initial LCD draw PASS", does come from the shipping example
+    itself and is kept.
+
+    The shipping example reads board type, PMIC and battery into its own
+    variables but does not print them; asserting on those needs a self-test
+    image, which is a different thing to flash and belongs in its own test.
 #>
 
 [CmdletBinding()]
@@ -8,6 +24,9 @@ param(
     [string]$Port = 'COM4',
     [int]$Baud = 115200,
     [int]$CaptureSeconds = 80,
+    #  One says loop() ran at all; several say it keeps running. The bridge
+    #  prints one every 1000 loop() calls.
+    [int]$RequiredHeartbeats = 3,
     [string]$M5ArduinoRoot = '',
     [string]$M5StackPackage =
         (Join-Path $env:LOCALAPPDATA 'Arduino15\packages\m5stack'),
@@ -45,15 +64,22 @@ $serial.ReadTimeout = 250
 $log = ''
 try {
     $serial.Open()
+    #  Reset the board AFTER the port is open, so the capture starts at boot.
+    #  The banner and the bridge's one-shot lines (Processor N start.,
+    #  [Arduino] task=N processor=M) are printed within milliseconds of reset,
+    #  and esptool's own "Hard resetting via RTS pin" happens before this
+    #  script can open the port - Test-DualCoreHardware.ps1 was missing the
+    #  whole banner because of it and only saw the heartbeats.
+    #
+    #  A clean EN pulse: DTR low, RTS high (EN low), hold, RTS low (EN
+    #  released). The previous sequence drove DTR and RTS true at the same
+    #  time, which asserts neither EN nor IO0 on the ESP32 auto-reset circuit
+    #  (nor on the ESP32-S3's USB-Serial/JTAG), so it did not reliably reset
+    #  anything. 300 ms because 100 ms was not always enough for the S3.
     $serial.DtrEnable = $false
-    $serial.RtsEnable = $false
-    Start-Sleep -Milliseconds 100
-    $serial.DtrEnable = $true
     $serial.RtsEnable = $true
-    Start-Sleep -Milliseconds 100
+    Start-Sleep -Milliseconds 300
     $serial.RtsEnable = $false
-    Start-Sleep -Milliseconds 100
-    $serial.DtrEnable = $false
 
     $until = (Get-Date).AddSeconds($CaptureSeconds)
     while ((Get-Date) -lt $until) {
@@ -62,7 +88,12 @@ try {
             $log += $chunk
             Write-Host -NoNewline $chunk
         }
-        if ($log -match '\[M5\] 60-second M5Unified integration (PASS|FAILED)') {
+        #  The shipping image has no end state to wait for - it loops
+        #  forever - so stop once M5.begin has reported and loop() has been
+        #  seen running, rather than on a 60-second verdict line.
+        if (($log -match '\[M5\] M5.begin (and|or) initial LCD draw (PASS|FAILED)') -and
+                (([regex]::Matches($log, '\[Arduino\] loop heartbeat')).Count `
+                    -ge $RequiredHeartbeats)) {
             Start-Sleep -Milliseconds 500
             $log += $serial.ReadExisting()
             break
@@ -77,17 +108,29 @@ finally {
     $serial.Dispose()
 }
 
-if ($log -match 'Guru Meditation|panic.ed|M5Unified integration FAILED') {
+#  'or initial LCD draw FAILED' is the shipping example's own negative verdict
+#  (examples/M5Unified/M5Unified.ino), so it belongs here rather than among the
+#  required markers.
+if ($log -match 'Guru Meditation|panic.ed|M5.begin or initial LCD draw FAILED') {
     throw 'The packaged M5Unified hardware log contains a panic or failure.'
 }
 foreach ($requiredPattern in @(
         '\[M5\] M5.begin and initial LCD draw PASS',
-        '\[M5\] board=(10|17) display=320x240 pmic=4 battery_mV=\d+',
-        '\[M5\] 60-second M5Unified integration PASS')) {
+        '\[Arduino\] task=\d+ processor=1',
+        '\[Arduino\] setup complete')) {
     if ($log -notmatch $requiredPattern) {
         throw "Required M5Unified hardware marker was not received: $requiredPattern"
     }
 }
+#  Counted, not just matched: one heartbeat says loop() ran, several say it
+#  keeps running.
+$heartbeats = ([regex]::Matches($log, '\[Arduino\] loop heartbeat')).Count
+if ($heartbeats -lt $RequiredHeartbeats) {
+    throw ("The Arduino loop did not keep running: $heartbeats heartbeat(s), " +
+        "needed $RequiredHeartbeats.")
+}
 
 Write-Host ''
 Write-Host 'Packaged M5Unified COM hardware probe passed.'
+Write-Host ('  M5.begin and initial LCD draw PASS')
+Write-Host ('  Arduino task on PRC1, {0} loop heartbeat(s)' -f $heartbeats)

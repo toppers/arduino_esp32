@@ -1,6 +1,21 @@
 <#
 .SYNOPSIS
     Compiles the library-recognition sketch for M5Stack CoreS3.
+
+.DESCRIPTION
+    Needs the TOPPERS/FMP3 board platform installed in -Sketchbook, because
+    examples/LibraryInfo writes to the kernel's own log port
+    (target_fput_log) rather than to the M5Stack core's Serial. On the stock
+    m5stack FQBN this test used to build, there is no FMP3 runtime to resolve
+    that against, so the link could not succeed:
+
+        LibraryInfo.ino:19: undefined reference to `target_fput_log'
+
+    scripts/verify_package.py builds the same example on toppers:esp32 for the
+    same reason. Install the platform first:
+
+        powershell -File scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32s3
+        python scripts/install_platform.py --prebuilt-stage-root build/prebuilt
 #>
 
 [CmdletBinding()]
@@ -13,7 +28,12 @@ param(
     [string]$M5StackPackage = (Join-Path $env:LOCALAPPDATA 'Arduino15\packages\m5stack'),
     [string]$LibraryRoot = '',
     [string]$BuildDirectory = '',
-    [string]$Fqbn = 'm5stack:esp32:m5stack_cores3'
+
+    #  Where the TOPPERS/FMP3 platform is installed. install_platform.py and
+    #  Install-ArduinoIdeIntegration.ps1 both default to the same place.
+    [string]$Sketchbook = '',
+
+    [string]$Fqbn = 'toppers:esp32:m5cores3_fmp3'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +43,13 @@ if ([string]::IsNullOrWhiteSpace($LibraryRoot)) {
 }
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
     $BuildDirectory = Join-Path $LibraryRoot 'build\arduino-phase1'
+}
+if ([string]::IsNullOrWhiteSpace($Sketchbook)) {
+    $documents = [Environment]::GetFolderPath('MyDocuments')
+    if ([string]::IsNullOrWhiteSpace($documents)) {
+        throw 'Documents folder is unavailable; specify -Sketchbook.'
+    }
+    $Sketchbook = Join-Path $documents 'Arduino'
 }
 
 $sketch = Join-Path $LibraryRoot 'examples\LibraryInfo'
@@ -34,13 +61,34 @@ foreach ($required in @($ArduinoCli, $sketch, $nm)) {
     }
 }
 
-& $ArduinoCli compile `
-    --fqbn $Fqbn `
-    --library $LibraryRoot `
-    --build-path $BuildDirectory `
-    $sketch
-if ($LASTEXITCODE -ne 0) {
-    throw "Arduino compile failed (exit=$LASTEXITCODE)"
+#  Said here rather than left to arduino-cli, whose message for an unknown
+#  FQBN does not mention that a platform has to be installed at all.
+$platformBoards = Join-Path $Sketchbook 'hardware\toppers\esp32\boards.txt'
+if ($Fqbn.StartsWith('toppers:', [System.StringComparison]::Ordinal) -and
+        -not (Test-Path -LiteralPath $platformBoards)) {
+    throw ("The TOPPERS/FMP3 platform is not installed in $Sketchbook. Run " +
+        'scripts/install_platform.py --prebuilt-stage-root build/prebuilt ' +
+        'first, or pass -Sketchbook.')
+}
+
+#  So that -Sketchbook actually governs where the platform is looked up.
+#  Without this arduino-cli uses its own default user directory and the
+#  parameter would only be checked above, not honoured here.
+$originalUserDir = $env:ARDUINO_DIRECTORIES_USER
+try {
+    $env:ARDUINO_DIRECTORIES_USER = $Sketchbook
+    & $ArduinoCli compile `
+        --fqbn $Fqbn `
+        --library $LibraryRoot `
+        --build-path $BuildDirectory `
+        $sketch
+    $compileExit = $LASTEXITCODE
+}
+finally {
+    $env:ARDUINO_DIRECTORIES_USER = $originalUserDir
+}
+if ($compileExit -ne 0) {
+    throw "Arduino compile failed (exit=$compileExit)"
 }
 
 $elf = Get-ChildItem -LiteralPath $BuildDirectory -File -Filter '*.elf' |

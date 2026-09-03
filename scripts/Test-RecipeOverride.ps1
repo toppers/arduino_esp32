@@ -47,6 +47,14 @@ $linkPattern = @(
     '-ProjectName "{build.project_name}"'
     "-M5ArduinoRoot `"$M5ArduinoRoot`""
     "-FmpBuildDirectory `"$FmpBuildDirectory`""
+    #  A standalone application: this test publishes the FMP3 image WITHOUT
+    #  linking the sketch, so an application that needs the Arduino bridge
+    #  cannot link. What is asserted below is the mechanism - the published
+    #  ELF/BIN equal the FMP3 ones, the application survives at merged offset
+    #  0x10000, FMP3 symbols are present and Arduino/FreeRTOS ones are not -
+    #  so which standalone application it is does not matter.
+    "-ApplicationDirectory `"$M5ArduinoRoot\fmp_app\phase5`""
+    '-ApplicationName phase5_m5_selftest'
 ) -join ' '
 
 $objcopyPattern = @(

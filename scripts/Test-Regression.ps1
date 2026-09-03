@@ -12,6 +12,11 @@
 [CmdletBinding()]
 param(
     [string]$M5ArduinoRoot = '',
+
+    #  Forwarded to Test-ArduinoLibrary.ps1, which needs the TOPPERS/FMP3
+    #  platform installed there. Empty means its own default (Documents\Arduino).
+    [string]$Sketchbook = '',
+
     [switch]$ReuseExistingArtifacts
 )
 
@@ -25,7 +30,8 @@ $tests = @(
     @{
         Name = 'Arduino library'
         Script = 'Test-ArduinoLibrary.ps1'
-        Arguments = @()
+        Arguments = if ([string]::IsNullOrWhiteSpace($Sketchbook)) { @() }
+            else { @('-Sketchbook', $Sketchbook) }
     },
     @{
         Name = 'recipe override'

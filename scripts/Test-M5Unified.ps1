@@ -50,6 +50,7 @@ $commonRecipeArguments = @(
     "-FmpBuildDirectory `"$FmpBuildDirectory`""
     "-FmpApplicationDirectory `"$applicationDirectory`""
     '-FmpApplicationName phase5_m5_selftest'
+    '-Profile m5-unified'
 ) -join ' '
 
 if ($ReuseArduinoObjects) {
@@ -61,7 +62,8 @@ if ($ReuseArduinoObjects) {
         -M5ArduinoRoot $M5ArduinoRoot `
         -FmpBuildDirectory $FmpBuildDirectory `
         -FmpApplicationDirectory $applicationDirectory `
-        -FmpApplicationName phase5_m5_selftest
+        -FmpApplicationName phase5_m5_selftest `
+        -Profile m5-unified
     if ($LASTEXITCODE -ne 0) {
         throw "Reusing Arduino objects failed (exit=$LASTEXITCODE)"
     }

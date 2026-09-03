@@ -46,6 +46,8 @@ $commonRecipeArguments = @(
     '-ProjectName "{build.project_name}"'
     "-M5ArduinoRoot `"$M5ArduinoRoot`""
     "-FmpBuildDirectory `"$FmpBuildDirectory`""
+    #  phase3_arduino_app is the minimal runtime's own application.
+    '-Profile minimal'
 ) -join ' '
 $linkPattern = "$commonRecipeArguments -Mode Link"
 $objcopyPattern = "$commonRecipeArguments -Mode Objcopy"

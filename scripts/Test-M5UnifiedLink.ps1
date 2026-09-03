@@ -49,6 +49,9 @@ $commonRecipeArguments = @(
     "-FmpBuildDirectory `"$FmpBuildDirectory`""
     "-FmpApplicationDirectory `"$M5ArduinoRoot\fmp_app\phase4`""
     '-FmpApplicationName phase4_freertos_app'
+    #  phase4 includes freertos/FreeRTOS.h; the m5-unified profile is the
+    #  one that puts a FreeRTOS shim on the include path.
+    '-Profile m5-unified'
 ) -join ' '
 
 if ($ReuseArduinoObjects) {
@@ -60,7 +63,8 @@ if ($ReuseArduinoObjects) {
         -M5ArduinoRoot $M5ArduinoRoot `
         -FmpBuildDirectory $FmpBuildDirectory `
         -FmpApplicationDirectory "$M5ArduinoRoot\fmp_app\phase4" `
-        -FmpApplicationName phase4_freertos_app
+        -FmpApplicationName phase4_freertos_app `
+        -Profile m5-unified
     if ($LASTEXITCODE -ne 0) {
         throw "Reusing Arduino objects failed (exit=$LASTEXITCODE)"
     }

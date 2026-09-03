@@ -17,8 +17,7 @@ param(
     [string]$M5GfxLibrary =
         (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Arduino\libraries\M5GFX'),
     [string]$M5UnifiedLibrary =
-        (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Arduino\libraries\M5Unified'),
-    [string]$Fqbn = 'm5stack:esp32:m5stack_cores3'
+        (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'Arduino\libraries\M5Unified')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -130,14 +129,12 @@ foreach ($archive in $wpa2Archives.GetEnumerator()) {
     }
 }
 
-& $ArduinoCli compile --config-file $config `
-    --fqbn $Fqbn `
-    --build-path $buildPath `
-    $example
-if ($LASTEXITCODE -ne 0) {
-    throw "Compiling the installed LibraryInfo example failed (exit=$LASTEXITCODE)."
-}
-
+#  LibraryInfo is compiled AFTER the platform is installed, on toppers:esp32
+#  rather than on the stock m5stack one. It writes to the kernel's own log port
+#  (target_fput_log), which only exists once the FMP3 runtime is linked, so on
+#  the stock m5stack platform the link cannot resolve it:
+#      LibraryInfo.ino:19: undefined reference to `target_fput_log'
+#  scripts/verify_package.py builds it on toppers:esp32 for the same reason.
 $installer = Join-Path $installedRoot `
     'extras\tools\Install-ArduinoIdeIntegration.ps1'
 & powershell.exe -NoProfile -ExecutionPolicy Bypass `
@@ -173,6 +170,15 @@ foreach ($requiredMenuLine in @(
 
 & $ArduinoCli compile --config-file $config `
     --fqbn 'toppers:esp32:m5cores3_fmp3' `
+    --build-path $buildPath `
+    $example
+if ($LASTEXITCODE -ne 0) {
+    throw "Compiling the installed LibraryInfo example failed (exit=$LASTEXITCODE)."
+}
+
+
+& $ArduinoCli compile --config-file $config `
+    --fqbn 'toppers:esp32:m5cores3_fmp3' `
     --build-path $fmp3BuildPath `
     $fmp3Example
 if ($LASTEXITCODE -ne 0) {
@@ -189,8 +195,15 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 
+#  FMP3Runtime=m5, not 'dual'. This test asserts above that 'dual' and 'wifi'
+#  were retired and that minimal/m5/wificonnect are what survives, and then
+#  used to build with the retired names anyway - arduino-cli rejects the FQBN:
+#      invalid value 'dual' for option 'FMP3Runtime'
+#  The m5-unified runtime is the one that carries SMP ("M5Unified + Dual
+#  Core"), which is also where scripts/verify_package.py builds DualCore.
+#  No -library here: DualCore includes only ToppersFMP3_ArduinoBridge.h.
 & $ArduinoCli compile --config-file $config `
-    --fqbn 'toppers:esp32:m5cores3_fmp3:FMP3Runtime=dual' `
+    --fqbn 'toppers:esp32:m5cores3_fmp3:FMP3Runtime=m5' `
     --build-path $dualCoreBuildPath `
     $dualCoreExample
 if ($LASTEXITCODE -ne 0) {
@@ -209,8 +222,10 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 
+#  FMP3Runtime=wificonnect, not the retired 'wifi'. WiFiScan includes
+#  ToppersFMP3_WiFi.h, and verify_package.py builds it under wificonnect.
 & $ArduinoCli compile --config-file $config `
-    --fqbn 'toppers:esp32:m5cores3_fmp3:FMP3Runtime=wifi' `
+    --fqbn 'toppers:esp32:m5cores3_fmp3:FMP3Runtime=wificonnect' `
     --build-path $wifiBuildPath `
     $wifiExample
 if ($LASTEXITCODE -ne 0) {
@@ -483,12 +498,12 @@ foreach ($forbidden in $forbiddenRoots) {
 Write-Host ''
 Write-Host 'Arduino Release asset ZIP passed isolated installation validation.'
 Write-Host "  Installed: $installedRoot"
-Write-Host "  FQBN:      $Fqbn"
+Write-Host '  LibraryInfo FQBN: toppers:esp32:m5cores3_fmp3'
 Write-Host '  FMP3 FQBN: toppers:esp32:m5cores3_fmp3'
 Write-Host '  Blink FQBN: toppers:esp32:m5cores3_fmp3'
-Write-Host '  DualCore FQBN: toppers:esp32:m5cores3_fmp3:FMP3Runtime=dual'
+Write-Host '  DualCore FQBN: toppers:esp32:m5cores3_fmp3:FMP3Runtime=m5'
 Write-Host '  M5Unified FQBN: toppers:esp32:m5cores3_fmp3:FMP3Runtime=m5'
-Write-Host '  WiFi FQBN: toppers:esp32:m5cores3_fmp3:FMP3Runtime=wifi'
+Write-Host '  WiFi FQBN: toppers:esp32:m5cores3_fmp3:FMP3Runtime=wificonnect'
 Get-FileHash -Algorithm SHA256 `
     $zip, $elf, $bin, $fmp3Elf, $fmp3Bin, $blinkElf, $blinkBin,
     $dualCoreElf, $dualCoreBin, $m5UnifiedElf, $m5UnifiedBin,

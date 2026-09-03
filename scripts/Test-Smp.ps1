@@ -51,7 +51,11 @@ $commonRecipeArguments = @(
     "-FmpBuildDirectory `"$FmpBuildDirectory`""
     "-FmpApplicationDirectory `"$applicationDirectory`""
     '-FmpApplicationName phase6_smp_selftest'
-    '-ProcessorCount 2'
+    #  phase6_smp_selftest declares CLS_PRC1/CLS_PRC2, so it needs the
+    #  two-processor kernel. That is the m5-unified profile now: the old
+    #  dual-core profile was absorbed into it (FMP3_PRC_NUM=2), which is
+    #  why -ProcessorCount 2 no longer exists.
+    '-Profile m5-unified'
 ) -join ' '
 
 if ($ReuseArduinoObjects) {
@@ -64,7 +68,7 @@ if ($ReuseArduinoObjects) {
         -FmpBuildDirectory $FmpBuildDirectory `
         -FmpApplicationDirectory $applicationDirectory `
         -FmpApplicationName phase6_smp_selftest `
-        -ProcessorCount 2
+        -Profile m5-unified
     if ($LASTEXITCODE -ne 0) {
         throw "Reusing Arduino objects failed (exit=$LASTEXITCODE)"
     }
@@ -131,9 +135,22 @@ foreach ($required in @($cmakeCache, $kernelConfiguration)) {
         throw "Generated build metadata was not found: $required"
     }
 }
+#  A1_M5_PRC_NUM was the external tree's variable and never appears in this
+#  cache, so this check could only ever have failed here. The vendored runtime
+#  derives the processor count from the profile and passes it to the compiler
+#  as TNUM_PRCID, which is direct evidence and discriminates: the same build
+#  for the minimal profile carries TNUM_PRCID=1.
+$generatedBuild = Join-Path $FmpBuildDirectory 'build.ninja'
+if (-not (Test-Path -LiteralPath $generatedBuild)) {
+    throw "Generated build metadata was not found: $generatedBuild"
+}
+if (-not (Select-String -LiteralPath $generatedBuild -SimpleMatch `
+        'TNUM_PRCID=2')) {
+    throw 'The runtime was not configured for two processors (TNUM_PRCID=2).'
+}
 if (-not (Select-String -LiteralPath $cmakeCache -SimpleMatch `
-        'A1_M5_PRC_NUM:STRING=2')) {
-    throw 'The M5 seam was not configured for two processors.'
+        'FMP3_RUNTIME_PROFILE:STRING=m5-unified')) {
+    throw 'The runtime was not built on the m5-unified profile.'
 }
 foreach ($task in @(
         '(TASK)(toppers_arduino_task)',
