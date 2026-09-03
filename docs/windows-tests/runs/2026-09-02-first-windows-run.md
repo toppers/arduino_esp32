@@ -863,6 +863,38 @@ VENDID `0x11` / FIRMID `0x10` or `0x12`。この値は panel の init コマン�
 一致するのが正しい。`ARDUINO_ARCHIVE` はスケッチリンク経路でしか消費されず、
 ステージ生成には入らないため。
 
+### origin/main 追従後の再検証（全 15 本を通し直した）
+
+この run の作業中に `origin/main` が 9 コミット進んでいた（`3de123c` 以降、
+3 枚目のボード M5StickS3 の追加とそれが露わにした 2 件のバグ）。取り込みは
+ファイルの重なりゼロでクリーンに済んだが、上流は**この run のテストが建てて
+焼く対象**を変更している:
+
+- `examples/M5Unified/M5Unified.ino` / `M5UnifiedLink.ino`
+- `src/ToppersFMP3_M5Unified.h`（新規）— `ARDUINO` が定義されると M5GFX の
+  `LGFXBase` が `Print` を継承してレイアウトが変わる ABI 問題への対処
+- `scripts/fmp3_link.py` / `install_platform.py`
+
+「これらのテストが通る」が本 run の主張なので、新しい土台で全部通し直した。
+
+| 項目 | 結果 |
+| --- | --- |
+| ステージ再生成 esp32s3 | PASS — 47 / 138 / 74（追従前と一致） |
+| ステージ再生成 esp32 (LX6) | PASS — 48 / 139 / 75（同） |
+| ホスト側 6 本 | 全 PASS（M5UnifiedLink / M5Unified / Smp / SketchBridge / WiFiScan / PartitionTable） |
+| `Test-ArduinoReleasePackage` | PASS（6 例題） |
+| `Test-Hardware` | 8 回連続 PASS（★19 修正後） |
+| `Test-M5UnifiedHardware` / `Test-DualCoreHardware` | PASS |
+| `Test-Touch` | PASS — `first touch x=113 y=39`、60 秒で 62 検出 |
+
+ステージのオブジェクト数が追従前と一致したのは、上流が `install_platform.py`
+と `fmp3_link.py` を変えてもステージ生成経路には影響していないということ。
+`Test-ArduinoReleasePackage` と `Test-M5UnifiedLink` が通ったことは、上流の
+ABI 変更（`<ToppersFMP3_M5Unified.h>` 経由）と ★6 のアーカイブリンクが
+噛み合っていることの実証になっている。
+
+追従の過程で ★19 が見つかり、★16 の結論が早すぎたことも分かった（上記）。
+
 ### ★18 2 つのインストーラが知っているボードが食い違っている（未修正・別件）
 
 この run の作業を `origin/main` に追いついた時点で見つかったもので、**この run の
