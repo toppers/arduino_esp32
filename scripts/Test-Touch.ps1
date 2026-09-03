@@ -31,8 +31,12 @@ foreach ($required in @($esptool, $ApplicationBin)) {
     }
 }
 
-Write-Host ('Flashing {0}. Do NOT touch yet - this takes a moment, and the ' +
-    'window has not opened.' -f $Port)
+#  The concatenation is parenthesised because -f binds to the string
+#  immediately left of it, not to the whole expression: without the inner
+#  parentheses only the last literal is formatted and every {n} before it
+#  survives into the output. This message said "Flashing {0}." on its first run.
+Write-Host (('Flashing {0}. Do NOT touch yet - this takes a moment, and the ' +
+    'window has not opened.') -f $Port)
 & $esptool --chip esp32s3 --port $Port --baud 921600 `
     write-flash --flash-size 16MB --flash-mode dio --flash-freq 80m `
     0x10000 $ApplicationBin
@@ -113,10 +117,12 @@ if (-not $touch.Success) {
     $polled = if ($updates.Count -gt 0) {
         $updates[$updates.Count - 1].Groups[1].Value
     } else { 'unknown' }
-    throw ('No touch coordinate arrived in the window {0:HH:mm:ss}-{1:HH:mm:ss} ' +
-        '({2}s). The image polled {3} times in it. If the screen was pressed ' +
-        'outside that interval this says nothing about the hardware - run it ' +
-        'again and press only after the TOUCH NOW line.' -f
+    #  Parenthesised for the same reason as the line above.
+    throw (('No touch coordinate arrived in the window ' +
+        '{0:HH:mm:ss}-{1:HH:mm:ss} ({2}s). The image polled {3} times in it. ' +
+        'If the screen was pressed outside that interval this says nothing ' +
+        'about the hardware - run it again and press only after the ' +
+        'TOUCH NOW line.') -f
         $windowOpened, $windowOpened.AddSeconds($CaptureSeconds),
         $CaptureSeconds, $polled)
 }
