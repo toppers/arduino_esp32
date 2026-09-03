@@ -11,7 +11,13 @@ param(
     [string]$M5ArduinoRoot = '',
     [string]$M5StackPackage =
         (Join-Path $env:LOCALAPPDATA 'Arduino15\packages\m5stack'),
-    [string]$ApplicationBin = ''
+    [string]$ApplicationBin = '',
+
+    #  Which board is on -Port. It selects esptool's --chip and the flash
+    #  parameters, which differ: the CoreS3 is 16MB at 80MHz, the M5Core 4MB
+    #  at 40MHz, the same split xip_build.cmake makes when it links.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -20,8 +26,11 @@ if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 if ([string]::IsNullOrWhiteSpace($ApplicationBin)) {
+    #  Test-M5UnifiedLink.ps1 writes this, and suffixes the directory for
+    #  anything but the default chip.
+    $chipSuffix = if ($Chip -eq 'esp32s3') { '' } else { "-$Chip" }
     $ApplicationBin = Join-Path $M5ArduinoRoot `
-        'build\arduino-phase4-m5unified\M5UnifiedLink.ino.bin'
+        "build\arduino-phase4-m5unified$chipSuffix\M5UnifiedLink.ino.bin"
 }
 
 $esptool = Join-Path $M5StackPackage 'tools\esptool_py\5.2.0\esptool.exe'
@@ -31,8 +40,10 @@ foreach ($required in @($esptool, $ApplicationBin)) {
     }
 }
 
-& $esptool --chip esp32s3 --port $Port --baud 921600 `
-    write-flash --flash-size 16MB --flash-mode dio --flash-freq 80m `
+$flashSize = if ($Chip -eq 'esp32') { '4MB' } else { '16MB' }
+$flashFreq = if ($Chip -eq 'esp32') { '40m' } else { '80m' }
+& $esptool --chip $Chip --port $Port --baud 921600 `
+    write-flash --flash-size $flashSize --flash-mode dio --flash-freq $flashFreq `
     0x10000 $ApplicationBin
 if ($LASTEXITCODE -ne 0) {
     throw "Uploading the API probe failed (exit=$LASTEXITCODE)."

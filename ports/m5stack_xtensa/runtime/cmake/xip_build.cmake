@@ -314,6 +314,19 @@ set(A1_FLASHCACHE_EXTRA_DEFS "")
 if(A1_XIP_PADDR_RUNTIME)
   list(APPEND A1_FLASHCACHE_EXTRA_DEFS -DTOPPERS_XIP_PADDR_RUNTIME)
 endif()
+#  ★チップの略称。flash_cache_init.c は #include <stdint.h> しかしないので、
+#  ヘッダ経由では略称が来ない。渡し忘れると **黙って S3 版が建つ**——
+#  prebuilt_stage.cmake の同じ箇所が同じ警告を書いており、そこには
+#  「LX6 機で S3 の番地を叩いて LoadProhibited で落ちる（2026-09-02、
+#  M5Stack Basic 実機）」とある。seam 経路にはこの処置が無く、まさにそれを
+#  踏んだ: LX6 のイメージは静的検証（シンボル・merged 0x10000）を全部通り、
+#  リンクもするが、実機では entry 直後に
+#      Fatal exception (28): LoadProhibited  excvaddr=0x00000000
+#  で落ちていた。ステージ経路の LX6 イメージは同じ機体で起動するので、
+#  差はこの 1 定義だった。
+if(A1_CHIP STREQUAL "esp32")
+  list(APPEND A1_FLASHCACHE_EXTRA_DEFS -DTOPPERS_ESP32_LX6)
+endif()
 if(A1_XIP_PADDR_PROBE)
   list(APPEND A1_FLASHCACHE_EXTRA_DEFS -DTOPPERS_XIP_PADDR_PROBE)
   message(STATUS "a1_xip_build: ★PoC PADDR probe 有効")
