@@ -59,7 +59,7 @@ esp32(LX6) 側が通ったことで、直前コミット e485cc2 が「未検証
 | `Test-Hardware.ps1` | 初回 **FAIL** → ★15・★16 を直して **PASS** | 4 回連続 `EXIT=0`。queue/FromISR/セマフォ枯渇の 3 検査すべて PASS |
 | `Test-M5UnifiedHardware.ps1` | 初回 **FAIL** → ★10 を直して **PASS** | 3 回連続 `EXIT=0` |
 | `Test-DualCoreHardware.ps1` | 初回 **FAIL** → ★10・★11 を直して **PASS** | 3 回連続 `EXIT=0` |
-| `Test-Touch.ps1` | **未実行** | 入力 `build\arduino-phase5-m5unified\M5Unified.ino.bin` が ★3 で生成されない |
+| `Test-Touch.ps1` | **PASS** | `first touch x=211 y=83`、60 秒で 91 検出。1 回目は判定窓の外で押していたため FAIL（★17） |
 
 実機 5 本はいずれも**上流のホスト側テストが焼く .bin を作れない**ため未実行。
 ボード・ケーブル・給電・ポートはすべて揃っていた。
@@ -770,6 +770,36 @@ COM hardware probe passed.
   FromISR compatibility wrappers (task-context invocation): PASS
   Semaphore and queue pool exhaustion/reuse: PASS
 ```
+
+### ★17 は取り下げ — タッチは正常だった（判定窓の外で押していた）
+
+`Test-Touch.ps1 -Port COM24` の 1 回目は `touches=0` で FAIL し、実機の欠陥を
+疑った。誤りだった。**2 回目は PASS**:
+
+```
+[M5] first touch x=211 y=83
+[M5] alive 10s updates=104 touches=31
+[M5] alive 20s updates=203 touches=91
+[M5] 60-second M5Unified integration PASS
+CoreS3 touch probe passed.
+```
+
+押した位置の色も変わっており、座標が取れている。1 回目の `touches=0` は、
+触っていた時刻が判定窓（焼き込み後 75 秒）の外だったというだけのこと。
+
+残しておく価値があるのは、そう誤診した経緯のほう。「押しましたか」と訊いて
+「押した」と返ってきたのを、**窓の中で押していた**という意味に取った。実際には
+その確認になっていない。実機テストで人の操作が要るものは、窓が開いた瞬間を
+出力で示すか、操作の時刻を記録しないと、この取り違えは繰り返される。
+`Test-Touch.ps1` は焼き込みの**前**に "After the touch screen appears, touch
+several locations on the LCD." と出すが、そこから窓が開くまでに数十秒ある。
+
+なお `W (0) M5GFX: CoreS3 touch version read failed
+(CIPHER:0x64 / FIRMID:0x03 / VENDID:0x01)` は出続けている。M5GFX の期待は
+VENDID `0x11` / FIRMID `0x10` or `0x12`。この値は panel の init コマンド選択
+（ILI9342C か ILI9342E か）にしか使われず、**タッチの動作には影響していない**
+ことが今回はっきりした。個体差か revision 差と思われる。追う必要は無いが、
+ログに毎回出るものなので書いておく。
 
 ### ★7 BOM 無しの `.ps1` に非 ASCII を書くと Windows PowerShell 5.1 が壊す
 
