@@ -952,6 +952,14 @@ if(DEFINED ARDUINO_OBJECTS AND NOT "${ARDUINO_OBJECTS}" STREQUAL "")
         list(APPEND CONSUMER_OBJECTS "${arduino_object}")
     endforeach()
 endif()
+#  ARDUINO_OBJECTS は強制リンク、ARDUINO_ARCHIVE はオンデマンド。
+#  スケッチが引き込んだライブラリのオブジェクトは、強制リンクすると別プロファイル
+#  向けの参照まで解決を要求してしまうので、アーカイブにしてリンカに選ばせる。
+#  ここでは中身を見ず xip_build.cmake へ素通しする（配置規則はそちらのコメント）。
+if(DEFINED ARDUINO_ARCHIVE AND NOT "${ARDUINO_ARCHIVE}" STREQUAL ""
+        AND NOT EXISTS "${ARDUINO_ARCHIVE}")
+    message(FATAL_ERROR "Arduino archive was not found: ${ARDUINO_ARCHIVE}")
+endif()
 
 set(XIP_DIRECTORY "${CMAKE_BINARY_DIR}/xip")
 set(XIP_BINARY "${XIP_DIRECTORY}/app_xip.bin")
@@ -1111,6 +1119,7 @@ add_custom_command(
         -DSTAGE=${XIP_DIRECTORY}
         -DLIBFMP3=$<TARGET_FILE:fmp3>
         "-DCONSUMER_OBJS=${CONSUMER_OBJECTS}"
+        "-DARDUINO_ARCHIVE=${ARDUINO_ARCHIVE}"
         -DFLASHCACHE_SRC=${RUNTIME_ROOT}/boot/flash_cache_init.c
         -DXIP_LD=${A1_XIP_LD}
         -DROMLD_ROOT=${ARDUINO_SDK_LD_ROOT}
@@ -1136,6 +1145,7 @@ add_custom_command(
         seam_start
         seam_cxx
         ${ARDUINO_OBJECTS}
+        ${ARDUINO_ARCHIVE}
         "${RUNTIME_ROOT}/boot/flash_cache_init.c"
         "${RUNTIME_ROOT}/cmake/xip_build.cmake"
         "${A1_XIP_LD}"

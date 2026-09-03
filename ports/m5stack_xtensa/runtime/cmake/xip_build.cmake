@@ -225,6 +225,21 @@ function(link_xip OUTELF)
     list(APPEND _cmd ${A1_UFLAGS})
   endif()
   list(APPEND _cmd -Wl,-Map=${_map} -o ${OUTELF} ${_objlist})
+  #  ★オンデマンドの Arduino オブジェクト（アーカイブ）。
+  #  オブジェクトの後・SDK ライブラリの前。この位置でないと意味が変わる:
+  #  後ろに置くのは「この時点でまだ未定義のシンボルのためだけにメンバを取る」
+  #  ため、前に置かないのは、そのメンバ自身が参照する SDK シンボルを解決させる
+  #  ため。scripts/fmp3_link.py が同じ規則で同じことをしている。
+  #  強制リンクにしない理由: ToppersFMP3_WiFi.cpp.o のように、そのプロファイル
+  #  には存在しない Wi-Fi シンボルを参照するオブジェクトが混ざるため、minimal
+  #  でリンクが止まる。
+  if(DEFINED ARDUINO_ARCHIVE AND NOT "${ARDUINO_ARCHIVE}" STREQUAL "")
+    if(NOT EXISTS "${ARDUINO_ARCHIVE}")
+      message(FATAL_ERROR
+          "a1_xip_build: ARDUINO_ARCHIVE が存在しない: ${ARDUINO_ARCHIVE}")
+    endif()
+    list(APPEND _cmd "${ARDUINO_ARCHIVE}")
+  endif()
   if(NOT A1_LIBGROUP STREQUAL "")
     list(APPEND _cmd ${A1_LIBGROUP})
   endif()
