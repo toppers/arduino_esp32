@@ -31,7 +31,8 @@ foreach ($required in @($esptool, $ApplicationBin)) {
     }
 }
 
-Write-Host 'After the touch screen appears, touch several locations on the LCD.'
+Write-Host ('Flashing {0}. Do NOT touch yet - this takes a moment, and the ' +
+    'window has not opened.' -f $Port)
 & $esptool --chip esp32s3 --port $Port --baud 921600 `
     write-flash --flash-size 16MB --flash-mode dio --flash-freq 80m `
     0x10000 $ApplicationBin
@@ -44,6 +45,21 @@ $serial = [System.IO.Ports.SerialPort]::new(
     [System.IO.Ports.StopBits]::One)
 $serial.ReadTimeout = 250
 $log = ''
+#  Say when the window opens, and remember it.
+#
+#  This test needs a person, and the only line it used to print - "After the
+#  touch screen appears, touch several locations on the LCD." - came out
+#  BEFORE the flash, tens of seconds before anything could be registered. On
+#  2026-09-02 the screen was touched outside the window, the run reported
+#  touches=0, and that was read as the board's touch being broken. It was not:
+#  the next run passed. A human's "yes I touched it" cannot distinguish the
+#  two, so the test has to say when, and say afterwards what interval it was
+#  actually watching.
+$windowOpened = Get-Date
+Write-Host ''
+Write-Host ('=== TOUCH NOW === window open {0:HH:mm:ss}, closes {1:HH:mm:ss} ({2}s)' -f
+    $windowOpened, $windowOpened.AddSeconds($CaptureSeconds), $CaptureSeconds)
+Write-Host 'Press several places on the LCD, every second or two, until told to stop.'
 try {
     $serial.Open()
     #  Reset the board AFTER the port is open, so the capture starts at boot.
@@ -90,7 +106,19 @@ if ($log -match 'Guru Meditation|panic.ed|M5Unified integration FAILED') {
 $touch = [regex]::Match(
     $log, '\[M5\] first touch x=(-?\d+) y=(-?\d+)')
 if (-not $touch.Success) {
-    throw 'No touch coordinate was received before the timeout.'
+    #  Name the interval that was watched, so a failure can be told apart from
+    #  having touched outside it. "touches=0" over a full window of polling is
+    #  the board; touching at the wrong time is not.
+    $updates = [regex]::Matches($log, '\[M5\] alive \d+s updates=(\d+) touches=(\d+)')
+    $polled = if ($updates.Count -gt 0) {
+        $updates[$updates.Count - 1].Groups[1].Value
+    } else { 'unknown' }
+    throw ('No touch coordinate arrived in the window {0:HH:mm:ss}-{1:HH:mm:ss} ' +
+        '({2}s). The image polled {3} times in it. If the screen was pressed ' +
+        'outside that interval this says nothing about the hardware - run it ' +
+        'again and press only after the TOUCH NOW line.' -f
+        $windowOpened, $windowOpened.AddSeconds($CaptureSeconds),
+        $CaptureSeconds, $polled)
 }
 if ($log -notmatch '\[M5\] 60-second M5Unified integration PASS') {
     throw 'The 60-second M5Unified PASS marker was not received.'

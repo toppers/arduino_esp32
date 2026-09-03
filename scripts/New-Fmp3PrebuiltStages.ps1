@@ -25,7 +25,12 @@
 param(
     #  'all-in-one' is EXPERIMENTAL: M5Unified + SMP + Wi-Fi in one
     #  runtime. Not in the default set and not shipped.
-    [ValidateSet('minimal', 'm5-unified', 'wifi-connect', 'all-in-one')]
+    #  'bt-classic' is LX6 only and is refused below for any other chip; the
+    #  ESP32-S3 has no Bluetooth Classic, so no CoreS3 board can offer it.
+    #  Both were missing here while scripts/build_prebuilt_stages.py has taken
+    #  them all along, which left Windows with no way to build either stage.
+    [ValidateSet('minimal', 'm5-unified', 'wifi-connect', 'all-in-one',
+        'bt-classic')]
     [string[]]$Profiles = @('minimal', 'm5-unified', 'wifi-connect'),
 
     [string]$LibraryRoot = '',
@@ -188,18 +193,26 @@ $results = [System.Collections.Generic.List[object]]::new()
 try {
     $env:PATH = "$toolchainBin;$originalPath"
     foreach ($profileName in $Profiles) {
+        #  Refuse a stage no board could select, rather than building one.
+        #  build_prebuilt_stages.py does the same through CHIP_ONLY_PROFILES.
+        if (($profileName -eq 'bt-classic') -and ($Chip -ne 'esp32')) {
+            throw ("bt-classic is LX6 only: the ESP32-S3 has no Bluetooth " +
+                "Classic, so -Chip $Chip cannot build it. Use -Chip esp32.")
+        }
         $applicationName = switch ($profileName) {
             'm5-unified' {
                 if ($SelfTest) { 'phase5_m5_selftest' } else { 'phase5_m5_app' }
             }
             'wifi-connect' { 'phase9_wifi_connect_app' }
             'all-in-one' { 'allinone_app' }
+            'bt-classic' { 'bt_classic_app' }
             default { 'phase3_arduino_app' }
         }
         $applicationDirectoryName = switch ($profileName) {
             'm5-unified' { 'phase5' }
             'wifi-connect' { 'wifi_connect' }
             'all-in-one' { 'allinone' }
+            'bt-classic' { 'bt_classic' }
             default { 'phase3' }
         }
         # The m5-unified application lives outside ports/ in the development
@@ -232,7 +245,8 @@ try {
             "-DARDUINO_SDK_LD_ROOT=$($sdk.linkerScriptRoot)"
             "-DA1_ESPTOOL_EXECUTABLE=$esptool"
         )
-        if ($profileName -in @('m5-unified', 'wifi-connect', 'all-in-one')) {
+        if ($profileName -in @('m5-unified', 'wifi-connect', 'all-in-one',
+                'bt-classic')) {
             $configureArguments += @(
                 "-DARDUINO_SDK_INCLUDE_ROOT=$($sdk.includeRoot)"
                 "-DARDUINO_SDK_LIBRARY_ROOT=$($sdk.libraryRoot)"

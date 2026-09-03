@@ -85,15 +85,39 @@ gen_esp32part）はこのスイートでしか通らないので、穴はそこ�
 テストは 1 本も触らない。**B-1 と同じ穴が 1 枚増えた状態**で、README の
 「★対象外」にも書かれていないので、まず書くべき。
 
-### B-3 `bt-classic` profile と `BluetoothSPP` 例題
+### B-3 `bt-classic` — ステージを作る口は開いた（例題の実機確認は未）
 
-M5Core 専用。ランタイム側は受け付ける
+**Windows でステージを作れなかったのは PowerShell 側の取り残しだった。**
+ランタイム側は最初から `bt-classic` を受け付け
 （`ports/m5stack_xtensa/runtime/CMakeLists.txt` の
-`^(minimal|m5-unified|wifi-connect|all-in-one|bt-classic)$`）のに、
-`New-Fmp3PrebuiltStages.ps1` の `-Profiles` の ValidateSet は
-`minimal / m5-unified / wifi-connect / all-in-one` の 4 つで **`bt-classic` が
-無い**。つまり Windows ではステージを作る口が塞がっている。
-Linux 側は `tools/bt/spp_echo_test.py` で実機確認済み。
+`^(minimal|m5-unified|wifi-connect|all-in-one|bt-classic)$`）、Linux 側の
+`scripts/build_prebuilt_stages.py` も profile 表・アプリ対応・チップ制約
+（`CHIP_ONLY_PROFILES = {"bt-classic": "esp32"}`）を全部持っていたのに、
+`New-Fmp3PrebuiltStages.ps1` にはその 3 つともなかった。
+
+Python 側を写した。ValidateSet に `bt-classic` を追加し、アプリ名
+（`bt_classic_app`）とディレクトリ（`bt_classic`）を対応させ、SDK ヘッダを
+要する profile の一覧にも加え、**LX6 以外では拒否する**ようにした
+（S3 に Bluetooth Classic は無いので、どのボードも選べないステージを作っても
+意味がない）。
+
+実測:
+
+```
+$ New-Fmp3PrebuiltStages.ps1 -Chip esp32s3 -Profiles bt-classic
+bt-classic is LX6 only: the ESP32-S3 has no Bluetooth Classic,
+so -Chip esp32s3 cannot build it. Use -Chip esp32.        EXIT=1
+
+$ New-Fmp3PrebuiltStages.ps1 -Chip esp32 -Profiles bt-classic
+bt-classic     183    1.9 build\prebuilt\esp32t-classic          EXIT=0
+```
+
+同じ ValidateSet にありながら Windows で一度も建てていなかった
+`all-in-one` も確認した: `all-in-one 163 5.2`（esp32s3）で通る。
+
+**残っている穴**: `BluetoothSPP` 例題の実機確認。M5Core が必要で、Linux 側は
+`tools/bt/spp_echo_test.py` で済ませている。スイートには `bt-classic` を
+建てる／焼くテストが 1 本も無いので、B-1 と同じ話になる。
 
 ### B-4 複数ボードが 1 パッケージに入った Release ZIP
 
