@@ -71,13 +71,47 @@ Arduino への参照なし）。テストはそれを `-Profile minimal` で建�
 ホスト経路そのもの**（PowerShell のステージビルド、Windows の arduino-cli、
 gen_esp32part）はこのスイートでしか通らないので、穴はそこに残る。
 
-### B-1 M5Core (ESP32/LX6) がスイートに 1 本も無い
+### B-1 M5Core (ESP32/LX6) — ホスト側 7 本と実機 1 本まで通した
 
-15 本すべて CoreS3 前提で、実機系は `--chip esp32s3` 固定。
+15 本すべて CoreS3 前提で、実機系は `--chip esp32s3` 固定だった。
+`-Chip` を配線して両ボードを回せるようにした。
 
-2026-09-02 の run で、m5-unified profile については**スイート外で**実機まで
-通した（LX6 のステージを Windows で作り、焼き、両プロセッサ起動を確認）。
-一度の確認はテストではないので穴は開いたままにしてある。
+| | esp32s3 | esp32 (LX6) |
+| --- | --- | --- |
+| ホスト側 7 本（`Test-Regression` の中身） | 7/7 PASS 149.7s | **7/7 PASS 189.7s** |
+| `Test-BaselineEnvironment` | 両チップ・両ボードを確認する形に | 同 |
+| `Test-Hardware`（実機） | PASS | **PASS（2 回連続）** |
+| `Test-M5UnifiedHardware` / `Test-DualCoreHardware` | PASS | **A-2 待ち**（下記） |
+| `Test-Touch` | PASS | 対象外（M5Core にタッチパネル無し） |
+
+配線の要点。`-Chip` がボードの既定 FQBN とツールチェーン名を決め、`-Fqbn` は
+前者を上書きする。ビルドディレクトリは**既定以外のチップだけ**接尾辞を付ける
+（`Test-Hardware` と `Test-Touch` が兄弟ディレクトリを名前で読むので、
+esp32s3 のパスは 1 バイトも変えない）。各テストは LX6 に向ける前に必ず既定
+チップで走らせた——nm のパスを一度壊して既定を黙って落としたので。
+
+この過程で見つけた欠陥が 3 件あり、いずれも**LX6 の経路が一度も走っていな
+かった**ために誰も踏めなかったもの:
+
+1. `Invoke-SketchLinkRecipe.ps1` / `Invoke-FmpImageRecipe.ps1` に `-Chip` が
+   無く、`Build-SeamS3M5.ps1` の `-Chip` はどのテストからも到達不能だった
+2. `xip_build.cmake` の esp32 分岐が呼び出し側の `-DXIP_LD` を無視し、外部
+   ツリー時代の `${REPO}/fmp3/target/...` を組み立てていた（`-DREPO` は
+   渡されないので必ず失敗）
+3. 同 `compile_flashcache` が `-DTOPPERS_ESP32_LX6` を渡さず、**LX6 向けに
+   S3 版が黙って建っていた**。静的検証は全部通り、実機で entry 直後に
+   `LoadProhibited excvaddr=0`。`prebuilt_stage.cmake` の同じ箇所には
+   この警告が既に書かれていて、seam 経路だけ処置が無かった
+
+**残っている穴**: `Test-M5UnifiedHardware` と `Test-DualCoreHardware` の LX6。
+両者は `Test-ArduinoReleasePackage.ps1`（legacy ZIP）が作る `.bin` を焼くが、
+その ZIP は `ToppersFMP3-M5CoreS3` という名前で、同梱の PowerShell
+インストーラは 1 ボードしか出さない。**A-2 を決めないと LX6 の入力が作れない。**
+
+なおその調査中に気づいたこと: この 2 本は「legacy ZIP の成果物」を焼いている
+が、**3 ボードの出荷物は stage 経路（Boards Manager パッケージ）のほう**である。
+多ボードの世界では、この 2 本が検証している対象が出荷物とずれている可能性が
+ある。A-2 / B-4 の判断材料。
 
 ### B-2 M5StickS3 がスイートに無い（README の穴リストにも未記載）
 

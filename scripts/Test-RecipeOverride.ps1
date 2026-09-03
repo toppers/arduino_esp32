@@ -14,7 +14,12 @@ param(
     [string]$M5ArduinoRoot = '',
     [string]$ArduinoBuildPath = '',
     [string]$FmpBuildDirectory = '',
-    [string]$Fqbn = 'm5stack:esp32:m5stack_cores3'
+    #  The standalone application depends on neither Arduino nor M5Unified,
+    #  so this test is chip-agnostic apart from the names.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
+    [string]$Fqbn = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,16 +27,26 @@ $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
+if ([string]::IsNullOrWhiteSpace($Fqbn)) {
+    $Fqbn = switch ($Chip) {
+        'esp32' { 'm5stack:esp32:m5stack_core' }
+        default { 'm5stack:esp32:m5stack_cores3' }
+    }
+}
+$chipSuffix = if ($Chip -eq 'esp32s3') { '' } else { "-$Chip" }
 if ([string]::IsNullOrWhiteSpace($ArduinoBuildPath)) {
-    $ArduinoBuildPath = Join-Path $M5ArduinoRoot 'build\arduino-phase2-recipe'
+    $ArduinoBuildPath = Join-Path $M5ArduinoRoot `
+        "build\arduino-phase2-recipe$chipSuffix"
 }
 if ([string]::IsNullOrWhiteSpace($FmpBuildDirectory)) {
-    $FmpBuildDirectory = Join-Path $M5ArduinoRoot 'build\baseline-seam-s3-m5'
+    $FmpBuildDirectory = Join-Path $M5ArduinoRoot `
+        "build\baseline-seam-s3-m5$chipSuffix"
 }
 
 $recipeScript = Join-Path $M5ArduinoRoot 'scripts\Invoke-FmpImageRecipe.ps1'
 $sketch = Join-Path $M5ArduinoRoot 'examples\LibraryInfo'
-$nm = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin\xtensa-esp32s3-elf-nm.exe'
+$nm = Join-Path $M5StackPackage `
+    "tools\esp-x32\2601\bin\xtensa-$Chip-elf-nm.exe"
 
 foreach ($required in @($ArduinoCli, $recipeScript, $sketch, $nm)) {
     if (-not (Test-Path -LiteralPath $required)) {
@@ -71,6 +86,7 @@ $linkPattern = @(
     #  neither Arduino nor M5Unified, and saying so here keeps the claim narrow
     #  (and the build far shorter than compiling M5GFX for nothing).
     '-Profile minimal'
+    "-Chip $Chip"
 ) -join ' '
 
 $objcopyPattern = @(

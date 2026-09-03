@@ -17,6 +17,11 @@ param(
     #  platform installed there. Empty means its own default (Documents\Arduino).
     [string]$Sketchbook = '',
 
+    #  Forwarded to every test in the list. All seven take -Chip now, so the
+    #  whole host-side suite can be run for either board.
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
     [switch]$ReuseExistingArtifacts
 )
 
@@ -30,38 +35,43 @@ $tests = @(
     @{
         Name = 'Arduino library'
         Script = 'Test-ArduinoLibrary.ps1'
-        Arguments = if ([string]::IsNullOrWhiteSpace($Sketchbook)) { @() }
-            else { @('-Sketchbook', $Sketchbook) }
+        Arguments = @('-Chip', $Chip) + $(
+            if ([string]::IsNullOrWhiteSpace($Sketchbook)) { @() }
+            else { @('-Sketchbook', $Sketchbook) })
     },
     @{
         Name = 'recipe override'
         Script = 'Test-RecipeOverride.ps1'
-        Arguments = @()
+        Arguments = @('-Chip', $Chip)
     },
     @{
         Name = 'sketch bridge'
         Script = 'Test-SketchBridge.ps1'
-        Arguments = @()
+        Arguments = @('-Chip', $Chip)
     },
     @{
         Name = 'API boundary and M5Unified link'
         Script = 'Test-M5UnifiedLink.ps1'
-        Arguments = if ($ReuseExistingArtifacts) { @('-ReuseArduinoObjects') } else { @() }
+        Arguments = @('-Chip', $Chip) + $(
+            if ($ReuseExistingArtifacts) { @('-ReuseArduinoObjects') } else { @() })
     },
     @{
         Name = 'M5Unified integration'
         Script = 'Test-M5Unified.ps1'
-        Arguments = if ($ReuseExistingArtifacts) { @('-ReuseArduinoObjects') } else { @() }
+        Arguments = @('-Chip', $Chip) + $(
+            if ($ReuseExistingArtifacts) { @('-ReuseArduinoObjects') } else { @() })
     },
     @{
         Name = 'SMP'
         Script = 'Test-Smp.ps1'
-        Arguments = if ($ReuseExistingArtifacts) { @('-ReuseArduinoObjects') } else { @() }
+        Arguments = @('-Chip', $Chip) + $(
+            if ($ReuseExistingArtifacts) { @('-ReuseArduinoObjects') } else { @() })
     },
     @{
         Name = 'credential-free Wi-Fi scan'
         Script = 'Test-WiFiScan.ps1'
-        Arguments = if ($ReuseExistingArtifacts) { @('-SkipBuild') } else { @() }
+        Arguments = @('-Chip', $Chip) + $(
+            if ($ReuseExistingArtifacts) { @('-SkipBuild') } else { @() })
     }
 )
 
