@@ -23,7 +23,26 @@ param(
     [string]$ProjectName,
 
     [string]$M5ArduinoRoot = '',
-    [string]$FmpBuildDirectory = ''
+    [string]$FmpBuildDirectory = '',
+
+    #  Which vendored runtime profile to build. The default keeps what the
+    #  retired -Variant m5 meant. Build-SeamS3M5.ps1 used to need an external
+    #  toppers/fmp3_esp_idf checkout that this script had no parameter to pass,
+    #  which is why every run of it died binding an empty -Path.
+    [ValidateSet('minimal', 'm5-unified', 'wifi-connect', 'all-in-one',
+        'bt-classic')]
+    [string]$Profile = 'm5-unified',
+
+    #  This mode publishes a STANDALONE FMP3 image - the sketch's own objects
+    #  are deliberately not linked, which is the whole point of the override -
+    #  so the application must not need the Arduino bridge. Most of them do:
+    #  their cfg declares CRE_TSK(ARDUINO_TASK, ... toppers_arduino_task ...)
+    #  and the link stops on an undefined toppers_arduino_task. The self-test
+    #  applications (phase5_m5_selftest, phase6_smp_selftest) are the ones
+    #  that stand alone. Empty means the profile default, which will only work
+    #  for a profile whose default is standalone.
+    [string]$ApplicationDirectory = '',
+    [string]$ApplicationName = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,7 +68,9 @@ if ($Mode -eq 'Link') {
     & powershell.exe -NoProfile -ExecutionPolicy Bypass `
         -File $buildScript `
         -BuildDirectory $FmpBuildDirectory `
-        -SkipRomLinkSetup
+        -Profile $Profile `
+        -ApplicationDirectory $ApplicationDirectory `
+        -ApplicationName $ApplicationName
     if ($LASTEXITCODE -ne 0) {
         throw "FMP3 build failed (exit=$LASTEXITCODE)"
     }

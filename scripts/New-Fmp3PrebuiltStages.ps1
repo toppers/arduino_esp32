@@ -113,7 +113,7 @@ function Resolve-Program {
 $cmakeProgram = Resolve-Program -Name 'cmake.exe' -ExplicitPath $CMake
 $ninjaProgram = Resolve-Program -Name 'ninja.exe' -ExplicitPath $Ninja
 
-$resolverArguments = @{ CoreVersion = $CoreVersion }
+$resolverArguments = @{ CoreVersion = $CoreVersion; Chip = $Chip }
 if (-not [string]::IsNullOrWhiteSpace($ArduinoData)) {
     $resolverArguments.ArduinoData = $ArduinoData
 }

@@ -279,7 +279,12 @@ $boardLines = $globalMenuLines + @(
     #  EXPERIMENTAL: M5Unified + SMP + Wi-Fi in one runtime. Only
     #  offered when its stage is actually present, so a normal install of the
     #  three shipped profiles does not show a menu entry that cannot build.
-    if (Test-Path -LiteralPath (Join-Path $PrebuiltStageRoot 'all-in-one')) {
+    #  Guarded because -PrebuiltStageRoot defaults to empty for the legacy
+    #  path below, and Join-Path rejects an empty -Path outright: without this
+    #  the installer could not run at all without a stage root, which is how
+    #  Test-ArduinoReleasePackage.ps1 calls it. No stage root, no stage.
+    if ((-not [string]::IsNullOrWhiteSpace($PrebuiltStageRoot)) -and
+            (Test-Path -LiteralPath (Join-Path $PrebuiltStageRoot 'all-in-one'))) {
         @('m5cores3_fmp3.menu.FMP3Runtime.aio=All-in-one (experimental)',
           'm5cores3_fmp3.menu.FMP3Runtime.aio.build.toppers_profile=all-in-one')
     }

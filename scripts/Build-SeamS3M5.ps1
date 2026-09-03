@@ -1,175 +1,297 @@
-﻿<#
+<#
 .SYNOPSIS
-    Builds the ESP32-S3/FMP3 M5Stack seam target on Windows.
+    Builds the FMP3 XIP image from the runtime vendored in this repository.
 
 .DESCRIPTION
-    Configures the external esp32_s3 repository into M5Arduino/build, uses the
-    standalone esptool.exe bundled with the M5Stack Arduino package, and makes
-    the Xtensa binutils and Git for Windows Bash visible only for this process.
+    Produces <BuildDirectory>/xip/fmp_xip.elf and app_xip.bin from
+    ports/m5stack_xtensa/runtime plus third_party/fmp3_core, and refuses the
+    result if any symbol is still undefined.
+
+    This used to configure an EXTERNAL checkout of toppers/fmp3_esp_idf, given
+    by -Fmp3Repository. That path could not be taken by any of its callers:
+
+      - -Fmp3Repository defaulted to '' and Assert-Path rejects an empty
+        string, so it was mandatory in effect, yet Invoke-FmpImageRecipe.ps1
+        and Invoke-SketchLinkRecipe.ps1 had no parameter to pass it. The five
+        tests that go through them all died with
+            Cannot bind argument to parameter 'Path' because it is an
+            empty string.
+      - Even given a checkout, this script required A1_ESPTOOL_EXECUTABLE to
+        be present in that repository's CMakeLists.txt and otherwise said
+            (in Japanese) apply patches\esp32_s3-windows-host-tools.patch
+        The public snapshot does not have that variable, and no patches/
+        directory exists in this repository. So the path was unreachable even
+        with the external tree in hand.
+
+    Everything those callers need is vendored here: the kernel
+    (third_party/fmp3_core), the runtime (ports/m5stack_xtensa/runtime), and
+    every application they name - phase3_arduino_app,
+    phase4_freertos_app, phase5_m5_selftest, phase6_smp_selftest and
+    phase9_wifi_connect_app. scripts/New-Fmp3PrebuiltStages.ps1 and
+    scripts/Invoke-PortableFmp3Recipe.ps1 already drive that tree on Windows
+    with nothing but CMake, Ninja and the M5Stack core's toolchain, so this
+    follows them rather than keeping a dependency the repository has already
+    vendored away. Git Bash is no longer needed either: the ROM linker-script
+    setup it ran was for the external tree.
+
+.EXAMPLE
+    powershell.exe -NoProfile -ExecutionPolicy Bypass `
+      -File .\scripts\Build-SeamS3M5.ps1 `
+      -Profile minimal -BuildDirectory build\phase3 `
+      -ExternalObjects 'C:\a\sketch.cpp.o|C:\a\ArduinoSketchBridge.cpp.o'
 #>
 
 [CmdletBinding()]
 param(
-    #  Checkout of the reference port. The reference is the
-    #  PUBLIC toppers/fmp3_esp_idf; there is nothing to derive this from, so
-    #  it has to be given. The old default named a path on another machine and
-    #  the repository it named is no longer the reference.
-    [string]$Fmp3Repository = '',
     [string]$BuildDirectory = '',
-    [string]$M5StackPackage = (Join-Path $env:LOCALAPPDATA 'Arduino15\packages\m5stack'),
-    [string]$CMake = ((Get-Command 'cmake.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)),
-    [string]$Ninja = ((Get-Command 'ninja.exe' -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty Source)),
-    #  Built from ProgramFiles rather than written out. Get-Command bash.exe is
-    #  NOT usable here: on Windows it usually finds the WSL launcher in
-    #  System32 instead of Git Bash, and the script needs the Git one.
-    [string]$GitBash = (Join-Path $env:ProgramFiles 'Git\bin\bash.exe'),
-    [int]$Parallel = 8,
-    [switch]$SkipRomLinkSetup,
-    [string]$ExternalApplicationDirectory = '',
-    [string]$ExternalApplicationName = '',
+
+    #  The vendored runtime's own vocabulary. The retired -Variant/-Fmp3Repository
+    #  pair mapped onto the external tree's A1_VARIANT/A1_WIFI_APP, which do not
+    #  exist here: 'wifi' is the wifi-connect profile, and both Wi-Fi adapters
+    #  (connect and scan) are compiled into it.
+    [ValidateSet('minimal', 'm5-unified', 'wifi-connect', 'all-in-one',
+        'bt-classic')]
+    [string]$Profile = 'm5-unified',
+
+    #  Which application the image runs. Empty means the profile's default,
+    #  the same mapping New-Fmp3PrebuiltStages.ps1 uses. Callers that want a
+    #  self-test application (phase5_m5_selftest, phase6_smp_selftest) or one
+    #  that is not a profile default (phase4_freertos_app) name it here.
+    [string]$ApplicationDirectory = '',
+    [string]$ApplicationName = '',
+
+    #  Arduino-generated objects to FORCE-link, '|'-separated. Kept as a
+    #  single string because that is how Arduino recipe lines pass lists.
     [string]$ExternalObjects = '',
-    [ValidateRange(1, 2)]
-    [int]$ProcessorCount = 1,
-    [ValidateSet('m5', 'wifi')]
-    [string]$Variant = 'm5',
-    [ValidateSet('wifi_sta', 'wifi_scan')]
-    [string]$WifiApplication = 'wifi_sta'
+
+    #  An archive of Arduino objects to offer ON DEMAND, so the linker takes a
+    #  member only for a symbol still undefined. Force-linking these would
+    #  break the profiles they were not built for; see ARDUINO_ARCHIVE in
+    #  ports/m5stack_xtensa/runtime/cmake/xip_build.cmake.
+    [string]$ExternalArchive = '',
+
+    [ValidateSet('esp32s3', 'esp32')]
+    [string]$Chip = 'esp32s3',
+
+    [string]$LibraryRoot = '',
+    [string]$CMake = '',
+    [string]$Ninja = '',
+    [string]$ArduinoData = '',
+    [string]$CoreVersion = '3.3.8',
+
+    #  m5-unified and all-in-one compile M5GFX and M5Unified themselves.
+    [string]$M5GfxSource = '',
+    [string]$M5UnifiedSource = '',
+
+    [int]$Parallel = 8,
+    [switch]$Clean
 )
 
 $ErrorActionPreference = 'Stop'
 
+if ([string]::IsNullOrWhiteSpace($LibraryRoot)) {
+    $LibraryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+}
 if ([string]::IsNullOrWhiteSpace($BuildDirectory)) {
-    $BuildDirectory = Join-Path $PSScriptRoot '..\build\baseline-seam-s3-m5'
+    $BuildDirectory = Join-Path $LibraryRoot 'build\baseline-seam-s3-m5'
 }
 
-function Assert-Path {
+# Windows PowerShell turns a native command's stderr into ErrorRecords, and with
+# $ErrorActionPreference = 'Stop' that aborts the script even when the command
+# succeeded. CMake writes warnings to stderr, so run native commands with
+# 'Continue' and judge them by their exit code.
+function Invoke-Native {
     param(
-        [Parameter(Mandatory)]
-        [string]$Label,
-        [Parameter(Mandatory)]
-        [string]$Path
+        [Parameter(Mandatory)][string]$FilePath,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][string]$What
     )
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        throw ('{0} が見つかりません: {1}' -f $Label, $Path)
-    }
-}
-
-function Invoke-Checked {
-    param(
-        [Parameter(Mandatory)]
-        [string]$Label,
-        [Parameter(Mandatory)]
-        [scriptblock]$Command
-    )
-
-    & $Command
-    if ($LASTEXITCODE -ne 0) {
-        throw ('{0} に失敗しました (exit={1})' -f $Label, $LASTEXITCODE)
-    }
-}
-
-$toolchainBin = Join-Path $M5StackPackage 'tools\esp-x32\2601\bin'
-$toolchainFile = Join-Path $Fmp3Repository 'cmake\toolchain-xtensa-esp32s3.cmake'
-$esptool = Join-Path $M5StackPackage 'tools\esptool_py\5.2.0\esptool.exe'
-$nm = Join-Path $toolchainBin 'xtensa-esp32s3-elf-nm.exe'
-$romLinkSetup = Join-Path $Fmp3Repository 'scripts\setup_wifi_ld_links.sh'
-$driver = Join-Path $Fmp3Repository 'cmake\a1_xip_build.cmake'
-
-Assert-Path 'ESP32-S3/FMP3 repository' $Fmp3Repository
-Assert-Path 'CMake' $CMake
-Assert-Path 'Ninja' $Ninja
-Assert-Path 'Git Bash' $GitBash
-Assert-Path 'Xtensa toolchain' $toolchainBin
-Assert-Path 'Xtensa toolchain file' $toolchainFile
-Assert-Path 'Arduino package esptool' $esptool
-Assert-Path 'Xtensa nm' $nm
-Assert-Path 'XIP build driver' $driver
-
-if (-not (Select-String -LiteralPath (Join-Path $Fmp3Repository 'CMakeLists.txt') `
-        -Pattern 'A1_ESPTOOL_EXECUTABLE' -Quiet)) {
-    throw 'esp32_s3へ patches\esp32_s3-windows-host-tools.patch を適用してください。'
-}
-
-$requiredRomLd = @(
-    'esp32s3.rom.ld',
-    'esp32s3.rom.api.ld',
-    'esp32s3.rom.libc.ld',
-    'esp32s3.rom.libgcc.ld',
-    'esp32s3.rom.newlib.ld',
-    'esp32s3.rom.version.ld'
-)
-$missingRomLd = @($requiredRomLd | Where-Object {
-    -not (Test-Path -LiteralPath (Join-Path $Fmp3Repository "esp\ld\$_"))
-})
-
-if (-not $SkipRomLinkSetup -and $missingRomLd.Count -gt 0) {
-    Assert-Path 'ROM linker-script setup' $romLinkSetup
-    Push-Location $Fmp3Repository
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     try {
-        Invoke-Checked 'ROM linker-script setup' {
-            & $GitBash --login scripts/setup_wifi_ld_links.sh
-        }
+        & $FilePath @Arguments
+        $code = $LASTEXITCODE
     }
     finally {
-        Pop-Location
+        $ErrorActionPreference = $previous
+    }
+    if ($code -ne 0) {
+        throw "$What failed (exit=$code)."
     }
 }
-elseif ($missingRomLd.Count -eq 0) {
-    Write-Host 'ROM linker scripts are already available.'
+
+function Resolve-Program {
+    param([string]$Name, [string]$ExplicitPath)
+    if (-not [string]::IsNullOrWhiteSpace($ExplicitPath)) {
+        if (-not (Test-Path -LiteralPath $ExplicitPath)) {
+            throw "$Name was not found: $ExplicitPath"
+        }
+        return (Resolve-Path -LiteralPath $ExplicitPath).Path
+    }
+    $command = Get-Command $Name -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+    if ($null -ne $command) {
+        return $command.Source
+    }
+    throw "$Name was not found. Install it or pass its path."
+}
+
+function Find-ToolFile {
+    param([string]$SearchRoot, [string]$FileName)
+    $found = @(Get-ChildItem -LiteralPath $SearchRoot -Recurse -Filter $FileName `
+        -File | Sort-Object FullName -Descending)
+    if ($found.Count -eq 0) {
+        throw "$FileName was not found below $SearchRoot"
+    }
+    return $found[0].FullName
+}
+
+$cmakeProgram = Resolve-Program -Name 'cmake.exe' -ExplicitPath $CMake
+$ninjaProgram = Resolve-Program -Name 'ninja.exe' -ExplicitPath $Ninja
+
+$resolverArguments = @{ CoreVersion = $CoreVersion; Chip = $Chip }
+if (-not [string]::IsNullOrWhiteSpace($ArduinoData)) {
+    $resolverArguments.ArduinoData = $ArduinoData
+}
+$sdk = & (Join-Path $PSScriptRoot 'Resolve-ArduinoEsp32S3Sdk.ps1') `
+    @resolverArguments
+
+#  The toolchain and the archiver are named for the chip.
+$toolchainCompiler = Find-ToolFile `
+    -SearchRoot (Join-Path $sdk.packageRoot 'tools\esp-x32') `
+    -FileName "xtensa-$Chip-elf-gcc.exe"
+$esptool = Find-ToolFile `
+    -SearchRoot (Join-Path $sdk.packageRoot 'tools\esptool_py') `
+    -FileName 'esptool.exe'
+$toolchainBin = Split-Path -Parent $toolchainCompiler
+$nm = $toolchainCompiler -replace 'gcc\.exe$', 'nm.exe'
+if (-not (Test-Path -LiteralPath $nm)) {
+    throw "The Xtensa nm was not found: $nm"
+}
+
+#  Same mapping as New-Fmp3PrebuiltStages.ps1, so a profile means the same
+#  application in both places unless a caller says otherwise.
+if ([string]::IsNullOrWhiteSpace($ApplicationName)) {
+    $ApplicationName = switch ($Profile) {
+        'm5-unified' { 'phase5_m5_app' }
+        'wifi-connect' { 'phase9_wifi_connect_app' }
+        'all-in-one' { 'allinone_app' }
+        'bt-classic' { 'bt_classic_app' }
+        default { 'phase3_arduino_app' }
+    }
+}
+if ([string]::IsNullOrWhiteSpace($ApplicationDirectory)) {
+    $directoryName = switch ($Profile) {
+        'm5-unified' { 'phase5' }
+        'wifi-connect' { 'wifi_connect' }
+        'all-in-one' { 'allinone' }
+        'bt-classic' { 'bt_classic' }
+        default { 'phase3' }
+    }
+    #  The m5-unified and all-in-one applications live outside ports/ in the
+    #  development tree, the same split Invoke-PortableFmp3Recipe.ps1 uses.
+    $ApplicationDirectory = if ($Profile -in @('m5-unified', 'all-in-one')) {
+        Join-Path $LibraryRoot "fmp_app\$directoryName"
+    }
+    else {
+        Join-Path $LibraryRoot "ports\m5stack_xtensa\app\$directoryName"
+    }
+}
+$ApplicationDirectory = [System.IO.Path]::GetFullPath($ApplicationDirectory)
+
+$runtime = Join-Path $LibraryRoot 'ports\m5stack_xtensa\runtime'
+$fmp3Core = Join-Path $LibraryRoot 'third_party\fmp3_core'
+foreach ($required in @(
+        (Join-Path $runtime 'CMakeLists.txt'),
+        (Join-Path $fmp3Core 'CMakeLists.txt'),
+        (Join-Path $ApplicationDirectory "$ApplicationName.cfg"))) {
+    if (-not (Test-Path -LiteralPath $required)) {
+        throw "FMP3 build input was not found: $required"
+    }
+}
+
+if (('m5-unified' -eq $Profile) -or ('all-in-one' -eq $Profile)) {
+    if ([string]::IsNullOrWhiteSpace($M5GfxSource) -or
+            [string]::IsNullOrWhiteSpace($M5UnifiedSource)) {
+        $documents = [Environment]::GetFolderPath('MyDocuments')
+        $sketchbookLibraries = Join-Path $documents 'Arduino\libraries'
+        if ([string]::IsNullOrWhiteSpace($M5GfxSource)) {
+            $M5GfxSource = Join-Path $sketchbookLibraries 'M5GFX\src'
+        }
+        if ([string]::IsNullOrWhiteSpace($M5UnifiedSource)) {
+            $M5UnifiedSource = Join-Path $sketchbookLibraries 'M5Unified\src'
+        }
+    }
+    foreach ($required in @($M5GfxSource, $M5UnifiedSource)) {
+        if (-not (Test-Path -LiteralPath $required)) {
+            throw "$Profile needs the library sources: $required"
+        }
+    }
+}
+
+$externalObjectPaths = @(
+    $ExternalObjects -split '\|' |
+        Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+foreach ($externalObject in $externalObjectPaths) {
+    if (-not (Test-Path -LiteralPath $externalObject)) {
+        throw "Arduino external object was not found: $externalObject"
+    }
+}
+if ((-not [string]::IsNullOrWhiteSpace($ExternalArchive)) -and
+        -not (Test-Path -LiteralPath $ExternalArchive)) {
+    throw "Arduino external archive was not found: $ExternalArchive"
+}
+
+if ($Clean -and (Test-Path -LiteralPath $BuildDirectory)) {
+    Remove-Item -LiteralPath $BuildDirectory -Recurse -Force
+}
+
+$configureArguments = @(
+    '-S', $runtime
+    '-B', $BuildDirectory
+    '-G', 'Ninja'
+    "-DCMAKE_MAKE_PROGRAM=$ninjaProgram"
+    "-DCMAKE_TOOLCHAIN_FILE=$runtime\cmake\toolchain-xtensa-$Chip.cmake"
+    "-DA1_CHIP=$Chip"
+    "-DFMP3_CORE_ROOT=$fmp3Core"
+    "-DFMP3_APPLICATION_DIR=$ApplicationDirectory"
+    "-DFMP3_APPLICATION_NAME=$ApplicationName"
+    #  Typed, so it lands in CMakeCache.txt as
+    #  FMP3_RUNTIME_PROFILE:STRING rather than :UNINITIALIZED.
+    #  Test-WiFiScan.ps1 and Test-Smp.ps1 assert on it.
+    "-DFMP3_RUNTIME_PROFILE:STRING=$Profile"
+    "-DARDUINO_SDK_LD_ROOT=$($sdk.linkerScriptRoot)"
+    "-DA1_ESPTOOL_EXECUTABLE=$esptool"
+    "-DARDUINO_OBJECTS:STRING=$($externalObjectPaths -join ';')"
+    "-DARDUINO_ARCHIVE:STRING=$ExternalArchive"
+)
+if ($Profile -in @('m5-unified', 'wifi-connect', 'all-in-one', 'bt-classic')) {
+    $configureArguments += @(
+        "-DARDUINO_SDK_INCLUDE_ROOT=$($sdk.includeRoot)"
+        "-DARDUINO_SDK_LIBRARY_ROOT=$($sdk.libraryRoot)"
+    )
+}
+if ($Profile -in @('m5-unified', 'all-in-one')) {
+    $configureArguments += @(
+        "-DM5GFX_SOURCE_ROOT=$M5GfxSource"
+        "-DM5UNIFIED_SOURCE_ROOT=$M5UnifiedSource"
+        "-DTOPPERS_LIBRARY_SOURCE_ROOT=$(Join-Path $LibraryRoot 'src')"
+    )
 }
 
 $originalPath = $env:PATH
 $originalEpoch = $env:SOURCE_DATE_EPOCH
-$gitBin = Split-Path -Parent $GitBash
-
 try {
-    $env:PATH = '{0};{1};{2}' -f $toolchainBin, $gitBin, $originalPath
+    $env:PATH = "$toolchainBin;$originalPath"
+    #  Kept from the external-tree version: the image embeds a build date, and
+    #  pinning it is what makes two builds of the same input compare equal.
     $env:SOURCE_DATE_EPOCH = '1500000000'
 
-    $configureArguments = @(
-        '-S', $Fmp3Repository,
-        '-B', $BuildDirectory,
-        '-G', 'Ninja',
-        "-DCMAKE_MAKE_PROGRAM=$Ninja",
-        "-DCMAKE_TOOLCHAIN_FILE=$toolchainFile",
-        '-DA1_CHIP=esp32s3',
-        "-DA1_VARIANT=$Variant",
-        "-DA1_M5_PRC_NUM=$ProcessorCount",
-        "-DA1_WIFI_APP=$WifiApplication",
-        '-DA1_CONSOLE_USJ=ON',
-        "-DA1_ESPTOOL_EXECUTABLE=$esptool",
-        "-DA1_M5_EXTERNAL_APPLDIR=$ExternalApplicationDirectory",
-        "-DA1_M5_EXTERNAL_APPLNAME=$ExternalApplicationName"
-    )
-    if (-not [string]::IsNullOrWhiteSpace($ExternalApplicationDirectory)) {
-        if ($Variant -ne 'm5') {
-            throw 'ExternalApplicationDirectory is supported only for Variant=m5.'
-        }
-        if ([string]::IsNullOrWhiteSpace($ExternalApplicationName)) {
-            throw 'ExternalApplicationDirectoryにはExternalApplicationNameも必要です。'
-        }
-    }
-    $externalObjectPaths = @(
-        $ExternalObjects -split '\|' |
-            Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
-    )
-    if ($externalObjectPaths.Count -gt 0) {
-        foreach ($externalObject in $externalObjectPaths) {
-            Assert-Path 'Arduino external object' $externalObject
-        }
-    }
-    $configureArguments += (
-        '-DA1_EXTERNAL_OBJECTS:STRING={0}' -f ($externalObjectPaths -join ';')
-    )
-
-    Invoke-Checked 'CMake configure' {
-        & $CMake @configureArguments
-    }
-
-    Invoke-Checked 'CMake build' {
-        & $CMake --build $BuildDirectory --parallel $Parallel
-    }
+    Invoke-Native -FilePath $cmakeProgram -Arguments $configureArguments `
+        -What "Configuring the $Profile FMP3 runtime"
+    Invoke-Native -FilePath $cmakeProgram `
+        -Arguments @('--build', $BuildDirectory, '--parallel', "$Parallel") `
+        -What "Building the $Profile FMP3 image"
 }
 finally {
     $env:PATH = $originalPath
@@ -179,20 +301,29 @@ finally {
 $xipDirectory = Join-Path $BuildDirectory 'xip'
 $application = Join-Path $xipDirectory 'app_xip.bin'
 $elf = Join-Path $xipDirectory 'fmp_xip.elf'
-Assert-Path 'application image' $application
-Assert-Path 'FMP3 ELF' $elf
+foreach ($required in @($application, $elf)) {
+    if (-not (Test-Path -LiteralPath $required)) {
+        throw "FMP3 artifact was not generated: $required"
+    }
+}
 
 $undefined = @(& $nm -u $elf)
 if ($LASTEXITCODE -ne 0) {
-    throw ('nmによる未定義シンボル検査に失敗しました (exit={0})' -f $LASTEXITCODE)
+    throw ('Inspecting undefined symbols with nm failed (exit={0})' -f $LASTEXITCODE)
 }
 if ($undefined.Count -ne 0) {
-    throw ('未定義シンボルが残っています:{0}{1}' -f
+    throw ('Undefined symbols remain:{0}{1}' -f
         [Environment]::NewLine, ($undefined -join [Environment]::NewLine))
 }
 
 Write-Host ''
 Write-Host 'Build completed.'
+Write-Host ("  Profile:     {0}" -f $Profile)
+Write-Host ("  Application: {0} ({1})" -f $ApplicationName, $ApplicationDirectory)
+Write-Host ("  Chip:        {0}" -f $Chip)
+if ($externalObjectPaths.Count -gt 0) {
+    Write-Host ("  Arduino objects: {0}" -f $externalObjectPaths.Count)
+}
 Get-FileHash -Algorithm SHA256 $application, $elf |
     ForEach-Object { Write-Host ('  {0}  {1}' -f $_.Hash, $_.Path) }
 Write-Host '  Undefined symbols: 0'
