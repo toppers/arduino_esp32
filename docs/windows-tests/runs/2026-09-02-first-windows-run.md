@@ -56,7 +56,7 @@ esp32(LX6) 側が通ったことで、直前コミット e485cc2 が「未検証
 | `Test-RecipeOverride.ps1` | **FAIL** | ★14。★3 は解消したが、単体で建つアプリが無い（★13） |
 | `Test-Regression.ps1` | **FAIL** | 修正後に通しで再実行: `Arduino library PASS 215.4s` → 2 本目 `recipe override FAIL 33.3s` で abort（★14）。初回は 1 本目（★2）で止まっていた |
 | `Test-ArduinoReleasePackage.ps1` | 初回 **FAIL** → ★2・★5・★6・★8・★9 を直して **PASS** | ZIP SHA-256 `CCAE66401CE961982C70A7AD9D3FA0B62A07FC6716C4A33AB6C9C22FFC1DE8E4` |
-| `Test-Hardware.ps1` | **FAIL** | ★15。★3 の解消で入力が揃い、初めて実行できた。焼き込みは成功し、実機が自分で否定判定を出している |
+| `Test-Hardware.ps1` | 初回 **FAIL** → ★15・★16 を直して **PASS** | 4 回連続 `EXIT=0`。queue/FromISR/セマフォ枯渇の 3 検査すべて PASS |
 | `Test-M5UnifiedHardware.ps1` | 初回 **FAIL** → ★10 を直して **PASS** | 3 回連続 `EXIT=0` |
 | `Test-DualCoreHardware.ps1` | 初回 **FAIL** → ★10・★11 を直して **PASS** | 3 回連続 `EXIT=0` |
 | `Test-Touch.ps1` | **未実行** | 入力 `build\arduino-phase5-m5unified\M5Unified.ino.bin` が ★3 で生成されない |
@@ -701,47 +701,75 @@ FMP3 のものと一致、アプリが merged 0x10000 に保存される、`_sta
 - (b) Arduino タスクを作らない最小のアプリを 1 本新設する。前提をそのまま
   生かせるが、製品に入らないテスト専用アプリが増える
 
-### ★15 FreeRTOS 互換シムの動的セマフォ / キュー上限が 4 本では足りない（未修正）
+### ★15 phase4 の cfg が動的セマフォへの移行から取り残されていた（この run で修正済み）
 
 ★3 が解けて `Test-M5UnifiedLink.ps1` が
 `build/arduino-phase4-m5unified/M5UnifiedLink.ino.bin` を作れるようになったので、
 `Test-Hardware.ps1 -Port COM24` を初めて実行できた。焼き込みは成功し、
-Arduino タスクも上がる（`[Arduino] task=3 processor=1` / `setup complete`）。
-落ちているのは**実機のプローブ自身の判定**:
+Arduino タスクも上がる。落ちたのは**実機のプローブ自身の判定**:
 
 ```
-[FreeRTOS] FreeRTOS compatibility probe start
 [FreeRTOS] FAIL: binary semaphore creation
 esp_shim: acre_sem failed ercd=-34 (ctx=0 lock=0) n=1
-m5_shim: queue pool exhausted (need >4)
-esp_shim: acre_sem failed ercd=-34 (ctx=0 lock=0) n=2
-esp_shim: acre_sem failed ercd=-34 (ctx=0 lock=0) n=3
-esp_shim: acre_sem failed ercd=-34 (ctx=0 lock=0) n=4
-[FreeRTOS] FAIL: FromISR semaphore creation
-[FreeRTOS] FAIL: all four semaphores allocate
-[FreeRTOS] FAIL: deleted semaphore slot can be reused
 [APIProbe] FreeRTOS API boundary probe FAILED
 ```
 
-`ercd=-34` は `E_NOID`。**n=1 の時点で既に枯れている**ので、プローブが動く前に
-m5-unified ランタイム自身が上限まで使い切っている。
+`ercd=-34` は `E_NOID`。**最初の 1 本目から枯れている。**
 
-上限は 2 箇所:
+最初これを「プールが 4 本では足りない」と読んだが、**それは誤りだった。**
+`fmp_app/phase4/phase4_freertos_app.c` の `phase8_semaphore_probe()` は
+セマフォを 5 本確保して「4 本成功・5 本目は NULL」を**要求している**:
 
-| 場所 | 値 |
-| --- | --- |
-| `fmp_app/phase5/phase5_m5_app.cfg` の `AID_SEM(4)` | 動的セマフォ 4 本 |
-| `ports/m5stack_xtensa/runtime/m5/shim/m5_kernel_shim.c` の `M5_QUE_MAX` | 4（SPI 有効時は 6） |
+```c
+phase4_check(pool[0] != NULL && ... && pool[3] != NULL,
+             "all four semaphore pool slots allocate");
+phase4_check(pool[4] == NULL,
+             "fifth semaphore allocation reports pool exhaustion");
+```
 
-cfg のコメントが自分でこう書いている:
+つまり 4 という数字はプローブの検査対象そのもので、増やしてはいけないもの
+だった。同じく `m5_shim: queue pool exhausted (need >4)` も、プローブが
+意図的に起こしている枯渇の記録であって異常ではない。
 
-> 旧プールと同じ 4 本。… 上限を変えるのは非退行の確認とは別の判断なので、
-> 本数はそのままにする。**足りないと分かったらこの数値だけを変えればよい。**
+真因は容量ではなく移行漏れ。`phase4_freertos_app.cfg` は旧静的プール
+`CRE_SEM(M5_SEM1..4)` を持ったままで、**`AID_SEM` を一切宣言していなかった**。
+シムは `acre_sem` / `del_sem` へ移っており、その上限は `AID_SEM` で決まる。
+宣言が無ければ上限は 0 なので、1 本目から `E_NOID` になる。
+`phase5_m5_app.cfg` は移行済みで、そのコメントが
+「かつてここに在った CRE_SEM(M5_SEM1..4) はプールごと廃止した」と書いている。
+phase4 だけ取り残されていた。`M5_SEM1..4` を名前で参照するソースは無く、
+生成物にしか現れない。
 
-**足りないことが実機で分かった**、というのがこの run の結果。ただし
-「いくつにするか」はメモリ費用を伴う製品側の判断なので、実行者の一存では
-決めない。**未修正。** 出荷イメージ（M5Unified / DualCore）の実機テストは
-どちらも PASS しているので、これは FreeRTOS 互換シムの容量の話に閉じている。
+phase5 と同じ形（ガード用 1 本＋`AID_SEM(4)`）へ揃えた。**本数は変えていない。**
+
+### ★16 実機の判定が、2 プロセッサの出力混在で壊れる（この run で修正済み）
+
+★15 を直すと実機は `FreeRTOS API boundary probe PASS` を出すようになったが、
+`Test-Hardware.ps1` はまだ落ちた。両プロセッサが同じシリアルポートへ書くので
+行が混ざり、文字が失われる。同じ判定行が、run ごとに違う食われ方をする:
+
+```
+obe] FreeRTOS API boundary probe PASS
+RTOS API boundary probe PASS
+```
+
+行の**末尾は残り、先頭が別の書き手に潰される**。食われる長さは run ごとに違う。
+実際 3 回中 1 回だけ落ちるという出方をした。これは flaky ではなく、
+接頭辞を当てにした照合が原理的に成立しないということ。
+
+否定側は元から `API boundary probe FAILED` と接頭辞なしで見ていた。肯定側だけが
+`\[APIProbe\] FreeRTOS ...` の全一致を要求していて非対称だったので、末尾のみに
+揃えた。取り込みループの早期終了条件も同じ全一致で、**一度も早期終了できず
+毎回 `-CaptureSeconds` を待ち切っていた**ので、これも揃えた。
+
+修正後 **4 回連続 `EXIT=0`**:
+
+```
+COM hardware probe passed.
+  Queue empty/full/FIFO/reset: PASS
+  FromISR compatibility wrappers (task-context invocation): PASS
+  Semaphore and queue pool exhaustion/reuse: PASS
+```
 
 ### ★7 BOM 無しの `.ps1` に非 ASCII を書くと Windows PowerShell 5.1 が壊す
 
@@ -803,7 +831,8 @@ Unexpected token ')' in expression or statement.
 | `scripts/Invoke-PortableFmp3Recipe.ps1` | M5GFX/M5Unified ソース解決にフォールバックを追加、`-M5GfxSource`/`-M5UnifiedSource` を新設（★9） |
 | `scripts/Test-DualCoreHardware.ps1` | 判定を出荷イメージが出すものへ、`-RequiredHeartbeats` を新設（★10）、リセットを EN パルスへ（★11） |
 | `scripts/Test-M5UnifiedHardware.ps1` | 同上（★10・★11） |
-| `scripts/Test-Hardware.ps1` | リセットを EN パルスへ（★11）。実機で検証済み——起動時出力は取れており、FAIL は ★15 |
+| `scripts/Test-Hardware.ps1` | リセットを EN パルスへ（★11）。判定を末尾一致へ、取り込みループの早期終了も同じ形へ（★16） |
+| `fmp_app/phase4/phase4_freertos_app.cfg` | 旧静的セマフォプールを `AID_SEM(4)` ＋ガード 1 本へ移行（★15） |
 | `scripts/Test-Touch.ps1` | 同上（★11。★3 のため未検証） |
 
 ★3・★4 は直していない。どちらも「どう直すか」がテストの意図や配布形態の

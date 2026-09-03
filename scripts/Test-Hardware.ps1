@@ -65,7 +65,10 @@ try {
     $until = (Get-Date).AddSeconds($CaptureSeconds)
     while ((Get-Date) -lt $until) {
         $log += $serial.ReadExisting()
-        if ($log -match '\[APIProbe\] FreeRTOS API boundary probe (PASS|FAILED)') {
+        #  Tail only; see the verdict check below for why the prefix cannot
+        #  be relied on. With the prefix here the loop never broke early and
+        #  every run waited out the full -CaptureSeconds.
+        if ($log -match 'API boundary probe (PASS|FAILED)') {
             Start-Sleep -Milliseconds 500
             $log += $serial.ReadExisting()
             break
@@ -84,7 +87,19 @@ Write-Host $log
 if ($log -match 'Guru Meditation|panic.ed|API boundary probe FAILED') {
     throw 'The hardware log contains a panic or failed probe.'
 }
-if ($log -notmatch '\[APIProbe\] FreeRTOS API boundary probe PASS') {
+#  Without the "[APIProbe] " prefix, to match the negative check above.
+#  Both processors write to the same serial port, so lines interleave and
+#  characters are lost - a capture that clearly contained the verdict still
+#  failed an exact-line match, because the prefix had been clobbered:
+#      5_shim: queue pool exhausted (need >4)
+#      obe] FreeRTOS API boundary probe PASS
+#      RTOS API boundary probe PASS
+#  The tail of a line survives; its start is what another writer overwrites,
+#  and how much it eats varies per run - the two captures above are the same
+#  verdict from two runs. So match the tail only, exactly as the negative
+#  check does. Anchoring on any part of the prefix is unreliable by
+#  construction, not flaky.
+if ($log -notmatch 'API boundary probe PASS') {
     throw 'The PASS marker was not received before the timeout.'
 }
 
