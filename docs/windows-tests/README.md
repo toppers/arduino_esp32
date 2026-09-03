@@ -5,7 +5,12 @@ PowerShell のテスト群は Windows でしか走らない。Linux/macOS の CI
 実行経路になる。
 
 実施したら `runs/` に記録を残すこと（書式は下の「記録の書き方」）。
-**2026-09-02 時点で、コミットされた実施記録は 1 件も無い。**
+
+**2026-09-02 の初回実施では、15 本のうち通ったのは 2 本だけだった。**
+残りは環境ではなくリポジトリ側の欠落で止まっており、その大半をその run の中で
+直した（現在 PASS 9・FAIL 3・未実行 1）。何がどう壊れていて何を直したかは
+`runs/2026-09-02-first-windows-run.md` に出力ごと書いてある。走らせる前に
+それを読むこと。残っている FAIL の理由もそこにある。
 
 ## 走らせる前に
 
@@ -13,12 +18,29 @@ PowerShell のテスト群は Windows でしか走らない。Linux/macOS の CI
 pwsh -File scripts\Test-BaselineEnvironment.ps1   # 道具と木の存在確認。最初にこれ
 ```
 
+`pwsh`（PowerShell 7）が無い機械では `powershell.exe -NoProfile -ExecutionPolicy
+Bypass -File ...` でよい。2026-09-02 の run は全本これで走らせた。
+
+`Test-BaselineEnvironment.ps1` は `-SourceTree`（既定はこのリポジトリ）を取り、
+submodule と vendored runtime の存在も見る。外部の `toppers/fmp3_esp_idf`
+チェックアウトはもう要らない。
+
 ステージを作り直す場合（チップごとに 1 回ずつ）:
 
 ```powershell
 pwsh -File scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32s3
 pwsh -File scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32
 ```
+
+`Test-ArduinoLibrary.ps1`（したがって `Test-Regression.ps1`）は TOPPERS/FMP3
+プラットフォームが入っていることを前提にする。`examples/LibraryInfo` は kernel の
+log port に書くので、stock の M5Stack FQBN では link できない:
+
+```powershell
+python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
+```
+
+既定は `Documents\Arduino`。別の場所に入れたなら両スクリプトに `-Sketchbook` で渡す。
 
 ## 一覧（2026-09-02 実測）
 
@@ -45,6 +67,8 @@ pwsh -File scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32
 **15 本すべて CoreS3(ESP32-S3) 前提**で、次はどれも検証していない:
 
 - **M5Core (ESP32/LX6) ボード** — minimal / m5-unified / wifi-connect / all-in-one
+  （2026-09-02 の run で m5-unified だけは実機まで通した。スイート外の確認なので
+  ここは穴のまま残す: `runs/2026-09-02-first-windows-run.md` の「スイート外」節）
 - **`bt-classic` profile と `BluetoothSPP` 例題** — M5Core 専用。
   Linux 側では `tools/bt/spp_echo_test.py` で実機確認済み
 - **2 ボードが 1 パッケージに入った状態** — `Test-ArduinoReleasePackage.ps1` は
