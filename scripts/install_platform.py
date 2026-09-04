@@ -312,8 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.prebuilt_stage_root:
         raise SystemExit(
             "--prebuilt-stage-root is required. Build the stages first with "
-            "scripts/build_prebuilt_stages.py, or "
-            "scripts/New-Fmp3PrebuiltStages.ps1 on Windows.")
+            "scripts/build_prebuilt_stages.py.")
     stage_root = Path(args.prebuilt_stage_root).resolve()
     if not stage_root.is_dir():
         raise SystemExit(f"Prebuilt stage root was not found: {stage_root}")

@@ -27,8 +27,8 @@
     (third_party/fmp3_core), the runtime (ports/m5stack_xtensa/runtime), and
     every application they name - phase3_arduino_app,
     phase4_freertos_app, phase5_m5_selftest, phase6_smp_selftest and
-    phase9_wifi_connect_app. scripts/New-Fmp3PrebuiltStages.ps1 and
-    scripts/New-Fmp3PrebuiltStages.ps1 already drives that tree on Windows
+    phase9_wifi_connect_app. scripts/build_prebuilt_stages.py already drives
+    that tree on Windows
     with nothing but CMake, Ninja and the M5Stack core's toolchain, so this
     follows them rather than keeping a dependency the repository has already
     vendored away. Git Bash is no longer needed either: the ROM linker-script
@@ -54,7 +54,7 @@ param(
     [string]$Profile = 'm5-unified',
 
     #  Which application the image runs. Empty means the profile's default,
-    #  the same mapping New-Fmp3PrebuiltStages.ps1 uses. Callers that want a
+    #  the same mapping build_prebuilt_stages.py uses. Callers that want a
     #  self-test application (phase5_m5_selftest, phase6_smp_selftest) or one
     #  that is not a profile default (phase4_freertos_app) name it here.
     [string]$ApplicationDirectory = '',
@@ -169,7 +169,7 @@ if (-not (Test-Path -LiteralPath $nm)) {
     throw "The Xtensa nm was not found: $nm"
 }
 
-#  Same mapping as New-Fmp3PrebuiltStages.ps1, so a profile means the same
+#  Same mapping as build_prebuilt_stages.py, so a profile means the same
 #  application in both places unless a caller says otherwise.
 if ([string]::IsNullOrWhiteSpace($ApplicationName)) {
     $ApplicationName = switch ($Profile) {

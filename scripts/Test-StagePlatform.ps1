@@ -11,7 +11,7 @@
 
     So this is the shipping path, on Windows, for all three boards. What is
     Windows-specific about it, and therefore only checked here, is the chain:
-    stages built by New-Fmp3PrebuiltStages.ps1, the platform assembled on this
+    stages built by build_prebuilt_stages.py, the platform assembled on this
     host, Windows arduino-cli, and gen_esp32part through the link driver.
     scripts/verify_package.py does the same job on Linux from an installed
     Boards Manager package.
@@ -40,7 +40,7 @@ param(
     [string]$Python = ((Get-Command 'python' -ErrorAction SilentlyContinue |
         Select-Object -First 1 -ExpandProperty Source)),
 
-    #  Stages from New-Fmp3PrebuiltStages.ps1. The parent of the per-chip
+    #  Stages from build_prebuilt_stages.py. The parent of the per-chip
     #  directories, so one install covers every board.
     [string]$PrebuiltStageRoot = '',
 
@@ -125,7 +125,7 @@ foreach ($chip in $neededChips) {
     $chipRoot = Join-Path $PrebuiltStageRoot $chip
     if (-not (Test-Path -LiteralPath $chipRoot)) {
         throw ("No prebuilt stages for $chip below $PrebuiltStageRoot. Run " +
-            "scripts\New-Fmp3PrebuiltStages.ps1 -Chip $chip first.")
+            "python scripts/build_prebuilt_stages.py --chip $chip first.")
     }
 }
 #  bt-classic is not in the shipped set, so it is built separately and its
@@ -134,7 +134,7 @@ if (('m5core_fmp3' -in $Boards) -and
         -not (Test-Path -LiteralPath (
             Join-Path $PrebuiltStageRoot 'esp32\bt-classic'))) {
     throw ("The bt-classic stage is missing. Run " +
-        "scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32 -Profiles bt-classic, " +
+        "python scripts/build_prebuilt_stages.py --chip esp32 --profiles bt-classic, " +
         "or pass -Boards without m5core_fmp3.")
 }
 

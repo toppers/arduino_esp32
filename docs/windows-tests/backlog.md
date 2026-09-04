@@ -94,6 +94,15 @@ legacy ZIP の成果物を焼くので **CoreS3 専用のまま**とし、`-Chip
 なったら、イメージを stage 経路から取ることになり、それはこの 2 本の検証対象
 そのものを変える判断になる（下の B-4 と同じ話）。
 
+**追記（(a)(b)(c) 廃止後）**: 上の決定は legacy 経路が存在する間の判断だった。
+legacy 経路（ZIP と `Invoke-PortableFmp3Recipe.ps1`）を廃止したあと、
+`Install-ArduinoIdeIntegration.ps1` は `install_platform.py` と同じ仕事をして
+3 枚中 1 枚しか出さない状態になり、論拠が失効した。Python 版がこの Windows 機で
+動くことを確かめて**削除した**。`New-Fmp3PrebuiltStages.ps1` も、Python 版が
+同一ホストで `banner.o` の時刻以外バイト一致の stage を出すことを確かめて削除した。
+なお「ローカル Windows 作業用に PowerShell 版を残す」という理由の出所は
+`verify-package.yml` のコメントであり、レビューが引いた `4148f22` ではない。
+
 ## B. スイートの穴（`README.md` の「★対象外」）
 
 いずれも Linux 側の `scripts/verify_package.py` では通っている。**Windows の
@@ -258,6 +267,10 @@ long     : sent=140  received=155 bytes  starts-with-echo=True
 （`BTHENUM\DEV_5C013B0CCA44`）。例題は `M5Stack-SPP` を渡しており、
 SPP サーバのログもそう出る。EIR の名前長の扱いが疑わしいが、**追っていない。**
 接続と往復には影響していない。
+
+**追記**: B-3 で `New-Fmp3PrebuiltStages.ps1` に足した bt-classic 対応は、
+そのスクリプト自体の削除で無くなった。ステージは `build_prebuilt_stages.py
+--chip esp32 --profiles bt-classic` で作る（README の「走らせる前に」）。
 
 ### B-4 stage 経路の出荷物を建てるテスト — 新設した（B-2 も同時に埋まった）
 

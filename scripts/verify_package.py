@@ -22,7 +22,7 @@ time. That is the point of the exercise.
 Usage:
     python scripts/verify_package.py --platform-dir <platform>
 
-The platform directory is what scripts/Install-ArduinoIdeIntegration.ps1
+The platform directory is what scripts/install_platform.py
 produces, or the artifact the verify-package workflow uploads. Copy it to the
 machine under test; it is host-independent.
 """

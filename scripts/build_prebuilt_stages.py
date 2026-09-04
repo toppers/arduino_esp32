@@ -15,8 +15,10 @@ final link depends on the sketch.
 
 This replaces New-Fmp3PrebuiltStages.ps1, which was the only reason the CI
 package job had to run on a Windows runner - everything it drives (CMake, Ninja,
-the Xtensa toolchain) is cross-platform already. The PowerShell script remains
-for now; both produce the same stage.
+the Xtensa toolchain) is cross-platform already. The PowerShell script was
+kept for a while and then deleted, once it was measured on a Windows host that
+this script runs there and its stage matches the PowerShell one byte for byte
+apart from banner.o's timestamp.
 
     python scripts/build_prebuilt_stages.py --cmake <path> --ninja <path>
 """
@@ -189,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.self_test and name in SELF_TEST_APPLICATIONS:
             application_name = SELF_TEST_APPLICATIONS[name]
         #  The m5-unified application lives outside ports/ in the development
-        #  tree, the same split New-Fmp3PrebuiltStages.ps1 uses.
+        #  tree, the same split Build-SeamS3M5.ps1 uses.
         application = (library_root / "fmp_app" / directory_name
                        if outside_ports else
                        library_root / "ports" / "m5stack_xtensa" / "app"

@@ -14,7 +14,7 @@
     scripts/verify_package.py builds the same example on toppers:esp32 for the
     same reason. Install the platform first:
 
-        powershell -File scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32s3
+        python scripts/build_prebuilt_stages.py --chip esp32s3
         python scripts/install_platform.py --prebuilt-stage-root build/prebuilt
 #>
 
@@ -29,8 +29,8 @@ param(
     [string]$LibraryRoot = '',
     [string]$BuildDirectory = '',
 
-    #  Where the TOPPERS/FMP3 platform is installed. install_platform.py and
-    #  Install-ArduinoIdeIntegration.ps1 both default to the same place.
+    #  Where the TOPPERS/FMP3 platform is installed; install_platform.py
+    #  defaults to the same place.
     [string]$Sketchbook = '',
 
     #  -Chip picks this port's board FQBN and the toolchain's name; -Fqbn

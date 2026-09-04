@@ -7,8 +7,8 @@
         [M5] board=... display=320x240 pmic=4 battery_mV=...
         [M5] 60-second M5Unified integration PASS
     which only fmp_app/phase5/phase5_m5_selftest.c emits. The stages that go
-    into the Boards Manager package are built WITHOUT -SelfTest (see
-    New-Fmp3PrebuiltStages.ps1), and this script flashes the .bin that
+    into the Boards Manager package are built without the self-test (see
+    SELF_TEST_APPLICATIONS in build_prebuilt_stages.py), and this script flashes the .bin that
     a .bin built from that package, so those
     markers could never appear. The first required marker,
     "M5.begin and initial LCD draw PASS", does come from the shipping example

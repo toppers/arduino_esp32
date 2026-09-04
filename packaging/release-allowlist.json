@@ -158,10 +158,6 @@
     {
       "source": "scripts/Resolve-ArduinoEsp32S3Sdk.ps1",
       "destination": "extras/tools/Resolve-ArduinoEsp32S3Sdk.ps1"
-    },
-    {
-      "source": "scripts/Install-ArduinoIdeIntegration.ps1",
-      "destination": "extras/tools/Install-ArduinoIdeIntegration.ps1"
     }
   ],
   "fmp3CoreBranch": "fix/p4-clic-ipm (main系ではない。動的生成一式を含む)",

@@ -46,13 +46,15 @@ jobs:
     #  Builds the platform both boards ship in.
     #
     #  This job used to run on Windows and drive New-Fmp3PrebuiltStages.ps1 and
-    #  Install-ArduinoIdeIntegration.ps1. Those are PowerShell reimplementations
-    #  of build_prebuilt_stages.py and install_platform.py, and only the Python
-    #  pair learned to handle two chips - install_platform.py's own header has
+    #  Install-ArduinoIdeIntegration.ps1, PowerShell twins of
+    #  build_prebuilt_stages.py and install_platform.py. Only the Python pair
+    #  learned to handle every chip, and install_platform.py's own header has
     #  said for a while that the two of them are everything this job does and
-    #  that it no longer needs a Windows runner. Doing the second board twice,
-    #  in a language the maintainers cannot run outside CI, is how the two
-    #  copies drift apart; the PowerShell scripts stay for local Windows use.
+    #  that it no longer needs a Windows runner. The PowerShell twins were kept
+    #  for local Windows use until it was measured, on a Windows host, that the
+    #  Python pair runs there and builds a stage identical byte for byte apart
+    #  from banner.o's timestamp; they were deleted then. Two copies of the
+    #  same job, in two languages, is how the copies drift apart.
     #
     #  One thing moves out rather than across: the partition-table check needs
     #  gen_esp32part.exe as its reference and is Windows-only by construction.

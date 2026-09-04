@@ -28,9 +28,18 @@ submodule と vendored runtime の存在も見る。外部の `toppers/fmp3_esp_
 ステージを作り直す場合（チップごとに 1 回ずつ）:
 
 ```powershell
-pwsh -File scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32s3
-pwsh -File scripts\New-Fmp3PrebuiltStages.ps1 -Chip esp32
+python scripts\build_prebuilt_stages.py --chip esp32s3
+python scripts\build_prebuilt_stages.py --chip esp32
+python scripts\build_prebuilt_stages.py --chip esp32 --profiles bt-classic
 ```
+
+3 行目は `Test-StagePlatform.ps1` が M5Core の `BluetoothSPP` を建てるのに要る。
+`bt-classic` は出荷される既定 profile の集合に無いので、別に呼ばないと作られない
+（LX6 専用: S3 に Bluetooth Classic は無い）。
+
+以前はここに PowerShell 版（`New-Fmp3PrebuiltStages.ps1`）を書いていたが、Python 版が
+この Windows 機で同一の出力（`banner.o` の時刻以外バイト一致）を出すことを確かめて
+廃止した。インストーラの PowerShell 版（`Install-ArduinoIdeIntegration.ps1`）も同様。
 
 `Test-ArduinoLibrary.ps1`（したがって `Test-Regression.ps1`）は TOPPERS/FMP3
 プラットフォームが入っていることを前提にする。`examples/LibraryInfo` は kernel の

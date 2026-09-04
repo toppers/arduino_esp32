@@ -7,8 +7,8 @@
         [SMP] Arduino loops=N PRC2 iterations=N
         [SMP] dual-core isolation PASS
     which only fmp_app/phase6/phase6_smp_selftest.c emits. The stages that go
-    into the Boards Manager package are built WITHOUT -SelfTest (see
-    New-Fmp3PrebuiltStages.ps1), and this script flashes a .bin built from
+    into the Boards Manager package are built without the self-test (see
+    SELF_TEST_APPLICATIONS in build_prebuilt_stages.py), and this script flashes a .bin built from
     that package, so those
     markers could never appear - the board ran correctly and the test failed
     anyway.
