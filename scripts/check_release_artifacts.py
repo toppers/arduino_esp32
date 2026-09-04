@@ -15,6 +15,13 @@ looking directory. This reads the index, compares it against what is actually on
 disk, and against what packaging/release-allowlist.json says a release must
 carry.
 
+An index made with --merge-into also carries the entries of every earlier
+release. Those archives live in the earlier release's assets, not in this
+directory, so they are not looked for on disk: each is probed at the URL the
+index publishes, because a kept entry whose URL no longer answers is a version
+Boards Manager offers and nobody can install. The entries that belong to this
+release are the ones at the version library.properties declares.
+
     python scripts/check_release_artifacts.py --release-dir build/package
 
 Exit status is 0 when everything checks out, 1 when something is wrong, and 2
@@ -31,6 +38,8 @@ import platform
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 ALLOWLIST = "packaging/release-allowlist.json"
@@ -67,6 +76,60 @@ def host_triplet() -> str:
     if machine in ("aarch64", "arm64"):
         return "aarch64-linux-gnu"
     return "x86_64-pc-linux-gnu"
+
+
+def declared_version(repository: Path) -> str:
+    """The version library.properties declares, or "" when it has none."""
+    properties = repository / "library.properties"
+    if not properties.is_file():
+        return ""
+    for line in properties.read_text(encoding="utf-8").splitlines():
+        if line.startswith("version="):
+            return line[len("version="):].strip()
+    return ""
+
+
+def probe_url(url: str) -> str:
+    """Ask the server whether the URL answers: "" on success, else the reason.
+
+    A HEAD request that follows redirects, which is what a GitHub release
+    asset URL does before it serves the file.
+    """
+    request = urllib.request.Request(url, method="HEAD")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            status = response.status
+    except urllib.error.HTTPError as error:
+        return f"HTTP {error.code}"
+    except urllib.error.URLError as error:
+        return str(error.reason)
+    except OSError as error:
+        return str(error)
+    return "" if 200 <= status < 400 else f"HTTP {status}"
+
+
+#  Module-level so a test can stand in for the network.
+PROBE = probe_url
+
+
+def check_kept(problems: list[str], label: str, entry: dict,
+               probe, skip: bool) -> None:
+    """An entry kept from an earlier release: not on disk here, so ask its URL."""
+    url = str(entry.get("url", ""))
+    if not url:
+        problems.append(f"{label}: kept from an earlier release but has no url")
+        return
+    if skip:
+        print(f"  --   {label:<34} kept from an earlier release, URL not probed")
+        return
+    reason = probe(url)
+    if reason:
+        problems.append(
+            f"{label}: kept from an earlier release, but its URL does not "
+            f"answer ({reason}): {url}. Boards Manager would offer a version "
+            "nobody can install; fix the earlier release or drop the entry.")
+    else:
+        print(f"  ok   {label:<34} kept, still served at {url}")
 
 
 def check_archive(problems: list[str], label: str, release: Path,
@@ -228,6 +291,9 @@ def main(argv: list[str] | None = None) -> int:
                              "driver source")
     parser.add_argument("--skip-driver-version", action="store_true",
                         help="do not execute the frozen driver")
+    parser.add_argument("--skip-url-probe", action="store_true",
+                        help="do not ask the network whether the entries kept "
+                             "from earlier releases still resolve")
     args = parser.parse_args(argv)
 
     release = Path(args.release_dir).resolve()
@@ -263,17 +329,51 @@ def main(argv: list[str] | None = None) -> int:
     print(f"release  : {release}")
     print(f"index    : {INDEX_NAME}")
 
+    #  An index made with --merge-into carries every earlier release too. The
+    #  entries of THIS release are the ones at the version this tree declares;
+    #  the rest live in earlier releases' assets and are probed at their URL.
+    declared = declared_version(repository)
     platforms = package.get("platforms", [])
     if not platforms:
         problems.append("the index declares no platform")
-    for entry in platforms:
+    current = [p for p in platforms if p.get("version") == declared]
+    kept = [p for p in platforms if p.get("version") != declared]
+    if platforms and not current:
+        problems.append(
+            f"the index has no platform at version {declared!r}, which is what "
+            "library.properties declares and therefore what this tree "
+            "releases. Pass --version to make_package_index.py to match.")
+    if len(current) > 1:
+        problems.append(
+            f"the index lists platform {declared!r} {len(current)} times")
+    for entry in current:
         check_archive(problems, f"platform {entry.get('version', '?')}",
                       release, entry)
-    check_version_agreement(problems, repository, platforms)
+    for entry in kept:
+        check_kept(problems, f"platform {entry.get('version', '?')}", entry,
+                   PROBE, args.skip_url_probe)
+    check_version_agreement(problems, repository, current)
 
-    tools = {tool.get("name"): tool for tool in package.get("tools", [])}
     driver_name = wanted["linkDriver"]["toolName"]
-    driver = tools.get(driver_name)
+    #  The driver this release depends on is the version the current
+    #  platform's toolsDependencies name; earlier releases keep their own.
+    wanted_driver = ""
+    for entry in current:
+        for dependency in entry.get("toolsDependencies", []):
+            if dependency.get("name") == driver_name:
+                wanted_driver = str(dependency.get("version", ""))
+    driver = None
+    for tool in package.get("tools", []):
+        if tool.get("name") != driver_name:
+            continue
+        if tool.get("version") == wanted_driver:
+            driver = tool
+            continue
+        for system in tool.get("systems", []):
+            check_kept(problems,
+                       f"driver {tool.get('version', '?')} "
+                       f"{system.get('host', '?')}",
+                       system, PROBE, args.skip_url_probe)
     if driver is None:
         problems.append(
             f"the index declares no {driver_name} tool. A package without it "
@@ -305,7 +405,7 @@ def main(argv: list[str] | None = None) -> int:
     except ImportError as error:
         problems.append(f"could not load the host-path check: {error}")
     else:
-        for entry in platforms:
+        for entry in current:
             archive = release / entry.get("archiveFileName", "")
             if archive.is_file():
                 leaks: list[str] = []

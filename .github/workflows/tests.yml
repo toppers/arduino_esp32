@@ -28,3 +28,6 @@ jobs:
 
       - name: Arduino object selection
         run: python scripts/test_fmp3_link_objects.py
+
+      - name: Release check on a merged index
+        run: python scripts/test_check_release_artifacts.py
