@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Uploads the packaged DualCore example and validates both processors.
+    Validates both processors on the shipped m5 image.
 
 .DESCRIPTION
     Judged on what the SHIPPING image prints. It used to require
@@ -8,8 +8,8 @@
         [SMP] dual-core isolation PASS
     which only fmp_app/phase6/phase6_smp_selftest.c emits. The stages that go
     into the Boards Manager package are built WITHOUT -SelfTest (see
-    New-Fmp3PrebuiltStages.ps1), and this script flashes the .bin that
-    Test-ArduinoReleasePackage.ps1 produced from that package, so those
+    New-Fmp3PrebuiltStages.ps1), and this script flashes a .bin built from
+    that package, so those
     markers could never appear - the board ran correctly and the test failed
     anyway.
 
@@ -18,18 +18,30 @@
     src/bridge/ArduinoSketchBridge.cpp. That is what is required below.
     Covering the self-test's own assertions needs a self-test image, which is
     a different thing to flash and belongs in its own test.
+    It no longer flashes examples/DualCore. That example is not in the Boards
+    Manager package - packaging/release-allowlist.json marks it
+    boardsManager false, because the dual profile is gone and a shipped stage
+    has no PRC2 task - so with the legacy ZIP retired it ships nowhere, and a
+    hardware test cannot validate an artifact no user receives. The property
+    this test guards, that the SMP kernel brings up both processors, is printed
+    by the m5 runtime's own image, measured on a CoreS3:
+
+        Processor 1 start.
+        Processor 2 start.
+        [Arduino] task=2 processor=1
+
+    So it reads the same shipped image Test-M5UnifiedHardware.ps1 does, and
+    asserts the half that one does not.
 #>
 
 [CmdletBinding()]
 param(
-    #  CoreS3 only, by decision. This test flashes an image that
-    #  Test-ArduinoReleasePackage.ps1 built from the legacy library ZIP, and
-    #  the legacy path is CoreS3-only - see the note in
-    #  scripts/Install-ArduinoIdeIntegration.ps1 and A-2 in
-    #  docs/windows-tests/backlog.md. Multi-board coverage belongs to the
-    #  stage path, so there is no -Chip here: pointing this at the M5Core
-    #  would mean taking its image from somewhere else, which changes what
-    #  the test validates.
+    #  Which board is on -Port. The stage platform carries all three, and
+    #  the m5 runtime is offered on the two with a display; the M5StickS3 is
+    #  absent because m5-unified does not work there
+    #  (docs/m5sticks3-m5unified.md).
+    [ValidateSet('m5cores3_fmp3', 'm5core_fmp3')]
+    [string]$Board = 'm5cores3_fmp3',
     [string]$Port = 'COM4',
     [int]$Baud = 115200,
     [int]$CaptureSeconds = 20,
@@ -48,8 +60,19 @@ if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 if ([string]::IsNullOrWhiteSpace($ApplicationBin)) {
-    $ApplicationBin = Join-Path $M5ArduinoRoot `
-        'build\release\install-test\dual-core-build\DualCore.ino.bin'
+    #  The image the Boards Manager package produces, built by
+    #  Test-StagePlatform.ps1 from the platform install_platform.py
+    #  assembles. It used to be the .bin Test-ArduinoReleasePackage.ps1
+    #  built from the legacy library ZIP; the ZIP is CoreS3-only and is
+    #  being retired, and the artifact that carries every board is the
+    #  platform. The m5 runtime's image prints both processors and
+    #  M5.begin's verdict, so this test and its sibling read the same
+    #  shipped image and assert different halves of it.
+    #
+    #  Comments cannot sit inside a backtick continuation: putting them
+    #  between the two halves of the Join-Path below broke the continuation
+    #  and the call lost its -ChildPath entirely.
+    $ApplicationBin = Join-Path $M5ArduinoRoot (Join-Path "build\stage-platform" ("{0}-m5\M5Unified.ino.bin" -f $Board))
 }
 
 $esptool = Join-Path $M5StackPackage 'tools\esptool_py\5.2.0\esptool.exe'
@@ -59,8 +82,13 @@ foreach ($required in @($esptool, $ApplicationBin)) {
     }
 }
 
-& $esptool --chip esp32s3 --port $Port --baud 921600 `
-    write-flash --flash-size 16MB --flash-mode dio --flash-freq 80m `
+#  The chip follows the board, and esptool's flash geometry follows the chip:
+#  the CoreS3 is 16MB at 80MHz, the M5Core 4MB at 40MHz.
+$chip = if ($Board -eq 'm5core_fmp3') { 'esp32' } else { 'esp32s3' }
+$flashSize = if ($chip -eq 'esp32') { '4MB' } else { '16MB' }
+$flashFreq = if ($chip -eq 'esp32') { '40m' } else { '80m' }
+& $esptool --chip $chip --port $Port --baud 921600 `
+    write-flash --flash-size $flashSize --flash-mode dio --flash-freq $flashFreq `
     0x10000 $ApplicationBin
 if ($LASTEXITCODE -ne 0) {
     throw "Uploading the packaged DualCore image failed (exit=$LASTEXITCODE)."

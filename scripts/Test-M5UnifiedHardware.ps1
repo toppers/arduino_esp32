@@ -21,14 +21,12 @@
 
 [CmdletBinding()]
 param(
-    #  CoreS3 only, by decision. This test flashes an image that
-    #  Test-ArduinoReleasePackage.ps1 built from the legacy library ZIP, and
-    #  the legacy path is CoreS3-only - see the note in
-    #  scripts/Install-ArduinoIdeIntegration.ps1 and A-2 in
-    #  docs/windows-tests/backlog.md. Multi-board coverage belongs to the
-    #  stage path, so there is no -Chip here: pointing this at the M5Core
-    #  would mean taking its image from somewhere else, which changes what
-    #  the test validates.
+    #  Which board is on -Port. The stage platform carries all three, and
+    #  the m5 runtime is offered on the two with a display; the M5StickS3 is
+    #  absent because m5-unified does not work there
+    #  (docs/m5sticks3-m5unified.md).
+    [ValidateSet('m5cores3_fmp3', 'm5core_fmp3')]
+    [string]$Board = 'm5cores3_fmp3',
     [string]$Port = 'COM4',
     [int]$Baud = 115200,
     [int]$CaptureSeconds = 80,
@@ -47,8 +45,19 @@ if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
     $M5ArduinoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 }
 if ([string]::IsNullOrWhiteSpace($ApplicationBin)) {
-    $ApplicationBin = Join-Path $M5ArduinoRoot `
-        'build\release\install-test\m5-unified-build\M5Unified.ino.bin'
+    #  The image the Boards Manager package produces, built by
+    #  Test-StagePlatform.ps1 from the platform install_platform.py
+    #  assembles. It used to be the .bin Test-ArduinoReleasePackage.ps1
+    #  built from the legacy library ZIP; the ZIP is CoreS3-only and is
+    #  being retired, and the artifact that carries every board is the
+    #  platform. The m5 runtime's image prints both processors and
+    #  M5.begin's verdict, so this test and its sibling read the same
+    #  shipped image and assert different halves of it.
+    #
+    #  Comments cannot sit inside a backtick continuation: putting them
+    #  between the two halves of the Join-Path below broke the continuation
+    #  and the call lost its -ChildPath entirely.
+    $ApplicationBin = Join-Path $M5ArduinoRoot (Join-Path "build\stage-platform" ("{0}-m5\M5Unified.ino.bin" -f $Board))
 }
 
 $esptool = Join-Path $M5StackPackage 'tools\esptool_py\5.2.0\esptool.exe'
@@ -58,8 +67,13 @@ foreach ($required in @($esptool, $ApplicationBin)) {
     }
 }
 
-& $esptool --chip esp32s3 --port $Port --baud 921600 `
-    write-flash --flash-size 16MB --flash-mode dio --flash-freq 80m `
+#  The chip follows the board, and esptool's flash geometry follows the chip:
+#  the CoreS3 is 16MB at 80MHz, the M5Core 4MB at 40MHz.
+$chip = if ($Board -eq 'm5core_fmp3') { 'esp32' } else { 'esp32s3' }
+$flashSize = if ($chip -eq 'esp32') { '4MB' } else { '16MB' }
+$flashFreq = if ($chip -eq 'esp32') { '40m' } else { '80m' }
+& $esptool --chip $chip --port $Port --baud 921600 `
+    write-flash --flash-size $flashSize --flash-mode dio --flash-freq $flashFreq `
     0x10000 $ApplicationBin
 if ($LASTEXITCODE -ne 0) {
     throw "Uploading the packaged M5Unified image failed (exit=$LASTEXITCODE)."
