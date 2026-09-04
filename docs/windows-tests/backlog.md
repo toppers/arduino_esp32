@@ -397,6 +397,41 @@ FIFO かバッファ境界の類だと思われるが、**特定していない*
 回帰確認になるが、legacy 経路は例題ごとに FMP3 ランタイムを建て直すので
 数時間かかる。CI ではなく人が居るときに一度やる性質のもの。
 
+## D. リリース前に見つけたが直していないもの
+
+### D-1 開発者インストールの `platform.txt` に Python の絶対パスが入る（CI は捕まえない）
+
+`check_host_paths.py`（CLAUDE.md が配布物に必須とする検査）を、
+`install_platform.py` が組んだプラットフォームに掛けると落ちる。検出器が
+報告したのは（区切りを `/` に直して書く）:
+
+```
+  - platform.txt: C:/Users/honda/AppData/Local/Python/pythoncore-3.14-64/pyt...
+```
+
+`install_platform.py` は `--python-executable` を省くと `sys.executable` を
+そのままレシピ行へ書く（`install_platform.py:346,448`）。CI も省いている
+（`verify-package.yml:120`）のに CI の同じ検査は通る。理由は検出器の
+パターンにある。`HOST_PATH` が拾うのはドライブレター始まりのパス・
+`/home/<user>/`・`/Users/<user>/`・`/root/` だけで、GitHub のホストランナー
+の Python は `/opt/hostedtoolcache/...` に居るので**どれにも当たらない**。
+つまり**同じ漏れが Linux CI では見えず、Windows と macOS の開発者機では見える。**
+
+**出荷物は無事である。** `make_package_index.py` はドライバ行を
+`tools.fmp3-link.cmd`（凍結ツール、`{runtime.tools...}` 経由）へ書き換える。
+実測: このホストで `make_package_index.py` を回した release 形のプラット
+フォーム（974 ファイル）は `check_host_paths.py` を **PASS**。残る `python3`
+の 4 行は上流 M5Stack コアの `{runtime.platform.path}` ベースのツール定義で、
+ホストパスではない。
+
+**未修正。** 直し方は 2 通りあって判断が要る:
+(1) `install_platform.py` が開発者インストールでもプレースホルダを書く
+（ただし開発者機には凍結ツールが無いので、それだけではローカルでスケッチが
+建たない）、(2) CI の検査対象を installer 出力ではなく `make_package_index.py`
+の出力（実際に出荷されるもの）にする。**(2) が筋**だと思う——レビューが指摘した
+「検査がパッケージの中身ではなくリポジトリの中身を見ている」と同じ形の穴で、
+検査は出荷物に掛けるべきである。
+
 ## 参照
 
 - 実施記録と一次情報: `runs/2026-09-02-first-windows-run.md`
