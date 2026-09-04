@@ -248,13 +248,33 @@ def serve(directory: Path, port: int) -> http.server.ThreadingHTTPServer:
     return server
 
 
+def library_version(repository: Path) -> str:
+    """The version in library.properties, which is the one being verified."""
+    properties = repository / "library.properties"
+    if properties.is_file():
+        for line in properties.read_text(encoding="utf-8").splitlines():
+            if line.startswith("version="):
+                return line[len("version="):].strip()
+    raise VerifyError(
+        "library.properties has no version=, so there is nothing to default "
+        "--version to; pass it explicitly")
+
+
 def main() -> int:
     repository = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
         description="Verify the Boards Manager package on this machine.")
     parser.add_argument("--platform-dir", required=True,
                         help="platform to package and install")
-    parser.add_argument("--version", default="0.3.0")
+    #  Default from library.properties rather than a literal. A literal here is
+    #  a second place to remember on every version bump, and forgetting it
+    #  builds a package labelled with the old version while bundling the new
+    #  library - which this script would then install, build and pass.
+    #  check_release_artifacts.py compares the two at release time; this stops
+    #  them diverging in the first place.
+    parser.add_argument("--version", default=library_version(repository),
+                        help="platform version (default: the version in "
+                             "library.properties)")
     parser.add_argument("--arduino-cli", default="arduino-cli")
     parser.add_argument("--driver", default="",
                         help="frozen driver zip for this host; built with "

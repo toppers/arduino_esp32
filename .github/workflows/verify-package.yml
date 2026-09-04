@@ -24,9 +24,12 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Platform version to package'
+        #  Empty means library.properties decides. A literal default here was a
+        #  second place to remember on a version bump, and getting it wrong
+        #  builds a package labelled with one version that bundles another.
+        description: 'Platform version to package (blank: use library.properties)'
         required: false
-        default: '0.3.0'
+        default: ''
 
 env:
   M5STACK_INDEX: https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
@@ -247,7 +250,7 @@ jobs:
         run: >
           python scripts/verify_package.py
           --platform-dir platform
-          --version "${{ inputs.version }}"
+          ${{ inputs.version && format('--version {0}', inputs.version) || '' }}
           --work-dir verify
           --summary images.txt
 
