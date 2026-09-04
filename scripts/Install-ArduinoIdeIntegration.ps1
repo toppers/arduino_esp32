@@ -16,6 +16,13 @@ param(
     #  driver are copied into the platform, and the recipe is written with
     #  Arduino variables only, which is what makes it portable to macOS/Linux.
     #  Generate the stages with scripts/New-Fmp3PrebuiltStages.ps1.
+    #
+    #  Required. It used to be optional, and an empty value selected the
+    #  legacy path: the FMP3 runtime compiled during every sketch build.
+    #  That path is gone. Checked below rather than declared Mandatory,
+    #  because a mandatory parameter PROMPTS in an interactive host - which
+    #  would hang a script that forgot it - and its message names the
+    #  parameter without saying how to produce one.
     [string]$PrebuiltStageRoot = '',
     #  Interpreter for the driver. A frozen per-OS build replaces this in the
     #  released package.
@@ -110,16 +117,6 @@ if ($null -eq $resolver) {
     throw 'Resolve-ArduinoEsp32S3Sdk.ps1 was not found in the library.'
 }
 
-$recipeCandidates = @(
-    (Join-Path $LibraryRoot 'scripts\Invoke-PortableFmp3Recipe.ps1'),
-    (Join-Path $LibraryRoot 'extras\tools\Invoke-PortableFmp3Recipe.ps1'))
-$recipe = $recipeCandidates |
-    Where-Object { Test-Path -LiteralPath $_ } |
-    Select-Object -First 1
-if ($null -eq $recipe) {
-    throw 'Invoke-PortableFmp3Recipe.ps1 was not found in the library.'
-}
-
 $resolverArguments = @{
     CoreVersion = $CoreVersion
 }
@@ -143,6 +140,12 @@ foreach ($required in @(
 #  Validate everything that can fail before the existing platform is removed.
 #  Removing first meant a bad argument left a half-deleted platform behind, and
 #  because the marker file went with it the next run refused to continue.
+if ([string]::IsNullOrWhiteSpace($PrebuiltStageRoot) -and -not $Uninstall) {
+    throw ('-PrebuiltStageRoot is required. Build the stages first with ' +
+        'scripts\New-Fmp3PrebuiltStages.ps1, then pass the directory ' +
+        'they were written to.')
+}
+
 $driverSource = $null
 if (-not [string]::IsNullOrWhiteSpace($PrebuiltStageRoot)) {
     if (-not (Test-Path -LiteralPath $PrebuiltStageRoot)) {
@@ -294,12 +297,7 @@ $boardLines = $globalMenuLines + @(
     #  EXPERIMENTAL: M5Unified + SMP + Wi-Fi in one runtime. Only
     #  offered when its stage is actually present, so a normal install of the
     #  three shipped profiles does not show a menu entry that cannot build.
-    #  Guarded because -PrebuiltStageRoot defaults to empty for the legacy
-    #  path below, and Join-Path rejects an empty -Path outright: without this
-    #  the installer could not run at all without a stage root, which is how
-    #  the legacy path called it that way. No stage root, no stage.
-    if ((-not [string]::IsNullOrWhiteSpace($PrebuiltStageRoot)) -and
-            (Test-Path -LiteralPath (Join-Path $PrebuiltStageRoot 'all-in-one'))) {
+    if (Test-Path -LiteralPath (Join-Path $PrebuiltStageRoot 'all-in-one')) {
         @('m5cores3_fmp3.menu.FMP3Runtime.aio=All-in-one (experimental)',
           'm5cores3_fmp3.menu.FMP3Runtime.aio.build.toppers_profile=all-in-one')
     }
@@ -310,62 +308,51 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     [string[]]$boardLines,
     $utf8NoBom)
 
-if ([string]::IsNullOrWhiteSpace($PrebuiltStageRoot)) {
-    #  Legacy path: build FMP3 during the sketch build (needs CMake/Ninja/Python
-    #  on the user's machine).
-    $recipeBase = 'powershell.exe -NoProfile -ExecutionPolicy Bypass ' +
-        "-File `"$recipe`" " +
-        '-ArduinoBuildPath "{build.path}" ' +
-        '-ProjectName "{build.project_name}" ' +
-        "-LibraryRoot `"$LibraryRoot`" " +
-        "-CoreVersion `"$CoreVersion`" " +
-        '-Profile "{build.toppers_profile}"'
-    $linkRecipe = "$recipeBase -Mode Link"
-    $objcopyRecipe = "$recipeBase -Mode Objcopy"
-    $partitionsRecipe = ''
+#  Everything the recipe needs goes inside the platform, so the recipe can be
+#  written with Arduino variables only.
+#
+#  There used to be a second branch here for the legacy path, which compiled
+#  the FMP3 runtime during every sketch build through
+#  Invoke-PortableFmp3Recipe.ps1. That recipe is gone and so is the branch:
+#  -PrebuiltStageRoot is required now.
+$platformTools = Join-Path $platformRoot 'fmp3-tools'
+$platformStages = Join-Path $platformRoot 'fmp3-prebuilt'
+[void](New-Item -ItemType Directory -Path $platformTools -Force)
+Copy-Item -LiteralPath $driverSource -Destination $platformTools -Force
+foreach ($stage in @(Get-ChildItem -LiteralPath $PrebuiltStageRoot -Directory)) {
+    if (-not (Test-Path -LiteralPath (Join-Path $stage.FullName 'link-manifest.json'))) {
+        continue
+    }
+    Copy-Item -LiteralPath $stage.FullName `
+        -Destination (Join-Path (Join-Path $platformStages $Chip) $stage.Name) `
+        -Recurse -Force
 }
-else {
-    #  Everything the recipe needs goes inside the platform, so the recipe can be
-    #  written with Arduino variables only.
-    $platformTools = Join-Path $platformRoot 'fmp3-tools'
-    $platformStages = Join-Path $platformRoot 'fmp3-prebuilt'
-    [void](New-Item -ItemType Directory -Path $platformTools -Force)
-    Copy-Item -LiteralPath $driverSource -Destination $platformTools -Force
-    foreach ($stage in @(Get-ChildItem -LiteralPath $PrebuiltStageRoot -Directory)) {
-        if (-not (Test-Path -LiteralPath (Join-Path $stage.FullName 'link-manifest.json'))) {
-            continue
-        }
-        Copy-Item -LiteralPath $stage.FullName `
-            -Destination (Join-Path (Join-Path $platformStages $Chip) $stage.Name) `
-            -Recurse -Force
-    }
-    $stagedProfiles = @(Get-ChildItem `
-        -LiteralPath (Join-Path $platformStages $Chip) -Directory `
-        -ErrorAction SilentlyContinue)
-    if ($stagedProfiles.Count -eq 0) {
-        throw "No prebuilt stage was found below $PrebuiltStageRoot"
-    }
+$stagedProfiles = @(Get-ChildItem `
+    -LiteralPath (Join-Path $platformStages $Chip) -Directory `
+    -ErrorAction SilentlyContinue)
+if ($stagedProfiles.Count -eq 0) {
+    throw "No prebuilt stage was found below $PrebuiltStageRoot"
+}
 
-    $driverPrefix = "`"$PythonExecutable`" " +
-        '"{runtime.platform.path}/fmp3-tools/fmp3_link.py"'
-    $recipeBase = "$driverPrefix " +
-        '--stage "{runtime.platform.path}/fmp3-prebuilt/{build.toppers_chip}/{build.toppers_profile}" ' +
-        '--build-path "{build.path}" ' +
-        '--project-name "{build.project_name}" ' +
-        '--gcc "{compiler.path}{compiler.c.cmd}" ' +
-        '--esptool "{tools.esptool_py.path}/{tools.esptool_py.cmd}" ' +
-        '--sdk-ld "{compiler.sdk.path}/ld" ' +
-        '--sdk-lib "{compiler.sdk.path}/lib"'
-    $linkRecipe = $recipeBase
-    $objcopyRecipe = "$recipeBase --check-only"
-    #  The inherited recipe runs "python3 gen_esp32part.py" on every host except
-    #  Windows, which puts a Python requirement back on macOS and Linux after
-    #  the driver was frozen to remove it. The driver does the conversion
-    #  itself; scripts/Test-PartitionTable.ps1 checks it against the original.
-    $partitionsRecipe = "$driverPrefix --partitions " +
-        '"{build.path}/partitions.csv" ' +
-        '"{build.path}/{build.project_name}.partitions.bin"'
-}
+$driverPrefix = "`"$PythonExecutable`" " +
+    '"{runtime.platform.path}/fmp3-tools/fmp3_link.py"'
+$recipeBase = "$driverPrefix " +
+    '--stage "{runtime.platform.path}/fmp3-prebuilt/{build.toppers_chip}/{build.toppers_profile}" ' +
+    '--build-path "{build.path}" ' +
+    '--project-name "{build.project_name}" ' +
+    '--gcc "{compiler.path}{compiler.c.cmd}" ' +
+    '--esptool "{tools.esptool_py.path}/{tools.esptool_py.cmd}" ' +
+    '--sdk-ld "{compiler.sdk.path}/ld" ' +
+    '--sdk-lib "{compiler.sdk.path}/lib"'
+$linkRecipe = $recipeBase
+$objcopyRecipe = "$recipeBase --check-only"
+#  The inherited recipe runs "python3 gen_esp32part.py" on every host except
+#  Windows, which puts a Python requirement back on macOS and Linux after
+#  the driver was frozen to remove it. The driver does the conversion
+#  itself; scripts/Test-PartitionTable.ps1 checks it against the original.
+$partitionsRecipe = "$driverPrefix --partitions " +
+    '"{build.path}/partitions.csv" ' +
+    '"{build.path}/{build.project_name}.partitions.bin"'
 
 $platformLines = Get-Content -LiteralPath $sourcePlatformFile -Encoding utf8 |
     ForEach-Object {

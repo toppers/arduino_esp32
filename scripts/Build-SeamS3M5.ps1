@@ -28,7 +28,7 @@
     every application they name - phase3_arduino_app,
     phase4_freertos_app, phase5_m5_selftest, phase6_smp_selftest and
     phase9_wifi_connect_app. scripts/New-Fmp3PrebuiltStages.ps1 and
-    scripts/Invoke-PortableFmp3Recipe.ps1 already drive that tree on Windows
+    scripts/New-Fmp3PrebuiltStages.ps1 already drives that tree on Windows
     with nothing but CMake, Ninja and the M5Stack core's toolchain, so this
     follows them rather than keeping a dependency the repository has already
     vendored away. Git Bash is no longer needed either: the ROM linker-script
@@ -189,7 +189,7 @@ if ([string]::IsNullOrWhiteSpace($ApplicationDirectory)) {
         default { 'phase3' }
     }
     #  The m5-unified and all-in-one applications live outside ports/ in the
-    #  development tree, the same split Invoke-PortableFmp3Recipe.ps1 uses.
+    #  development tree, the same split build_prebuilt_stages.py uses.
     $ApplicationDirectory = if ($Profile -in @('m5-unified', 'all-in-one')) {
         Join-Path $LibraryRoot "fmp_app\$directoryName"
     }

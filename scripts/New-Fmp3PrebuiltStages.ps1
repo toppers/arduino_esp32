@@ -216,7 +216,7 @@ try {
             default { 'phase3' }
         }
         # The m5-unified application lives outside ports/ in the development
-        # tree, the same split Invoke-PortableFmp3Recipe.ps1 uses.
+        # tree, the same split build_prebuilt_stages.py uses.
         $application = if ($profileName -in @('m5-unified', 'all-in-one')) {
             Join-Path $LibraryRoot "fmp_app\$applicationDirectoryName"
         }

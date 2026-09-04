@@ -189,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.self_test and name in SELF_TEST_APPLICATIONS:
             application_name = SELF_TEST_APPLICATIONS[name]
         #  The m5-unified application lives outside ports/ in the development
-        #  tree, the same split Invoke-PortableFmp3Recipe.ps1 uses.
+        #  tree, the same split New-Fmp3PrebuiltStages.ps1 uses.
         application = (library_root / "fmp_app" / directory_name
                        if outside_ports else
                        library_root / "ports" / "m5stack_xtensa" / "app"

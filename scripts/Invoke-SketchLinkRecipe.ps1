@@ -54,7 +54,7 @@ $destinationBin = Join-Path $ArduinoBuildPath "$ProjectName.bin"
 
 if ($Mode -eq 'Link') {
     #  Split the same way scripts/fmp3_link.py and
-    #  scripts/Invoke-PortableFmp3Recipe.ps1 do, for the same reasons.
+    #  scripts/fmp3_link.py does, for the same reasons.
     #
     #  Force-linked: every translation unit of the sketch, plus the bridge.
     #  On-demand (archived): everything else the builder compiled, so the

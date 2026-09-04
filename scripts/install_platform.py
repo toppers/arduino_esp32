@@ -20,11 +20,12 @@ picks a subset out of a multi-chip root:
 Together with build_prebuilt_stages.py this is everything the CI package job
 does, so that job no longer needs a Windows runner.
 
-The legacy path - installing WITHOUT prebuilt stages, so that a sketch build
-runs the whole FMP3 build through Invoke-PortableFmp3Recipe.ps1 - is not ported
-and is refused here rather than half-supported. That recipe is PowerShell, so a
-platform written for it only works on Windows anyway; use the PowerShell script
-for it.
+There used to be a second way to install: without prebuilt stages, so that a
+sketch build compiled the whole FMP3 runtime through
+Invoke-PortableFmp3Recipe.ps1. This script refused to implement it rather than
+half-support it, because that recipe was PowerShell and a platform written for
+it worked on Windows only. Both are gone now, so there is one way to install
+and stages are not optional.
 """
 
 from __future__ import annotations
@@ -310,11 +311,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if not args.prebuilt_stage_root:
         raise SystemExit(
-            "--prebuilt-stage-root is required. The legacy path, which builds "
-            "FMP3 during the sketch build through Invoke-PortableFmp3Recipe."
-            "ps1, is not ported: that recipe is PowerShell, so the platform it "
-            "writes only works on Windows. Use "
-            "scripts/Install-ArduinoIdeIntegration.ps1 for it.")
+            "--prebuilt-stage-root is required. Build the stages first with "
+            "scripts/build_prebuilt_stages.py, or "
+            "scripts/New-Fmp3PrebuiltStages.ps1 on Windows.")
     stage_root = Path(args.prebuilt_stage_root).resolve()
     if not stage_root.is_dir():
         raise SystemExit(f"Prebuilt stage root was not found: {stage_root}")
