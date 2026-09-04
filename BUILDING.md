@@ -67,10 +67,20 @@ sketchbook の `hardware/toppers/esp32` へ置きます。Arduino IDE を再起�
 ## 3. パッケージと index を作る
 
 ```bash
+curl -fL -o package_toppers_index.published.json \
+    https://github.com/toppers/arduino_esp32/releases/latest/download/package_toppers_index.json
 python scripts/make_package_index.py --version <ver> \
     --platform-dir <platform> --owner <owner> --repo <repo> \
-    --driver <host>=<fmp3-link-host.zip> ...
+    --driver <host>=<fmp3-link-host.zip> ... \
+    --merge-into package_toppers_index.published.json --require-merge-target
 ```
+
+`--merge-into` は公開済み index に載っている過去の版（platform と、リンク
+ドライバの tool）をそのまま引き継ぎ、今回と同じ版だけを差し替えます。
+**付けずに生成すると新しい index は今回の版だけになり、既存利用者の Boards
+Manager から過去の版が消えます。** `--require-merge-target` は、取得に失敗して
+ファイルが無いときに黙って新規 index を作らず止めるためのものです。初回
+リリース以外では必ず両方付けてください。
 
 `--owner` と `--repo` に既定値はありません。これらは Boards Manager が
 アーカイブを取りに行く URL を組み立てるので、**誤った値は利用者の手元で初めて
