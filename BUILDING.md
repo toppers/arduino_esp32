@@ -91,6 +91,27 @@ python scripts/check_host_paths.py <platform または zip>
 - `check_release_artifacts.py` … index の checksum、ホストの網羅、ドライバの版
 - `check_host_paths.py` … 配布物にビルド機の絶対パスが混入していないか
 
+## 5. リリースする — 実際に踏んだ落とし穴
+
+いずれも「生成も検証も通るのに、失敗するのは利用者の手元」という形をとります。
+
+- **出荷する platform アーカイブは、`verify-package` の `platform`
+  アーティファクトから作ってください。** 手元でステージを建て直して組むと
+  **検証していないバイト列**を配ることになります。3 ホストの一致は
+  「`package` job が上げた同一のアーカイブ」に対する確認です。
+- **pre-release で公開してはいけません。**
+  `releases/latest/download/…` は pre-release を除外するので、
+  README が案内している URL が**全員に 404 を返します。**
+- **イメージの SHA-256 をリリースノートに載せないでください。**
+  カーネルのバナー文字列が `third_party/fmp3_core/syssvc/banner.c` の
+  `__DATE__` / `__TIME__` を含むため、**ステージを建て直すと必ず変わります**
+  （サイズは固定長なので変わりません）。同じソース・同じタグの別 run で
+  7 件とも別の値になった実測があります。配布物の同定は index の checksum で
+  行ってください（Boards Manager が強制します）。
+- **GitHub のアーティファクトをブラウザから取得すると二重 zip になります。**
+  外側は GitHub の包装で、index に載せるのは内側です。外側のまま登録すると
+  Boards Manager が展開に失敗します。
+
 ## 変更するときに守ること
 
 - **cfg の `#ifdef` で構成を切り替えない。** cfg の pass1 はプリプロセッサを
@@ -115,6 +136,22 @@ python scripts/check_host_paths.py <platform または zip>
   `ports/m5stack_xtensa/runtime/CMakeLists.txt` の分岐、
   `install_platform.py` のメニュー定義、`packaging/release-allowlist.json`、
   `scripts/verify_package.py` の `PROFILES` を揃えてください。
+
+### どこに何を置くか
+
+- **`src/` 配下に FMP3 の cfg や `kernel.h` に依存するソースを置かないでください。**
+  Arduino builder は同梱ライブラリの `src/` を**再帰的にコンパイルします**。
+  スケッチのビルドには FMP3 のヘッダも cfg ツールも無いので、置いた時点で
+  利用者側のビルドが壊れます。FMP3 側のコードは `ports/` か `fmp_app/` へ。
+  `src/` に置けるのは `Arduino.h` だけに依存するコードです。
+  境界は `src/bridge/ArduinoSketchBridge.cpp` で、FMP3 API を `extern "C"`
+  宣言で参照し、`kernel.h` を include しません。
+- **Wi-Fi のコールバックテーブルを別ファイルへ複製しないでください。**
+  `esp_wifi_init()`／`esp_wifi_start()`／auth backend の選択と、WPA
+  コールバックテーブル（offset `0x1b4`・27 エントリ）は
+  `runtime/wifi/adapter/toppers_wifi_core.c` だけが持ちます。かつて 3 箇所に
+  あり、**private な ABI の記述が運で一致していました。** 複製すると、
+  片方だけ直したときに壊れ方が Wi-Fi の失敗として現れます。
 
 ### 依存の固定
 

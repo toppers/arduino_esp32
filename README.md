@@ -97,7 +97,7 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 | パス | 役割 |
 | --- | --- |
 | `src/` | Arduino builder が再帰コンパイルする領域。`Arduino.h` だけに依存 |
-| `ports/m5stack_xtensa/runtime/` | FMP3 の ESP32-S3 / CoreS3 固有ポート |
+| `ports/m5stack_xtensa/runtime/` | FMP3 の Xtensa ポート（ESP32-S3 / LX7 と ESP32 / LX6） |
 | `fmp_app/` | 開発ツリーでのみ使う FMP3 アプリケーション |
 | `examples/` | 同梱例題 |
 | `scripts/` | ビルド・パッケージング |
