@@ -62,7 +62,7 @@ if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
 if ([string]::IsNullOrWhiteSpace($ApplicationBin)) {
     #  The image the Boards Manager package produces, built by
     #  Test-StagePlatform.ps1 from the platform install_platform.py
-    #  assembles. It used to be the .bin Test-ArduinoReleasePackage.ps1
+    #  assembles. It used to be a .bin the retired release-package test
     #  built from the legacy library ZIP; the ZIP is CoreS3-only and is
     #  being retired, and the artifact that carries every board is the
     #  platform. The m5 runtime's image prints both processors and

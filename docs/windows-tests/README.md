@@ -57,7 +57,6 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
 | `Test-RecipeOverride.ps1` | ホスト | – | FreeRTOS を混ぜずに ELF を包めることの実証 |
 | `Test-Regression.ps1` | ホスト | CoreS3 / M5Core | 上記ホスト側をまとめて回す（`-Chip`） |
 | `Test-StagePlatform.ps1` | ホスト | **3 ボード** | `install_platform.py` が組んだプラットフォームからスケッチを建てる。出荷経路 |
-| `Test-ArduinoReleasePackage.ps1` | 実機 | CoreS3 | Release ZIP を隔離環境で生成・導入・コンパイル |
 | `Test-Hardware.ps1` | 実機 | CoreS3 | API プローブを焼いてシリアル判定 |
 | `Test-M5UnifiedHardware.ps1` | 実機 | CoreS3 | M5Unified 例題を焼いてシリアル判定 |
 | `Test-DualCoreHardware.ps1` | 実機 | CoreS3 | DualCore 例題で両プロセッサを判定 |

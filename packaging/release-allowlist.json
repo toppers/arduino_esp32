@@ -1,6 +1,5 @@
 {
   "packageName": "ToppersFMP3-M5CoreS3",
-  "packageProfile": "fmp3-m5unified-smp-wifi-preview",
   "m5stackArduinoCore": "3.3.8",
   "fmp3RuntimeIncluded": true,
   "dualCoreIncluded": true,

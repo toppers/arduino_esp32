@@ -9,7 +9,7 @@
     which only fmp_app/phase5/phase5_m5_selftest.c emits. The stages that go
     into the Boards Manager package are built WITHOUT -SelfTest (see
     New-Fmp3PrebuiltStages.ps1), and this script flashes the .bin that
-    Test-ArduinoReleasePackage.ps1 produced from that package, so those
+    a .bin built from that package, so those
     markers could never appear. The first required marker,
     "M5.begin and initial LCD draw PASS", does come from the shipping example
     itself and is kept.
@@ -47,7 +47,7 @@ if ([string]::IsNullOrWhiteSpace($M5ArduinoRoot)) {
 if ([string]::IsNullOrWhiteSpace($ApplicationBin)) {
     #  The image the Boards Manager package produces, built by
     #  Test-StagePlatform.ps1 from the platform install_platform.py
-    #  assembles. It used to be the .bin Test-ArduinoReleasePackage.ps1
+    #  assembles. It used to be a .bin the retired release-package test
     #  built from the legacy library ZIP; the ZIP is CoreS3-only and is
     #  being retired, and the artifact that carries every board is the
     #  platform. The m5 runtime's image prints both processors and

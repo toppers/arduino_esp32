@@ -6,9 +6,8 @@
     The artifact that carries every board is the platform built from prebuilt
     stages - what install_platform.py assembles and what Boards Manager
     packages. Nothing in this suite built a sketch from it:
-    Test-ArduinoReleasePackage.ps1 covers the legacy library ZIP, which is
-    CoreS3-only by decision (docs/windows-tests/backlog.md, A-2), and the rest
-    of the host-side tests drive the seam path directly.
+    The legacy library ZIP had its own test, which is gone with the ZIP; the
+    rest of the host-side tests drive the seam path directly.
 
     So this is the shipping path, on Windows, for all three boards. What is
     Windows-specific about it, and therefore only checked here, is the chain:
