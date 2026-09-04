@@ -126,10 +126,11 @@ LIBRARY_ITEMS = ("library.properties", "src", "keywords.txt",
                  "LICENSE", "THIRD_PARTY_NOTICES.md")
 
 #  packaging/release-allowlist.json is the canonical definition of what gets
-#  distributed. Every example is copied under the destination it names there,
-#  and the ones it leaves out stay out: M5UnifiedLink references symbols no
-#  shipped profile provides, so bundling it would hand the user an example that
-#  cannot link.
+#  distributed. Every example is copied under the destination it names there.
+#  An example stays out only by saying so - boardsManager false, with the
+#  reason beside it (DualCore, M5UnifiedLink) - because allowlisted_examples
+#  rejects an example that is in the repository and in no entry at all: an
+#  omission cannot be told apart from forgetting.
 ALLOWLIST = "packaging/release-allowlist.json"
 
 

@@ -1,10 +1,4 @@
 {
-  "packageName": "ToppersFMP3-M5CoreS3",
-  "m5stackArduinoCore": "3.3.8",
-  "fmp3RuntimeIncluded": true,
-  "dualCoreIncluded": true,
-  "m5UnifiedIncluded": true,
-  "wifiIncluded": true,
   "fmp3CoreCommit": "685b36a98175e3093c0931b713729b9030774e16",
   "_portComment": "the reference is now the PUBLIC repository toppers/fmp3_esp_idf at its 2026-08-18 snapshot. That repository is a series of squashed snapshots, so its commit list cannot be compared with the private fmp3_esp_idf_dev history; compare trees instead. The previous baseline, 1683046b from the dev repository, is not reachable from the public one and has to be fetched by SHA.",
   "portBaseRepository": "https://github.com/toppers/fmp3_esp_idf.git",
@@ -13,26 +7,6 @@
   "_portPatchesComment": "Empty on purpose. This port is not expressed as a patch series against the baseline: upstream has moved too far for the hunks to carry context, and the port itself was restructured. Treat the baseline commit above as provenance, not as something these sources can be regenerated from.",
   "portPatches": [],
   "entries": [
-    {
-      "source": "library.properties",
-      "destination": "library.properties"
-    },
-    {
-      "source": "packaging/README.release.md",
-      "destination": "README.md"
-    },
-    {
-      "source": "LICENSE",
-      "destination": "LICENSE"
-    },
-    {
-      "source": "THIRD_PARTY_NOTICES.md",
-      "destination": "THIRD_PARTY_NOTICES.md"
-    },
-    {
-      "source": "src",
-      "destination": "src"
-    },
     {
       "source": "examples/LibraryInfo/LibraryInfo.ino",
       "destination": "examples/LibraryInfo/LibraryInfo.ino",
@@ -74,90 +48,6 @@
     {
       "source": "examples/WiFiConnect/WiFiConnect.ino",
       "destination": "examples/WiFiConnect/WiFiConnect.ino"
-    },
-    {
-      "source": "ports/m5stack_xtensa/runtime",
-      "destination": "extras/runtime/port"
-    },
-    {
-      "source": "ports/m5stack_xtensa/app/phase3",
-      "destination": "extras/runtime/app/phase3"
-    },
-    {
-      "source": "fmp_app/phase6",
-      "destination": "extras/runtime/app/phase6"
-    },
-    {
-      "source": "fmp_app/phase5",
-      "destination": "extras/runtime/app/phase5"
-    },
-    {
-      "source": "ports/m5stack_xtensa/app/wifi_connect",
-      "destination": "extras/runtime/app/wifi_connect"
-    },
-    {
-      "source": "third_party/fmp3_core/CMakeLists.txt",
-      "destination": "extras/runtime/fmp3_core/CMakeLists.txt"
-    },
-    {
-      "source": "third_party/fmp3_core/fmp3_core.cmake",
-      "destination": "extras/runtime/fmp3_core/fmp3_core.cmake"
-    },
-    {
-      "source": "third_party/fmp3_core/arch/gcc",
-      "destination": "extras/runtime/fmp3_core/arch/gcc"
-    },
-    {
-      "source": "third_party/fmp3_core/cfg",
-      "destination": "extras/runtime/fmp3_core/cfg"
-    },
-    {
-      "source": "third_party/fmp3_core/cfg_py",
-      "destination": "extras/runtime/fmp3_core/cfg_py"
-    },
-    {
-      "source": "third_party/fmp3_core/cmake",
-      "destination": "extras/runtime/fmp3_core/cmake"
-    },
-    {
-      "source": "third_party/fmp3_core/include",
-      "destination": "extras/runtime/fmp3_core/include"
-    },
-    {
-      "source": "third_party/fmp3_core/kernel",
-      "destination": "extras/runtime/fmp3_core/kernel"
-    },
-    {
-      "source": "third_party/fmp3_core/library",
-      "destination": "extras/runtime/fmp3_core/library"
-    },
-    {
-      "source": "third_party/fmp3_core/syssvc",
-      "destination": "extras/runtime/fmp3_core/syssvc"
-    },
-    {
-      "source": "third_party/fmp3_core/tools",
-      "destination": "extras/runtime/fmp3_core/tools"
-    },
-    {
-      "source": "third_party/fmp3_core/utils",
-      "destination": "extras/runtime/fmp3_core/utils"
-    },
-    {
-      "source": "third_party/fmp3_core/MANIFEST",
-      "destination": "extras/runtime/fmp3_core/MANIFEST"
-    },
-    {
-      "source": "third_party/fmp3_core/README.md",
-      "destination": "extras/runtime/fmp3_core/README.md"
-    },
-    {
-      "source": "third_party/fmp3_core/UPSTREAM_VERSION",
-      "destination": "extras/runtime/fmp3_core/UPSTREAM_VERSION"
-    },
-    {
-      "source": "scripts/Resolve-ArduinoEsp32S3Sdk.ps1",
-      "destination": "extras/tools/Resolve-ArduinoEsp32S3Sdk.ps1"
     }
   ],
   "fmp3CoreBranch": "fix/p4-clic-ipm (main系ではない。動的生成一式を含む)",
