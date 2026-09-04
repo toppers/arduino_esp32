@@ -121,6 +121,14 @@ python scripts/check_host_paths.py <platform または zip>
 - **GitHub のアーティファクトをブラウザから取得すると二重 zip になります。**
   外側は GitHub の包装で、index に載せるのは内側です。外側のまま登録すると
   Boards Manager が展開に失敗します。
+- **公開後の確認は、浅いパスの隔離環境で行ってください。** Windows で
+  `directories.data` を深い場所に置くと、M5Stack core の SDK ヘッダへの
+  パスが 260 文字を超え、GCC が `deprecated_definitions.h: No such file`
+  で止まります（長いパスの許可が既定で無効なため）。ファイルは展開されて
+  いて、パッケージも正しいのに、全ボードのビルドが数秒で失敗する形で
+  現れます。0.4.0 の確認で一度これを配布物の欠陥と疑いました。
+  `C:\Users\<name>\AppData\Local\Temp\<短い名前>` のような場所に隔離環境を
+  作れば、公開 index からの導入と全ボードのビルドがそのまま通ります。
 
 ## 変更するときに守ること
 
