@@ -52,7 +52,7 @@
  *
  * 一次情報：
  *  - CCOMPARE0の割込み番号・レベル：
- *    /home/honda/tools/esp-idf/components/xtensa/esp32s3/include/xtensa/config/core-isa.h
+ *    esp-idf/components/xtensa/esp32s3/include/xtensa/config/core-isa.h
  *    468行 #define XCHAL_TIMER0_INTERRUPT 6 （CCOMPARE0）
  *    389行 #define XCHAL_INT6_LEVEL 1        （XCHAL_EXCM_LEVEL=3以下、RTOS tick用に適格）
  *  - XTOS API（ROM常駐、VECBASE非変更で割込みハンドラを登録できる）：
