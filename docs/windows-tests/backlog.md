@@ -399,7 +399,7 @@ FIFO かバッファ境界の類だと思われるが、**特定していない*
 
 ## D. リリース前に見つけたが直していないもの
 
-### D-1 開発者インストールの `platform.txt` に Python の絶対パスが入る（CI は捕まえない）
+### D-1 開発者インストールの `platform.txt` に Python の絶対パスが入る（CI は捕まえない）— (2) で直した
 
 `check_host_paths.py`（CLAUDE.md が配布物に必須とする検査）を、
 `install_platform.py` が組んだプラットフォームに掛けると落ちる。検出器が
@@ -424,7 +424,20 @@ FIFO かバッファ境界の類だと思われるが、**特定していない*
 の 4 行は上流 M5Stack コアの `{runtime.platform.path}` ベースのツール定義で、
 ホストパスではない。
 
-**未修正。** 直し方は 2 通りあって判断が要る:
+**(2) で直した。** `verify-package.yml` の `package` job が、installer 出力を
+`check_host_paths.py` に掛けるのをやめ、その場で `make_package_index.py` を
+回して release 形のプラットフォームを作り、その `staging/` を検査するようにした。
+`--driver` は渡さない——ドライバ行の書き換えは `--driver` に依存せず、検査には
+それ以外何も要らないことを確かめた。CI の 3 行をこのホストでそのまま実行して
+974 ファイル PASS、同時に旧検査対象（installer 出力）が EXIT=1 になることも
+並べて確認した（それが CI で見えていなかった偽陰性）。
+
+なお `library.properties` は CRLF と判定されたが、`sed -n 's/^version=//p'` が
+返す値には `` が無い（`od -c` で確認）。この CRLF 判定は allowlist で
+HEAD を誤判定したのと同じ probe なので、値のバイトのほうを信じる。CI は
+Linux なので checkout は LF。
+
+当初の 2 案は次のとおりで、(2) を採った:
 (1) `install_platform.py` が開発者インストールでもプレースホルダを書く
 （ただし開発者機には凍結ツールが無いので、それだけではローカルでスケッチが
 建たない）、(2) CI の検査対象を installer 出力ではなく `make_package_index.py`

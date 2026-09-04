@@ -167,7 +167,19 @@ jobs:
           if grep -rlE '[A-Za-z]:[\\/]' "$root/fmp3-prebuilt" --include='*.json' --include='*.rsp'; then
             echo "a stage references an absolute path"; exit 1
           fi
-          python scripts/check_host_paths.py "$root"
+          #  Scan what SHIPS, not the installer output. install_platform.py writes
+          #  the runner's own interpreter path into platform.txt (sys.executable),
+          #  and check_host_paths.py never flagged it here: its patterns are drive
+          #  letters, /home/<user>/, /Users/<user>/ and /root/, and a hosted runner's
+          #  Python lives under /opt/hostedtoolcache/. The same install fails the
+          #  same check on any Windows or macOS developer machine. The release does
+          #  not carry that path - make_package_index.py rewrites the driver line to
+          #  the frozen fmp3-link tool - so the artifact worth scanning is the
+          #  release-shaped platform, which this builds here. No --driver: the
+          #  rewrite does not depend on one, and the scan needs nothing else.
+          version=$(sed -n 's/^version=//p' library.properties)
+          python scripts/make_package_index.py --version "$version" --platform-dir "$root" --output-dir "$RUNNER_TEMP/release-shape" --base-url https://example.invalid/
+          python scripts/check_host_paths.py "$RUNNER_TEMP/release-shape/staging"
           du -sh "$root"
 
       - uses: actions/upload-artifact@v4
