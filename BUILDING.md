@@ -116,6 +116,60 @@ python scripts/check_host_paths.py <platform または zip>
   `install_platform.py` のメニュー定義、`packaging/release-allowlist.json`、
   `scripts/verify_package.py` の `PROFILES` を揃えてください。
 
+### 依存の固定
+
+- **M5Stack Arduino core は 3.3.8 固定です。** 同梱 ESP-IDF v5.5.4 の
+  **private な Wi-Fi ABI**、prebuilt archive、include 配置に依存しています。
+  version を上げるには、この 3 つと board recipe を全面的に再検証する必要が
+  あります。「ビルドが通った」では足りません。
+- **ESP-IDF を複製しないでください。** Wi-Fi blob、PHY、lwIP、ツールチェーン、
+  ヘッダはすべて M5Stack core から検出して使います。ツリーへ持ち込むと、
+  利用者が入れた core との二重管理になります。
+- **M5Unified 構成は大量の `-Wl,--wrap=` で mangled C++ シンボルを差し替えて
+  います**（`ports/m5stack_xtensa/runtime/CMakeLists.txt`）。M5Unified／M5GFX の
+  version を上げると mangled 名が変わり得るので、`--wrap` が空振りします。
+  **空振りしてもリンクは通ります。**
+
+### 壊れ方が静かなもの
+
+- **Wi-Fi の OPEN／WPA 初期化分離を壊さないでください。**
+  `-Wl,--wrap=esp_supplicant_init` で、`WiFi.begin()` が認証方式を知るまで
+  supplicant の初期化を遅延させています。常時初期化すると**オープン AP が
+  `AUTH_EXPIRE` で失敗**します。ここを触ったら Open／WPA2-PSK／WPA3-SAE の
+  3 経路を実機で回帰してください。関連：`runtime/CMakeLists.txt`、
+  `runtime/wifi/adapter/toppers_wifi_connect.c`、
+  `runtime/wifi/adapter/toppers_wifi_core.c`、`runtime/wifi/prebuilt/wpa2/`。
+- **未実装 API を無条件スタブで成功扱いにしないでください。** Arduino／FreeRTOS
+  API は完全互換ではなく、各構成と例題で実際に使った範囲だけが対応済みです。
+  `runtime/wifi/adapter/toppers_wifi_optional_stubs.c` の weak スタブは、
+  実装が無い構成で**失敗値を返すだけで、リンクは通ります**。追加するときは
+  未定義シンボル一覧を正としてください。
+- **時間の単位に注意してください。** FreeRTOS API は tick、FMP3 の `dly_tsk` の
+  RELTIM は**このポートではマイクロ秒**です。変換は一か所へ集約し、
+  `configTICK_RATE_HZ` を暗黙に使わないでください。
+
+### 配布物に入れる／入れない
+
+- **`runtime/wifi/prebuilt/wpa2/` の `.a` は Git 管理対象です**
+  （`esp32/` と `esp32s3/` に `libsupplicant.a`／`libmbedcrypto.a`）。
+  **`.gitignore` に一般的な `*.a` 除外を追加しないでください。** 更新するときは
+  由来 commit、build recipe、SHA-256、ライセンスを同時に更新します。
+- **配布アーカイブにビルド出力を入れないでください。** `arduino-cli` は相対パスで
+  スケッチをコンパイルすると `<sketch>/build` にも出力するため、同梱ライブラリの
+  `examples/` をそのままコピーすると `.ino.bin` が配布物へ入ります。
+  `make_package_index.py` は `build` を除外し、バイナリ成果物が残っていたら
+  生成を止めます。
+- **`gen_esp32part.exe` は同梱しません。** partition 生成はリンクドライバが行うので、
+  `{tools.gen_esp32part.cmd}` を参照する recipe が残っていたらインストールを
+  止めます。変換結果は `scripts/Test-PartitionTable.ps1` で
+  `gen_esp32part.exe` とのバイト一致を確認します。
+- **資格情報を残さないでください。** Wi-Fi の SSID／パスワードを commit せず、
+  実機ログを文書化するときは SSID、BSSID、割当 IP を書かないでください。
+  `examples/WiFiConnect/WiFiConnect.ino` は公開前に空であることを確認します。
+- **ライセンスはリポジトリ単一ではありません。** 各ファイルのヘッダと
+  `THIRD_PARTY_NOTICES.md` が正で、`LICENSE` はこのリポジトリ向けに書かれた
+  部分に適用されます。取り込んだファイルはヘッダを保持してください。
+
 ## リリース経路の検証（`scripts/verify_package.py`）
 
 パッケージを組み、Boards Manager 経由で入れ直し、両ボード×全構成を建て直す。
