@@ -96,10 +96,15 @@ CHIP_ONLY_ENTRIES = {
 }
 
 #  What a complete board for this chip offers. Installing with a stage missing
-#  is a real mistake for the CoreS3 board - it ships all three - so that stays
-#  an error. The LX6 board runs the minimal profile only; m5-unified and
-#  wifi-connect need the m5/ and wifi/ shims ported to the chip, which has not
-#  been done.
+#  is a real mistake - every board ships all three - so that stays an error.
+#
+#  This comment used to say the LX6 board ran the minimal profile only, because
+#  the m5/ and wifi/ shims had not been ported to the chip. They have been:
+#  9d0b8d2 ran m5-unified on the M5Stack Basic and ac7b5ac ran wifi-connect,
+#  and both profiles pass on that board in the Windows suite as well
+#  (docs/windows-tests/backlog.md, B-1). The table below has required all three
+#  for both chips since then; it was the comment that was left behind, which is
+#  worth saying because the next reader would otherwise doubt the table.
 EXPECTED_PROFILES = {
     "esp32s3": {"minimal", "m5-unified", "wifi-connect"},
     "esp32": {"minimal", "m5-unified", "wifi-connect"},

@@ -1,4 +1,18 @@
 #include <ToppersFMP3_ArduinoBridge.h>
+
+// This example ships in the package, so File > Examples offers it whichever
+// board is selected - the three boards share one architecture, and Arduino has
+// no way to show a library example for only one of them. Say so here rather
+// than letting the wrong board discover it as a wall of undefined references
+// to the Bluetooth stack, which is what happens when the bt-classic stage is
+// not the one being linked.
+//
+// ARDUINO_M5STACK_CORE is passed by the platform's recipe as -DARDUINO_ +
+// build.board, so it is the board actually selected in the IDE, not the chip.
+#if !defined(ARDUINO_M5STACK_CORE)
+#error "BluetoothSPP runs on the M5Core only. The ESP32-S3 has no Bluetooth Classic radio, so the CoreS3 and StickS3 boards do not offer the Bluetooth Classic (SPP) runtime. Select M5Core (TOPPERS/FMP3) and its Bluetooth Classic (SPP) option."
+#endif
+
 #include <ToppersFMP3_BT.h>
 
 // Bluetooth Classic SPP echo server for the M5Stack Core (ESP32).

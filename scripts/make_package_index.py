@@ -151,6 +151,31 @@ def allowlisted_examples(library_root: Path) -> list[tuple[Path, str]]:
     if missing:
         raise SystemExit("the allowlist points at missing examples: "
                          + ", ".join(missing))
+
+    #  And the other direction, which nothing checked: an example in the
+    #  repository that the allowlist does not mention at all.
+    #
+    #  examples/BluetoothSPP was absent for a whole release cycle while
+    #  packaging/README.release.md told users, by name, that it was the example
+    #  for the Bluetooth Classic (SPP) runtime. Nothing caught it:
+    #  verify_package.py builds examples from the repository rather than from
+    #  the package, so an example only has to exist to pass, and the check
+    #  above only looks at what the allowlist already names.
+    #
+    #  Excluding one is fine - that is what boardsManager: false is for - but
+    #  it has to be said out loud in the allowlist rather than by omission,
+    #  because omission is indistinguishable from forgetting.
+    listed = {str(entry["source"]) for entry in entries
+              if str(entry["source"]).startswith("examples/")}
+    on_disk = {f"examples/{sketch.parent.name}/{sketch.name}"
+               for sketch in sorted((library_root / "examples").glob("*/*.ino"))}
+    unlisted = sorted(on_disk - listed)
+    if unlisted:
+        raise SystemExit(
+            f"these examples are in the repository but not in {ALLOWLIST}: "
+            + ", ".join(unlisted)
+            + ". Add them, or add them with \"boardsManager\": false to ship "
+              "them in the ZIP only, or say why in a _comment.")
     return examples
 
 

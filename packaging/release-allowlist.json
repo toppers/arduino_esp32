@@ -58,6 +58,17 @@
       "boardsManager": false
     },
     {
+      "_comment": "M5Core only: the ESP32-S3 has no BR/EDR radio, so the CoreS3 and StickS3 boards have no Bluetooth Classic (SPP) runtime option. It ships anyway, because packaging/README.release.md points users at this example by name and the three boards share one architecture - Arduino cannot offer a library example for one board out of three. The example itself refuses to compile on the other two with a sentence saying which board to pick, rather than failing at the link.",
+      "source": "examples/BluetoothSPP/BluetoothSPP.ino",
+      "destination": "examples/BluetoothSPP/BluetoothSPP.ino"
+    },
+    {
+      "_comment": "a test fixture, not something to hand a user: it deliberately never calls M5.begin(), because it exists to prove that an Arduino-compiled object can take the address of the FMP3-linked M5 and be linked into the image. Test-M5UnifiedLink.ps1 builds it and Test-Hardware.ps1 flashes what that produces. Listed here with boardsManager false, the same way DualCore is, so that its absence is a statement rather than an omission - make_package_index.py now rejects an example that appears in neither.",
+      "source": "examples/M5UnifiedLink/M5UnifiedLink.ino",
+      "destination": "examples/M5UnifiedLink/M5UnifiedLink.ino",
+      "boardsManager": false
+    },
+    {
       "source": "examples/WiFiScan/WiFiScan.ino",
       "destination": "examples/WiFiScan/WiFiScan.ino"
     },
