@@ -308,9 +308,21 @@ m5core_fmp3    btclassic   BluetoothSPP  571056
 **B-2（M5StickS3 がスイートに無い）はこれで埋まった。** `BluetoothSPP` を
 建てるのも初めてで、B-3 で開けた口がここで使われている。
 
-matrix は事実に合わせてある。**M5StickS3 に `m5-unified` は入れていない**:
-動かないことと原因が `docs/m5sticks3-m5unified.md` に記録されているので、
-入れれば偽を主張することになる。直ったら足すこと。
+matrix は事実に合わせてある。当初 **M5StickS3 に `m5-unified` は入れて
+いなかった**: 動かないことが `docs/m5sticks3-m5unified.md` に記録されていた
+ので、入れれば偽を主張することになるからである。
+
+**追記（2026-09-05）**: その原因は `d28c9bd`（efuse のパッケージ版数を実際に
+読む）で直り、同記録も「解決済み・実機で確認」で閉じていたのに、matrix と
+`README.md` の「★対象外」だけが除外のまま残っていた。行を足して建てた:
+
+```
+m5sticks3_fmp3 m5          M5Unified     339616
+```
+
+FMP3 シンボルの存在・Arduino / FreeRTOS の不在・merged 0x10000 の一致も
+他の行と同じく通る。これで matrix は **10 ビルド**、3 ボードとも
+`m5-unified` を含む。
 
 **残っている穴は「焼く」側に偏った。** このテストは建てるだけで焼かない。
 M5StickS3 は 1 本も焼いていない。`BluetoothSPP` を焼いて SPP を通す確認も

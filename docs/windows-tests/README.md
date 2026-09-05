@@ -92,9 +92,6 @@ python scripts\install_platform.py --prebuilt-stage-root build\prebuilt
   済み（`backlog.md` の B-3）だが、**ペアリングが手作業**なのでテストに
   できていない。Windows には Linux の `AF_BLUETOOTH`/`BTPROTO_RFCOMM` に
   相当するものが無く、ペアリング後の送信用 COM ポート経由になる
-- **M5StickS3 の `m5-unified`**。動かないことが
-  `docs/m5sticks3-m5unified.md` に記録されており、`Test-StagePlatform.ps1` の
-  matrix にも入れていない（入れれば偽を主張することになる）。直ったら足すこと
 
 Linux 側で通っている `scripts/verify_package.py`（3 ボード分を建てる）と
 役割が重なる部分もあるが、**Windows のホスト経路そのもの**（PowerShell の

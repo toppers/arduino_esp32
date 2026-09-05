@@ -71,11 +71,11 @@ if ([string]::IsNullOrWhiteSpace($Sketchbook)) {
 
 #  What each board is and what it can build.
 #
-#  m5-unified is absent for the M5StickS3 on purpose: it does not work there,
-#  and docs/m5sticks3-m5unified.md records the investigation - M5GFX's
-#  autodetect finds no display, M5Unified falls back to board_M5AtomS3Lite,
-#  and M5.begin fails for want of an SPI bus. Listing it here would assert
-#  something known to be false.
+#  m5-unified is on every board. The M5StickS3 was left out while it did not
+#  work there; docs/m5sticks3-m5unified.md records both causes and the fix
+#  (the efuse package version was stubbed to 0, so M5GFX's autodetect never
+#  reached the LGA56 branch). With that fixed and confirmed on hardware, the
+#  row belongs here so that a regression fails a build rather than a user.
 #
 #  bt-classic is the M5Core's alone: the ESP32-S3 has no BR/EDR radio.
 #
@@ -95,6 +95,7 @@ $boardMatrix = [ordered]@{
         Chip = 'esp32s3'
         Builds = @(
             @{ Menu = 'minimal'; Sketch = 'LibraryInfo' }
+            @{ Menu = 'm5'; Sketch = 'M5Unified'; NeedsM5Libraries = $true }
             @{ Menu = 'wificonnect'; Sketch = 'WiFiConnect' }
         )
     }
