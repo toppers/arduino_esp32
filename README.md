@@ -89,8 +89,9 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の
   tick とは単位が異なります。
 - M5Stack Arduino core は **3.3.8 固定**です。
-- **Bluetooth は未対応です。** BT Classic は ESP32 にしかなく（S3 は BLE のみ）、
-  どちらもこのパッケージには入っていません。
+- **Bluetooth は Classic (SPP) だけで、M5Core 限定です。** BR/EDR 無線は
+  ESP32 にしかなく、ESP32-S3 は BLE のみですが、BLE はどのボードにも
+  入っていません。
 
 ## リポジトリの構成
 
