@@ -39,12 +39,33 @@ from pathlib import Path
 #  stream after a stray drive letter, followed by bytes that are not path
 #  characters at all. Those binaries hold no build-machine string of any kind,
 #  checked separately, so all six were noise.
+#
+#  The POSIX rules cover home directories AND the system prefixes a build can
+#  run out of. Home directories alone were not enough: a hosted runner keeps
+#  its interpreter under the tool-cache prefix, install_platform.py writes
+#  sys.executable into platform.txt, and this check looked straight past it.
+#  It surfaced only because the same install fails the same check on a
+#  developer machine, where the interpreter does sit under a home directory.
+#  Nothing shipped was affected - the release rewrites that line - but the
+#  detector could not see the shape at all.
+#
+#  That matters more now than it did: the package job builds on Linux, so a
+#  path baked into an artifact looks like one of these rather than like a
+#  drive letter. Each prefix was counted against this tree before being added;
+#  all four appeared zero times outside the comment describing the gap.
 HOST_PATH = re.compile(
     rb"(?<![A-Za-z0-9])[A-Za-z]:[\\/]{1,2}"
     rb"(?:[A-Za-z0-9_. -]{4,}|[A-Za-z0-9_. -]{1,3}[\\/])"
     rb"|/home/[a-z0-9_-]{2,}/"
     rb"|/Users/[A-Za-z0-9_. -]{2,}/"
-    rb"|/root/[A-Za-z0-9_.-]")
+    rb"|/root/[A-Za-z0-9_.-]"
+    rb"|/opt/[A-Za-z0-9_.-]{2,}/"
+    rb"|/usr/local/[A-Za-z0-9_.-]{2,}/"
+    rb"|/tmp/[A-Za-z0-9_.-]{4,}/"
+    #  Split so this file does not match its own pattern: it is the one
+    #  alternative with no character class, and Python joins adjacent
+    #  literals, so the regex is unchanged.
+    rb"|/github/work" rb"space")
 
 #  Placeholders are how documentation writes a path without naming a machine.
 #  A line carrying one is describing a path, not leaking one.
@@ -81,6 +102,16 @@ def contexts(data: bytes) -> list[str]:
         #  path, and this file would then report itself.
         window = data[match.start():match.end() + 24]
         if PLACEHOLDER.search(window):
+            continue
+        #  A URL is the one realistic source of a false positive for the
+        #  system prefixes: a documentation link whose path happens to start
+        #  with one of them looks exactly like a build path. Rejecting
+        #  anything preceded by a letter would cover it, and would also throw
+        #  away an -I include flag, which is how such a path really turns up
+        #  in a compile command. So the test is for the scheme separator just
+        #  before the match, which a URL has and a command line does not.
+        before = data[max(0, match.start() - 120):match.start()]
+        if b"://" in before and not re.search(rb"[\s\"'<>()]", before.rsplit(b"://", 1)[1]):
             continue
         text = data[match.start():match.end() + 50]
         text = text.split(b"\x00")[0]

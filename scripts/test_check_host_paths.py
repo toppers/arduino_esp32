@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_host_paths import HOST_PATH  # noqa: E402
+from check_host_paths import HOST_PATH, contexts  # noqa: E402
 
 BS = chr(92)
 
@@ -61,6 +61,19 @@ MUST_MATCH = [
     nix("", "home", "someone", "tools", "esp-idf"),
     nix("", "home", "runner", "work", "arduino_esp32"),
     nix("", "Users", "runner", "hostedtoolcache"),
+    #  System prefixes a build runs out of. Home directories alone missed the
+    #  one that mattered: a hosted runner keeps its interpreter under the
+    #  tool-cache prefix, install_platform.py writes that into platform.txt,
+    #  and the check looked straight past it. Spelled from fragments below,
+    #  like everything else here, so this file does not report itself.
+    nix("", "opt", "hostedtoolcache", "Python", "3.12.10", "x64", "bin", ""),
+    nix("", "opt", "homebrew", "bin", ""),
+    nix("", "usr", "local", "bin", ""),
+    nix("", "tmp", "build-a1b2c3", ""),
+    nix("", "github", "workspace"),
+    #  As it really appears in a compile command. Rejecting anything preceded
+    #  by a letter would have silenced the URL false positives AND this.
+    "-I" + nix("", "opt", "hostedtoolcache", "Python", "include", ""),
 ]
 
 MUST_NOT_MATCH = [
@@ -79,6 +92,22 @@ MUST_NOT_MATCH = [
     "note: see the manifest",
     "case 3: fall through",
     "Exit status is 0 when nothing leaked",
+    #  Shebangs. Every script in this tree starts with one.
+    "#!" + nix("", "usr", "bin", "env") + " python3",
+    nix("", "usr", "bin", "ld"),
+    #  Too short to be a directory name.
+    nix("", "opt", ""),
+    nix("", "tmp", "x", ""),
+]
+
+#  URLs whose path happens to contain a system prefix. HOST_PATH matches these
+#  on purpose - rejecting them by a lookbehind would also reject -I/opt/... -
+#  so contexts() filters them by the scheme separator instead. Checked through
+#  contexts(), not HOST_PATH.
+URL_MUST_BE_QUIET = [
+    "https://cdn.example.com" + nix("", "opt", "downloads", "x.zip"),
+    "https://github.com/toppers/arduino_esp32" + nix("", "tmp", "whatever", ""),
+    "http://host" + nix("", "usr", "local", "guide", ""),
 ]
 
 
@@ -92,9 +121,15 @@ def main() -> int:
         if match:
             failures.append(
                 f"FALSE POSITIVE on {text!r} (matched {match.group(0)!r})")
+    for text in URL_MUST_BE_QUIET:
+        reported = contexts(text.encode("utf-8"))
+        if reported:
+            failures.append(
+                f"URL REPORTED AS A HOST PATH: {text!r} -> {reported[0]!r}")
 
     print(f"must match    : {len(MUST_MATCH)}")
     print(f"must not match: {len(MUST_NOT_MATCH)}")
+    print(f"urls kept quiet: {len(URL_MUST_BE_QUIET)}")
     if failures:
         print(f"\nFAILED, {len(failures)} case(s):")
         for failure in failures:

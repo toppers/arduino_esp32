@@ -168,15 +168,19 @@ jobs:
             echo "a stage references an absolute path"; exit 1
           fi
           #  Scan what SHIPS, not the installer output. install_platform.py writes
-          #  the runner's own interpreter path into platform.txt (sys.executable),
-          #  and check_host_paths.py never flagged it here: its patterns are drive
-          #  letters, /home/<user>/, /Users/<user>/ and /root/, and a hosted runner's
-          #  Python lives under /opt/hostedtoolcache/. The same install fails the
-          #  same check on any Windows or macOS developer machine. The release does
-          #  not carry that path - make_package_index.py rewrites the driver line to
-          #  the frozen fmp3-link tool - so the artifact worth scanning is the
-          #  release-shaped platform, which this builds here. No --driver: the
-          #  rewrite does not depend on one, and the scan needs nothing else.
+          #  the runner's own interpreter path into platform.txt (sys.executable).
+          #  The release does not carry it - make_package_index.py rewrites the
+          #  driver line to the frozen fmp3-link tool - so the artifact worth
+          #  scanning is the release-shaped platform, which this builds here.
+          #  No --driver: the rewrite does not depend on one, and the scan needs
+          #  nothing else.
+          #
+          #  This scan once passed on the installer output while the same
+          #  command failed on a developer machine, because the detector knew
+          #  home directories and drive letters but not the prefix a hosted
+          #  runner keeps its interpreter under. It knows the system prefixes
+          #  now, so both targets are checked by the same rules; scanning the
+          #  release shape is still the right target, for the reason above.
           version=$(sed -n 's/^version=//p' library.properties)
           python scripts/make_package_index.py --version "$version" --platform-dir "$root" --output-dir "$RUNNER_TEMP/release-shape" --base-url https://example.invalid/
           python scripts/check_host_paths.py "$RUNNER_TEMP/release-shape/staging"
