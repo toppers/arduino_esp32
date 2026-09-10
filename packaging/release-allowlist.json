@@ -42,6 +42,11 @@
       "boardsManager": false
     },
     {
+      "_comment": "a teaching sample, not a self-test: it draws a face with M5GFX primitives and reacts to touch, so a beginner has something to modify. It calls toppers_m5_begin() rather than M5.begin() because this port implements no GDMA and the adapter is what clears the panel's DMA channel. It has no sound - the m5-unified profile excludes Speaker_Class.cpp and begins with internal_spk false - and playHappySound() says so in place of a tone.",
+      "source": "examples/StackChanBasic/StackChanBasic.ino",
+      "destination": "examples/StackChanBasic/StackChanBasic.ino"
+    },
+    {
       "source": "examples/WiFiScan/WiFiScan.ino",
       "destination": "examples/WiFiScan/WiFiScan.ino"
     },

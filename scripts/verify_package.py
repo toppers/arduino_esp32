@@ -76,7 +76,7 @@ MULTI_FILE_SKETCH = "TwoFileSketch"
 #  object collection it exercises does not vary by profile.
 PROFILES = {
     "minimal": ["Blink", "LibraryInfo", MULTI_FILE_SKETCH],
-    "m5": ["M5Unified", "DualCore", "Blink", "LibraryInfo"],
+    "m5": ["M5Unified", "StackChanBasic", "DualCore", "Blink", "LibraryInfo"],
     "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo"],
     #  LibraryInfo and the generated multi-file sketch belong here too: both
     #  exist to prove the link driver takes every object the builder produced,
