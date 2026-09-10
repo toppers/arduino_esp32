@@ -11,7 +11,7 @@ LibraryInfo libraryInfo()
     //  now compares the two.
     return {
         "ToppersFMP3-M5CoreS3",
-        "0.4.0",
+        "0.4.1",
         "TOPPERS/FMP3 runtime for M5Stack CoreS3",
         true,
     };
