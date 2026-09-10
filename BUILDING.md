@@ -64,6 +64,45 @@ sketchbook の `hardware/toppers/esp32` へ置きます。Arduino IDE を再起�
 チップ 1 つ分のディレクトリを渡せばそのボードだけになり、`--chip` で
 親から一部だけ選ぶこともできます。
 
+### この platform はライブラリを同梱しません
+
+**同梱するのは `make_package_index.py`（配布パッケージ）だけです。** そのため
+この platform でスケッチを建てるときは、ライブラリの供給元を自分で指定します。
+リポジトリそのものがライブラリ（`library.properties` ＋ `src/`）なので、
+そのまま渡せます。
+
+```bash
+arduino-cli compile --fqbn toppers:esp32:m5cores3_fmp3:FMP3Runtime=m5 \
+    --library . examples/StackChanBasic
+```
+
+**`--library` を付けないと、スケッチブックの `libraries/` にある古いコピーが
+使われます。** そこに以前の版が残っていると、
+
+```text
+fatal error: ToppersFMP3_M5Unified.h: No such file or directory
+```
+
+のように**そのファイルが無いという形**で失敗します。例題の不備にも platform の
+不備にも見えますが、原因はライブラリの供給元です。`verify_package.py` が同じ
+例題を通すのは、あちらが配布パッケージを入れており、そこには最新のライブラリが
+同梱されているからです。
+
+> **スケッチブック側と Boards Manager 側は、両方向で邪魔をします。**
+>
+> スケッチブックに platform があるあいだ、`toppers:esp32` は Boards Manager から
+> 管理できません（`install` / `uninstall` / `search` が「無い」ように振る舞い、
+> `Platform 'toppers:esp32@x' not found` という何も指さないエラーになります）。
+> 公開パッケージを試すときは、この platform を先に消します。
+>
+> 逆に、**Boards Manager のコピーがあると、そちらがビルドに使われます。**
+> 組み立てたばかりの platform が黙って使われず、直したはずの箇所が反映されない
+> という形で出ます。どちらが使われているかは次で確かめられます。
+>
+> ```sh
+> arduino-cli board details -b toppers:esp32:m5cores3_fmp3
+> ```
+
 ## 3. パッケージと index を作る
 
 ```bash

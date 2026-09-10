@@ -72,6 +72,70 @@ https://github.com/toppers/arduino_esp32/releases/latest/download/package_topper
 ライブラリ本体はボードパッケージに同梱されているので、
 `Add .ZIP Library`は必要ありません。
 
+### 更新がうまくいかないとき
+
+**更新に失敗しても、古い内容がそのまま残ります。** そして失敗はそのときではなく、
+**次にビルドしたときのリンクエラー**として現れます。
+
+```text
+fatal error: ToppersFMP3_M5Unified.h: No such file or directory
+undefined reference to `...'
+```
+
+新しい版が要求するヘッダやシンボルが、残っている古い版に無いためです。**症状が
+「パッケージが壊れている」「例題が悪い」ように見えます**が、原因は更新が
+適用されていないことです。同じ症状は 0.4.0 への更新で実際に起きています。
+
+順に確認してください。
+
+**1. スケッチブックに開発用のplatformが残っていないか**
+
+これがあるあいだ、**`toppers:esp32`はBoards Managerから一切管理できません。**
+`Install`・`Remove`・検索が、そのパッケージが存在しないかのように振る舞います
+（更新したつもりで何も起きません）。ソースからビルドしたことがある場合だけ
+該当します。
+
+```text
+Windows  %USERPROFILE%\Documents\Arduino\hardware\toppers
+macOS    ~/Documents/Arduino/hardware/toppers
+Linux    ~/Arduino/hardware/toppers
+```
+
+このフォルダを削除してからIDEを再起動してください。
+
+**2. スケッチブックに同名のライブラリが残っていないか**
+
+`ToppersFMP3-M5CoreS3`をスケッチブックへ手で入れたことがあると、そちらが
+**同梱版より優先され**ます。古ければ上のエラーになります。
+
+```text
+Windows  %USERPROFILE%\Documents\Arduino\libraries\ToppersFMP3-M5CoreS3
+macOS    ~/Documents/Arduino/libraries/ToppersFMP3-M5CoreS3
+Linux    ~/Arduino/libraries/ToppersFMP3-M5CoreS3
+```
+
+**3. ボードパッケージを入れ直す**
+
+`Boards Manager`で`Remove`してから入れ直します。それでも直らないときは、
+フォルダを消してからIDEを再起動し、`Boards Manager`で入れます。
+
+```text
+Windows  %LOCALAPPDATA%\Arduino15\packages\toppers
+macOS    ~/Library/Arduino15/packages/toppers
+Linux    ~/.arduino15/packages/toppers
+```
+
+`packages\toppers`の下にはこのボードパッケージとリンクドライバしか入らないので、
+消しても他のボードには影響しません。
+
+> **どの版が実際に使われているかは`arduino-cli board details`で確かめられます。**
+>
+> ```sh
+> arduino-cli board details -b toppers:esp32:m5cores3_fmp3
+> ```
+>
+> `Board version`が入れたはずの版と違っていれば、更新は適用されていません。
+
 ## ボードとprofileの選択
 
 ```text
@@ -181,6 +245,36 @@ Verify／Upload後、Serial Monitorで`M5.begin and initial LCD draw PASS`、
 このprofileではSpeaker／Micを除外しています。
 CJKフォントは同梱していません（フォントは`ToppersFMP3_M5Fonts.h`のIDで
 選択でき、アプリが実際に使ったものだけがリンクされます）。
+
+## StackChanBasic
+
+同じ`M5Unified`profileで動く、改造して遊ぶための入門exampleです。
+
+```text
+Tools > FMP3 Runtime > M5Unified + Dual Core
+File > Examples > ... > ToppersFMP3-M5CoreS3 > StackChanBasic
+```
+
+LCDに図形だけで顔を描き、ときどきまばたきし、画面をタッチすると笑い、
+15秒さわらないと眠って`zzz`を出します。Serial Monitorには
+`StackChanBasic started`、`Expression: NORMAL`、`Blink`、`Touch detected`、
+`Expression: HAPPY`、`Expression: SLEEPY`が出ます。
+
+顔の色・大きさ・眠るまでの時間は先頭の定数だけで変えられます。顔の各部は
+**画面の短い辺に対する割合（`..._PCT`）**で書いてあるので、3機種すべてで
+同じ見た目になります（240x135のM5StickS3でもはみ出しません）。
+
+`M5.begin()`ではなく`toppers_m5_begin()`を呼ぶ点だけ`M5Unified`example と
+同じ約束です（このportはGDMAを実装しておらず、panelのDMAチャネルを
+落とすのがadapter側だからです）。
+
+> **このexampleは音を鳴らしません。** profileがSpeakerを除外しているため、
+> `playHappySound()`はログを出すだけの置き換え可能な関数になっています。
+
+> **タッチのないボードでは眠ったままになります。** 起こす操作がタッチだけなので、
+> M5Stack BasicとM5StickS3では15秒後に`Sleepy`になったあと戻りません。表示と
+> まばたきの確認には使えます。ボタンで起こすようにするのが最初の改造として
+> ちょうどよく、`updateTouch()`の隣に同じ形の関数を足すだけです。
 
 ## Wi-Fi scan
 
