@@ -166,15 +166,74 @@ foreach ($board in $Boards) {
     }
 }
 
-#  arduino-cli has to look here and nowhere else, or a platform in the user's
-#  own sketchbook could answer instead.
+#  arduino-cli has to look here and nowhere else. The isolated sketchbook was
+#  meant to settle that, and it does not: Boards Manager wins over a
+#  sketchbook platform, so an installed copy of toppers:esp32 in the data
+#  directory answers instead of the platform this test just assembled. The
+#  test then passes without once building what it installed - measured, not
+#  feared: `board details` resolved m5cores3_fmp3 to the Boards Manager 0.4.1
+#  while this script reported the sketchbook path. It only ever tested the
+#  right thing on a machine with no release installed, which is why CI never
+#  showed it.
+#
+#  So build a data directory that carries the toolchains and nothing of ours:
+#  junction every package except toppers, and copy the indexes so nothing has
+#  to be fetched. Junctions need no elevation and cost no disk.
+#
+#  It has to sit on a SHORT path, which is why it is not under $stageRoot.
+#  Every toolchain path the compiler sees is rebuilt under this root, and GCC
+#  reaches its own target headers through a long relative walk
+#  (bin/../lib/gcc/<target>/14.2.0/../../../../<target>/include/c++/...).
+#  Put this root inside the repository and that walk crosses 260 characters,
+#  which on Windows fails as a missing C++ standard header - measured: the
+#  identical M5Core build passed under a short root and failed under
+#  build\stage-platform, with nothing but the path differing. BUILDING.md
+#  records the same trap for a Boards Manager install.
+$isolatedData = Join-Path $env:LOCALAPPDATA 'Temp\fmp3-stage-data'
+if (Test-Path -LiteralPath $isolatedData) {
+    Remove-Item -LiteralPath $isolatedData -Recurse -Force
+}
+New-Item -ItemType Directory -Path (Join-Path $isolatedData 'packages') -Force |
+    Out-Null
+$sourcePackages = Join-Path $ArduinoData 'packages'
+foreach ($package in Get-ChildItem -LiteralPath $sourcePackages -Directory) {
+    #  Ours is the one that must not be visible; every other package is a
+    #  toolchain or a core this build genuinely needs.
+    if ($package.Name -eq 'toppers') { continue }
+    New-Item -ItemType Junction `
+        -Path (Join-Path $isolatedData "packages\$($package.Name)") `
+        -Target $package.FullName | Out-Null
+}
+foreach ($index in Get-ChildItem -LiteralPath $ArduinoData -Filter '*.json' -File) {
+    Copy-Item -LiteralPath $index.FullName -Destination $isolatedData
+}
+
 $config = Join-Path $stageRoot 'arduino-cli.yaml'
 @(
     'directories:'
     "  user: $Sketchbook"
-    "  data: $ArduinoData"
+    "  data: $isolatedData"
     "  downloads: $(Join-Path $ArduinoData 'staging')"
 ) | Set-Content -LiteralPath $config -Encoding utf8
+
+#  Prove the isolation rather than trusting it: the failure it exists to stop
+#  is silent. The two candidates are distinguishable by name, and by a name
+#  this repository controls - install_platform.py writes
+#  'name=M5Stack Arduino with TOPPERS/FMP3' into the platform.txt it
+#  assembles, while a Boards Manager install carries the index's own
+#  'TOPPERS/FMP3 M5Stack boards'.
+$assembledName = 'M5Stack Arduino with TOPPERS/FMP3'
+$cores = & $ArduinoCli --config-file $config core list 2>&1 | Out-String
+$toppersLine = ($cores -split "`r?`n" |
+    Where-Object { $_ -match '^toppers:esp32\s' }) -join '; '
+if (-not $toppersLine) {
+    throw "arduino-cli does not see the assembled platform at all:`n$cores"
+}
+if ($toppersLine -notmatch [regex]::Escape($assembledName)) {
+    throw ("arduino-cli resolved a different toppers:esp32 than the one this " +
+           "test assembled, so nothing below would build what was installed: " +
+           "$toppersLine")
+}
 
 $results = [System.Collections.Generic.List[object]]::new()
 
@@ -209,11 +268,26 @@ foreach ($board in $Boards) {
 
         Write-Host ''
         Write-Host ('=== {0} {1} / {2} ===' -f $board, $build.Menu, $build.Sketch)
-        & $ArduinoCli compile --config-file $config `
-            --fqbn $fqbn `
-            @libraryArguments `
-            --build-path $buildPath `
-            $sketch
+        #  arduino-cli writes warnings to stderr, and under $ErrorActionPreference
+        #  = 'Stop' PowerShell 5.1 turns a native command's stderr into a
+        #  terminating NativeCommandError whenever the caller merges the streams
+        #  - so redirecting this script's output (2>&1, or a CI log) made a
+        #  successful build fail. It did: the M5Core WiFi build prints the
+        #  low-memory warning, and the run died there with every binary already
+        #  produced. The exit code below is the verdict, so let the warning be a
+        #  warning.
+        $previousPreference = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $ArduinoCli compile --config-file $config `
+                --fqbn $fqbn `
+                @libraryArguments `
+                --build-path $buildPath `
+                $sketch
+        }
+        finally {
+            $ErrorActionPreference = $previousPreference
+        }
         if ($LASTEXITCODE -ne 0) {
             throw ("Compiling {0} for {1} {2} failed (exit={3})." -f
                 $build.Sketch, $board, $build.Menu, $LASTEXITCODE)
