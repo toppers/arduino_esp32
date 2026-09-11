@@ -168,6 +168,54 @@ python scripts/check_host_paths.py <platform または zip>
   現れます。0.4.0 の確認で一度これを配布物の欠陥と疑いました。
   `C:\Users\<name>\AppData\Local\Temp\<短い名前>` のような場所に隔離環境を
   作れば、公開 index からの導入と全ボードのビルドがそのまま通ります。
+- **リリースを作ったら、ファイルを添付したか確かめてください。** 添付を忘れても
+  リリースは正常に見えます——タグも本文も正しく、`draft` でも `pre-release` でも
+  なく、**手元の検査はすべて通っています。** それでも `latest` が
+  アセットの無いリリースを指した瞬間に、README が案内している URL は
+  **全員に 404 を返します。** 0.4.1 で実際にこれをやりました。
+  影響は新規の利用者だけではありません。**既存の利用者も index を取得できなく
+  なる**ので、0.3.0 や 0.4.0 を使っている人まで更新できなくなります。
+  pre-release にしたときと**同じ URL が同じ形で壊れます。**
+
+### 公開したら必ずこれを実行する
+
+30 秒で終わり、上の 2 つ（pre-release・添付漏れ）をまとめて捕まえます。
+
+```bash
+curl -fL -o published.json \
+    https://github.com/toppers/arduino_esp32/releases/latest/download/package_toppers_index.json
+cmp published.json <出力>/package_toppers_index.json
+```
+
+**`curl` が 404 で落ちたら、利用者から見て公開は失敗しています。** 成功して
+バイト一致すれば、`latest` が今回のリリースを指し、index が検査を通したものと
+同一だと確認できたことになります。
+
+続けて、index が名指しするアーカイブが実際に取得できるかも見ておくと確実です。
+**過去の版も含めて**確認してください。`--merge-into` で引き継いだ古い版は、その
+リリースのアセットが消えていると Boards Manager に「入れられない版」として
+並びます。
+
+```bash
+python - <<'PY'
+import json, hashlib, urllib.request
+idx = json.load(open("published.json", encoding="utf-8"))
+pkg = idx["packages"][0]
+entries = [(p["version"], p["url"], p["checksum"]) for p in pkg["platforms"]]
+entries += [(t["version"], s["url"], s["checksum"])
+            for t in pkg["tools"] for s in t["systems"]]
+for version, url, checksum in entries:
+    with urllib.request.urlopen(url, timeout=60) as response:
+        digest = hashlib.sha256(response.read()).hexdigest()
+    want = checksum.split(":", 1)[1].lower()
+    print(f"{version:<8} {'OK ' if digest == want else 'MISMATCH'} {url}")
+PY
+```
+
+> プロキシの内側では `HTTP_PROXY` / `HTTPS_PROXY` を設定してください。
+> `urllib` はこれを見ます（`arduino-cli` は見ません）。同じ理由で、
+> `check_release_artifacts.py` が引き継いだ版の URL を叩く検査も、
+> プロキシ未設定だと接続タイムアウトで全件失敗します。
 
 ## 変更するときに守ること
 
