@@ -184,6 +184,41 @@ class ArduinoObjects(NamedTuple):
     archived: list[Path]
 
 
+def missing_object_message(name: str, hits: list[Path],
+                           library_root: Path) -> str:
+    """Say why a required object is absent, in terms of what the user did.
+
+    "Expected exactly one ArduinoSketchBridge.cpp.o, found 0" named a file
+    nobody writes by hand and gave no way to act. The realistic cause is that
+    the sketch includes no header of the bundled library, so arduino-cli never
+    compiled it: the builder compiles a library only when the sketch reaches
+    for one of its headers, and every one of these objects comes from that
+    library. Look at what is in build/libraries and say which case this is.
+    """
+    if len(hits) > 1:
+        found = ", ".join(str(path) for path in hits)
+        return (f"Expected exactly one {name}, found {len(hits)}: {found}. "
+                "Two copies of the ToppersFMP3 library are being compiled; "
+                "remove the one in the sketchbook's libraries/ folder, which "
+                "shadows the copy that ships with the board.")
+
+    compiled = sorted(path.name for path in library_root.glob("*")
+                      if path.is_dir())
+    if not compiled:
+        return (f"{name} was not built, because this sketch includes no header "
+                "of the board's bundled library, so the Arduino builder never "
+                "compiled it. Add this line at the top of the sketch:\n"
+                "    #include <ToppersFMP3_ArduinoBridge.h>\n"
+                f"({name} carries the FMP3 task that calls setup() and loop(), "
+                "so every sketch needs it, whichever runtime is selected.)")
+
+    return (f"{name} was not built, although these libraries were compiled: "
+            f"{', '.join(compiled)}. The board's bundled library is expected "
+            "to supply it; a stale copy of that library in the sketchbook's "
+            "libraries/ folder is the usual cause, because it shadows the one "
+            "that ships with the board.")
+
+
 def collect_arduino_objects(manifest: dict, build_path: Path,
                             project_name: str) -> ArduinoObjects:
     sketch_object = build_path / "sketch" / f"{project_name}.cpp.o"
@@ -194,13 +229,13 @@ def collect_arduino_objects(manifest: dict, build_path: Path,
     linked = sorted((build_path / "sketch").rglob("*.o"))
 
     required: list[Path] = []
+    library_root = build_path / "libraries"
     for name in manifest.get("requiredArduinoObjects", []):
         if name == "<sketch>.cpp.o":
             continue
-        hits = list((build_path / "libraries").rglob(name))
+        hits = list(library_root.rglob(name))
         if len(hits) != 1:
-            raise LinkError(
-                f"Expected exactly one {name}, found {len(hits)}.")
+            raise LinkError(missing_object_message(name, hits, library_root))
         required.append(hits[0])
 
     archived = [path for path in sorted((build_path / "libraries").rglob("*.o"))
