@@ -16,15 +16,33 @@ FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所�
 
 ## 導入
 
-Arduino IDE の `File > Preferences > Additional boards manager URLs` へ次を追加し、
-`Boards Manager` で `TOPPERS/FMP3 M5Stack boards` を検索して入れてください。
+Arduino IDE の `File > Preferences > Additional boards manager URLs` へ、
+**次の 2 つとも**追加してください（この欄は複数書けます。置き換えないこと）。
 
 ```text
+https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
 https://github.com/toppers/arduino_esp32/releases/latest/download/package_toppers_index.json
 ```
 
-必要なツールチェーンは Boards Manager が自動で取得します。**スケッチのビルドに
-CMake も Ninja も Python も要りません。** 導入手順と例題の詳細は
+そのうえで `Boards Manager` から順に入れます。
+
+1. `M5Stack` を検索して **3.3.8** を `Install`
+2. `TOPPERS/FMP3 M5Stack boards` を検索して `Install`
+
+**M5Stack core は自動では入りません。** このボードは Arduino の *core reference*
+で M5Stack core のコンパイラ設定とコアソースを参照しており、Arduino には
+「別の platform に依存する」という宣言の仕組みが無いためです。入っていないと
+Verify の開始直後に次で止まります。
+
+```text
+Invalid FQBN: missing platform release m5stack:esp32 referenced by board ...
+```
+
+**3.3.8 以外は使えません**（同梱 ESP-IDF v5.5.4 の private な Wi-Fi ABI、
+prebuilt archive、include 配置に依存しています）。
+
+ツールチェーンと esptool は Boards Manager が自動で取得します。**スケッチの
+ビルドに CMake も Ninja も Python も要りません。** 導入手順と例題の詳細は
 [`packaging/README.release.md`](packaging/README.release.md) にあります。
 
 ## ランタイム構成（`Tools > FMP3 Runtime`）

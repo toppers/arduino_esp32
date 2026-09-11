@@ -37,9 +37,18 @@ Arduinoの仕組みには「別のplatformに依存する」という宣言が�
 Invalid FQBN: missing platform release m5stack:esp32 referenced by board ...
 ```
 
-`File > Preferences > Additional boards manager URLs`へM5Stackの
-ボードマネージャURLを追加し、`Tools > Board > Boards Manager`から
-`M5Stack` **3.3.8** を入れてください。
+`File > Preferences > Additional boards manager URLs`へ次のURLを追加します。
+
+```text
+https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
+```
+
+続いて`Tools > Board > Boards Manager`で`M5Stack`を検索し、**3.3.8**を選んで
+`Install`してください。
+
+> **この欄は複数のURLを書けます。** 次章のTOPPERS/FMP3のURLと両方必要なので、
+> **置き換えずに追加**してください（改行区切り、またはカンマ区切り）。
+> どちらか一方だけだと、そのボードがBoards Managerに出てきません。
 
 > **3.3.8以外のバージョンは使えません。** 同梱ESP-IDF v5.5.4のprivate Wi-Fi ABI、
 > archive、include配置に依存しています。
