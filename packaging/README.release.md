@@ -1,15 +1,15 @@
-# ToppersFMP3-M5CoreS3
+# ToppersFMP3-M5Stack
 
-M5Stack の 2 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
+M5Stack の 3 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
 Arduinoボードパッケージです。
 
 | ボード | チップ | `Tools > Board` |
 | --- | --- | --- |
 | M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 | `M5CoreS3 (TOPPERS/FMP3)` |
+| M5StickS3 | ESP32-S3 / Xtensa LX7 | `M5StickS3 (TOPPERS/FMP3)` |
 | M5Stack Basic | ESP32 / Xtensa LX6 | `M5Core (TOPPERS/FMP3)` |
 
-1つのパッケージに両方入っています（パッケージ名がCoreS3なのは、
-名前を変えると既存のスケッチと例題の場所が動くためです）。
+1つのパッケージに3つとも入っています。
 
 Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカーネルの
 タスクとして動きます。ブート、割込み、スケジューラはFMP3が所有します。
@@ -112,16 +112,21 @@ Linux    ~/Arduino/hardware/toppers
 
 このフォルダを削除してからIDEを再起動してください。
 
-**2. スケッチブックに同名のライブラリが残っていないか**
+**2. スケッチブックに同じライブラリが残っていないか**
 
-`ToppersFMP3-M5CoreS3`をスケッチブックへ手で入れたことがあると、そちらが
+`ToppersFMP3-M5Stack`をスケッチブックへ手で入れたことがあると、そちらが
 **同梱版より優先され**ます。古ければ上のエラーになります。
 
 ```text
-Windows  %USERPROFILE%\Documents\Arduino\libraries\ToppersFMP3-M5CoreS3
-macOS    ~/Documents/Arduino/libraries/ToppersFMP3-M5CoreS3
-Linux    ~/Arduino/libraries/ToppersFMP3-M5CoreS3
+Windows  %USERPROFILE%\Documents\Arduino\libraries\ToppersFMP3-M5Stack
+macOS    ~/Documents/Arduino/libraries/ToppersFMP3-M5Stack
+Linux    ~/Arduino/libraries/ToppersFMP3-M5Stack
 ```
+
+**0.4.1までの名前`ToppersFMP3-M5CoreS3`も確認してください。** 3機種に対応しているのに
+名前がCoreS3のままだったので改名しました。**名前が違うので古いフォルダは同梱版を
+隠しません**が、同じ`ToppersFMP3_*.h`を提供するライブラリが2つ見える状態になり、
+どちらが使われるかは選べません。古いフォルダは削除してください。
 
 **3. ボードパッケージを入れ直す**
 
@@ -149,12 +154,17 @@ Linux    ~/.arduino15/packages/toppers
 
 ```text
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5CoreS3 (TOPPERS/FMP3)
+Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StickS3 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5Core (TOPPERS/FMP3)
 ```
 
 **M5Stack Basicにはtouch・IMU・RTCがありません。** `M5Unified` profileの
 例題は動きますが、これらは無効として報告されます。バックライトはLEDCの
 PWM（GPIO32）で点きます。
+
+**M5StickS3にはtouchがありません**（LCDは240x135で、IMUとPMICは使えます）。
+`Bluetooth Classic (SPP)`はM5Coreだけの構成です。ESP32-S3にBR/EDR無線が
+無いため、他の2機種では選択肢に出ません。
 
 `Tools > FMP3 Runtime`でランタイム構成を選びます。一度に選べるのは1つで、
 選んだ構成がスケッチと一緒にリンクされます。**どの構成でも普通のスケッチが
@@ -177,7 +187,7 @@ PWM（GPIO32）で点きます。
 > 問題ありませんが、**外に出したくないものをこのリンクに載せないでください。**
 
 exampleは`File > Examples`の、選択中のボード向けセクションに
-`ToppersFMP3-M5CoreS3`として現れます。ライブラリはボードパッケージに
+`ToppersFMP3-M5Stack`として現れます。ライブラリはボードパッケージに
 同梱されているため、これらは**このボードを選んでいるときにだけ**現れます。
 
 `Blink`はFMP3ブリッジ経由の最小スケッチで、1秒周期の反転を行います。
@@ -217,7 +227,7 @@ TOPPERS/FMP3のArduino task上で1秒ごとに状態を反転する最小example
 
 ```text
 Tools > FMP3 Runtime > Minimal
-File > Examples > ... > ToppersFMP3-M5CoreS3 > Blink
+File > Examples > ... > ToppersFMP3-M5Stack > Blink
 ```
 
 Verify／Upload後、Serial Monitorで`[Blink] ON`と`[Blink] OFF`が交互に
@@ -244,7 +254,7 @@ touch、IMU、RTC、AXP2101をArduinoスケッチから使用するexampleです
 
 ```text
 Tools > FMP3 Runtime > M5Unified + Dual Core
-File > Examples > ... > ToppersFMP3-M5CoreS3 > M5Unified
+File > Examples > ... > ToppersFMP3-M5Stack > M5Unified
 ```
 
 Verify／Upload後、Serial Monitorで`M5.begin and initial LCD draw PASS`、
@@ -261,7 +271,7 @@ CJKフォントは同梱していません（フォントは`ToppersFMP3_M5Fonts
 
 ```text
 Tools > FMP3 Runtime > M5Unified + Dual Core
-File > Examples > ... > ToppersFMP3-M5CoreS3 > StackChanBasic
+File > Examples > ... > ToppersFMP3-M5Stack > StackChanBasic
 ```
 
 LCDに図形だけで顔を描き、ときどきまばたきし、画面をタッチすると笑い、
@@ -291,7 +301,7 @@ SSIDとパスワードは不要です。
 
 ```text
 Tools > FMP3 Runtime > WiFi
-File > Examples > ... > ToppersFMP3-M5CoreS3 > WiFiScan
+File > Examples > ... > ToppersFMP3-M5Stack > WiFiScan
 ```
 
 Verify／Upload後、Serial Monitorで`[WiFiScan] found`、SSID、RSSI、channel、
@@ -306,7 +316,7 @@ Release asset、試験記録には保存しません。
 
 ```text
 Tools > FMP3 Runtime > WiFi
-File > Examples > ... > ToppersFMP3-M5CoreS3 > WiFiConnect
+File > Examples > ... > ToppersFMP3-M5Stack > WiFiConnect
 ```
 
 `WiFiConnect.ino`の`WIFI_SSID`を設定します。オープンAPでは`WIFI_PASSWORD`を

@@ -46,9 +46,9 @@ MANIFEST = {"requiredArduinoObjects": ["<sketch>.cpp.o",
 #  includes the bundled library.
 SKETCH_OBJECTS = [f"sketch/{PROJECT}.cpp.o", "sketch/helper.cpp.o"]
 LIBRARY_OBJECTS = [
-    "libraries/ToppersFMP3-M5CoreS3/ArduinoSketchBridge.cpp.o",
-    "libraries/ToppersFMP3-M5CoreS3/ToppersFMP3_M5CoreS3.cpp.o",
-    "libraries/ToppersFMP3-M5CoreS3/ToppersFMP3_WiFi.cpp.o",
+    "libraries/ToppersFMP3-M5Stack/ArduinoSketchBridge.cpp.o",
+    "libraries/ToppersFMP3-M5Stack/ToppersFMP3_M5CoreS3.cpp.o",
+    "libraries/ToppersFMP3-M5Stack/ToppersFMP3_WiFi.cpp.o",
     "libraries/SomeThirdPartyLib/src/Widget.cpp.o",
 ]
 

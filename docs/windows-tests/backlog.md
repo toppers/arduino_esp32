@@ -199,7 +199,35 @@ Processor 1 start.
 上では誤解を招く。A-2 で「ZIP の名前が CoreS3 なのは正しい」と判断したが、
 **その名前が実機の出力にまで出てくる**のは別の話で、直すなら
 `library.properties` の `name=` は ZIP のファイル名でもあるため
-影響範囲を確かめる必要がある。**未修正・要判断。**
+影響範囲を確かめる必要がある。
+
+**追記（2026-09-12）: `ToppersFMP3-M5Stack` へ改名した。** 変えたのは
+`library.properties` の `name=` と `libraryInfo()` が返す 2 つの文字列だけで、
+**ヘッダ名（`ToppersFMP3_M5CoreS3.h`）と名前空間は触っていない**——そちらは
+スケッチが `#include` で名指しするので、変えると利用者のスケッチが壊れる。
+M5StickS3 向けに建てた ELF で確認した:
+
+```
+ToppersFMP3-M5Stack          1 個
+ToppersFMP3-M5CoreS3         0 個
+runtime for M5Stack boards   1 個
+runtime for M5Stack CoreS3   0 個
+```
+
+**`library.properties` の `paragraph=` にあった「改名すると参照している
+スケッチが壊れる」という説明は誤りだった。** スケッチが参照するのはヘッダ名で、
+ライブラリ名ではない。`name=` を変えて動くのは、配布物内のライブラリフォルダ名
+（`make_package_index.py` が `name=` から導く）と `File > Examples` の項目名だけ
+である。
+
+残るリスクは 1 つで、これは利用者向け手順に書いた。**旧名のコピーが
+スケッチブックに残っている環境では、名前が違うので同梱版を隠さず、同じ
+`ToppersFMP3_*.h` を提供するライブラリが 2 つ見える。** どちらが使われるかは
+選べないので、古いフォルダは消す必要がある。
+
+この作業中に `packaging/README.release.md` の冒頭が **2 機種のまま**で
+M5StickS3 が表に無いことにも気づいたので、3 機種に直し、`Tools > Board` の
+一覧と機種ごとの制約（StickS3 に touch が無い、SPP は M5Core だけ）も足した。
 
 ### B-3 `bt-classic` — ステージも例題も実機の SPP 往復まで確認した
 
@@ -336,7 +364,11 @@ Manager 版でビルドしていた。**
 **Boards Manager のコピーは sketchbook の platform より優先される**ので、
 `toppers:esp32` が入っている機械では、組み立てたばかりの platform ではなく
 インストール済みのリリース版が答える。スクリプト自身は sketchbook のパスを
-表示するので、出力を見ても気づけない。実測:
+表示するので、出力を見ても気づけない。**この危険自体は既知で、
+`install_platform.py` の `warn_if_boards_manager_shadowed()` が
+「a Boards Manager copy wins over this one, so a freshly assembled platform is
+quietly not the one that gets built against」と書いて警告まで出している。**
+つまり新発見ではなく、テストが既知の危険に対処していなかっただけである。実測:
 
 ```
 board details -b toppers:esp32:m5cores3_fmp3   ->  Board version: 0.4.1

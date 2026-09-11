@@ -510,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(source_platform / "programmers.txt", platform_root)
 
     (platform_root / MARKER).write_text(json.dumps({
-        "package": "ToppersFMP3-M5CoreS3",
+        "package": "ToppersFMP3-M5Stack",
         "installedAt": datetime.datetime.now(
             datetime.timezone.utc).isoformat(),
         "libraryRoot": str(library_root),
