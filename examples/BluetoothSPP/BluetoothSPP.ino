@@ -13,6 +13,18 @@
 #error "BluetoothSPP runs on the M5Core only. The ESP32-S3 has no Bluetooth Classic radio, so the CoreS3 and StickS3 boards do not offer the Bluetooth Classic (SPP) runtime. Select M5Core (TOPPERS/FMP3) and its Bluetooth Classic (SPP) option."
 #endif
 
+// The right board with the wrong runtime is the other half of the same
+// mistake, and it used to surface far worse: ToppersFMP3_BT.cpp compiles
+// against every profile, so the build got as far as the linker and then
+// printed a page of undefined references to toppers_bt_spp_* - symbols that
+// exist in the bt-classic stage alone. Nothing in that output names the menu.
+// TOPPERS_FMP3_RUNTIME_SELECTED tells us the platform passes the selection at
+// all, so this stays quiet on a platform older than the define.
+#if defined(TOPPERS_FMP3_RUNTIME_SELECTED) \
+    && !defined(TOPPERS_FMP3_RUNTIME_BT_CLASSIC)
+#error "BluetoothSPP needs the Bluetooth Classic (SPP) runtime. Select Tools > FMP3 Runtime > Bluetooth Classic (SPP). The Bluetooth stack is linked into that runtime only, so any other option leaves this sketch without one."
+#endif
+
 #include <ToppersFMP3_BT.h>
 
 // Bluetooth Classic SPP echo server for the M5Stack Core (ESP32).

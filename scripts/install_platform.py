@@ -96,6 +96,20 @@ CHIP_ONLY_ENTRIES = {
     "esp32": [("btclassic", "Bluetooth Classic (SPP)", "bt-classic")],
 }
 
+
+def profile_macro(profile: str) -> str:
+    """The define that tells a sketch which runtime it is being built for.
+
+    Picking the wrong Tools > FMP3 Runtime option used to surface as a page of
+    undefined references from libarduino.a: the library object that wraps the
+    runtime (ToppersFMP3_BT.cpp.o, ToppersFMP3_WiFi.cpp.o) compiles against
+    every profile, but the symbols behind it exist in one stage only. Nothing
+    in the build carried the selection, so an example could not check it and
+    the message named linker symbols rather than the menu. With this define an
+    example states the profile it needs and the build stops at the #error.
+    """
+    return "TOPPERS_FMP3_RUNTIME_" + profile.upper().replace("-", "_")
+
 #  What a complete board for this chip offers. Installing with a stage missing
 #  is a real mistake - every board ships all three - so that stays an error.
 #
@@ -239,6 +253,10 @@ def board_lines(source_boards: Path, board_id: str,
         lines.append(f"{prefix}menu.FMP3Runtime.{key}={label}")
         lines.append(f"{prefix}menu.FMP3Runtime.{key}"
                      f".build.toppers_profile={profile}")
+        #  A separate key, not build.defines: the PSRAM menu already sets
+        #  build.defines, and two menus writing one key lose each other.
+        lines.append(f"{prefix}menu.FMP3Runtime.{key}"
+                     f".build.toppers_profile_macro={profile_macro(profile)}")
     return menus, lines
 
 
@@ -248,6 +266,14 @@ def platform_lines(source: Path, link: str, objcopy: str,
     for line in source.read_text(encoding="utf-8").splitlines():
         if line.startswith("name="):
             out.append("name=M5Stack Arduino with TOPPERS/FMP3")
+        elif line.startswith("build.extra_flags="):
+            #  Only the unsuffixed key: build.extra_flags.<mcu> is a different
+            #  property and the trailing '=' keeps it out. TOPPERS_FMP3_RUNTIME
+            #  _SELECTED says the mechanism is present at all, so an example
+            #  built against a platform older than this one is not rejected by
+            #  a guard the platform cannot answer.
+            out.append(line + " -D{build.toppers_profile_macro}"
+                              " -DTOPPERS_FMP3_RUNTIME_SELECTED=1")
         elif line.startswith("recipe.c.combine.pattern="):
             out.append(f"recipe.c.combine.pattern={link}")
         elif line.startswith("recipe.objcopy.bin.pattern="):

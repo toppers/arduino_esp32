@@ -1,5 +1,15 @@
 #include <ToppersFMP3_M5Unified.h>
 
+// M5Unified is linked into the m5-unified runtimes alone, so any other
+// Tools > FMP3 Runtime option used to fail at the linker on M5 symbols
+// rather than telling anyone which menu item was wrong. The SELECTED define
+// says the platform passes the selection, so older ones are spared the guard.
+#if defined(TOPPERS_FMP3_RUNTIME_SELECTED) \
+    && !defined(TOPPERS_FMP3_RUNTIME_M5_UNIFIED) \
+    && !defined(TOPPERS_FMP3_RUNTIME_ALL_IN_ONE)
+#error "M5Unified needs the M5Unified runtime. Select Tools > FMP3 Runtime > M5Unified + Dual Core. M5Unified is linked into that runtime only, so any other option leaves this sketch without it."
+#endif
+
 extern "C" int64_t esp_shim_time_us(void);
 extern "C" void target_fput_log(char character);
 

@@ -231,6 +231,17 @@ PY
   オブジェクト（`ToppersFMP3_WiFi.cpp.o` など）を無条件にリンクしないための
   分け方です。**この一覧に足りないものがあっても、リンクエラーになるのは
   そのシンボルを実際に呼ぶスケッチだけ**なので、例題で気づけるとは限りません。
+- **ランタイムを要求する例題には、選択中の構成を見るガードを付けてください。**
+  `install_platform.py` が各メニュー項目に
+  `-DTOPPERS_FMP3_RUNTIME_<構成>`（`BT_CLASSIC` / `WIFI_CONNECT` /
+  `M5_UNIFIED` / `MINIMAL` / `ALL_IN_ONE`）と
+  `-DTOPPERS_FMP3_RUNTIME_SELECTED=1` を渡します。**これが無いと、構成の
+  選び間違いはリンカまで到達して、メニューではなく未定義シンボルの一覧として
+  出ます。** `ToppersFMP3_BT.cpp` や `ToppersFMP3_WiFi.cpp` はどの構成でも
+  コンパイルが通り、その先のシンボルが 1 つのステージにしか無いためです。
+  `SELECTED` を条件に入れるのは、この define を持たない古い platform に対して
+  ガードが誤って発火しないようにするためです。例題と構成の対応は
+  `scripts/verify_package.py` の `PROFILES` が正本です。
 - **多重定義もリンクでは捕まりません。** リンクは常に
   `-Wl,--allow-multiple-definition` を付けるので、重複があっても通り、
   どちらが生き残るかはオブジェクト名の順序で決まります。

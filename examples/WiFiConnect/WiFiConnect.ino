@@ -1,4 +1,16 @@
 #include <ToppersFMP3_ArduinoBridge.h>
+
+// Without this the wrong Tools > FMP3 Runtime option reaches the linker and
+// fails there, naming undefined toppers_fmp3_wifi_* symbols instead of the
+// menu: ToppersFMP3_WiFi.cpp compiles against every profile, but the stack
+// behind it is linked into the Wi-Fi runtimes alone. The SELECTED define says
+// the platform carries the selection, so a platform older than it is spared.
+#if defined(TOPPERS_FMP3_RUNTIME_SELECTED) \
+    && !defined(TOPPERS_FMP3_RUNTIME_WIFI_CONNECT) \
+    && !defined(TOPPERS_FMP3_RUNTIME_ALL_IN_ONE)
+#error "WiFiConnect needs a runtime with Wi-Fi. Select Tools > FMP3 Runtime > WiFi. The Wi-Fi stack is linked into that runtime only, so any other option leaves this sketch without one."
+#endif
+
 #include <ToppersFMP3_WiFi.h>
 
 // Enter local credentials before uploading. Leave WIFI_PASSWORD empty only
