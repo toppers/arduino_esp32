@@ -11,7 +11,7 @@ LibraryInfo libraryInfo()
     //  now compares the two.
     return {
         "ToppersFMP3-M5Stack",
-        "0.4.1",
+        "0.4.2",
         "TOPPERS/FMP3 runtime for M5Stack boards",
         true,
     };
