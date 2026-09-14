@@ -248,7 +248,11 @@ add_library(seam_objects OBJECT
     #  esp_app_desc at the head of the DROM segment; the bootloader reads it.
     "${RUNTIME_ROOT}/seam/seam_c6_appdesc.c"
     #  80 -> 160 MHz, called from seam_c6_entry.S when SEAM_C6_CLK_BOOST.
-    "${RUNTIME_ROOT}/seam/seam_c6_clk.c")
+    "${RUNTIME_ROOT}/seam/seam_c6_clk.c"
+    #  _exit / _kill / _getpid / _write / __getreent for newlib-nano's
+    #  __stack_chk_fail path: the M5Stack core builds every sketch with
+    #  -fstack-protector, so a sketch with a local char array needs them.
+    "${RUNTIME_ROOT}/seam/newlib_syscalls.c")
 target_link_libraries(seam_objects PRIVATE seam_common)
 add_dependencies(seam_objects generate_cfg_gen_files)
 

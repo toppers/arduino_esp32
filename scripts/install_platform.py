@@ -5,7 +5,8 @@ Produces the platform
 directory that Boards Manager later packages: boards.txt, platform.txt, the
 partition tools, the prebuilt stages and the link driver.
 
-One platform can hold both boards. build_prebuilt_stages.py writes
+One platform can hold every board whose chip has stages (the ESP32-S3,
+ESP32 and ESP32-C6 boards side by side). build_prebuilt_stages.py writes
 build/prebuilt/<chip>, so pointing at the parent installs every chip built
 there:
 
@@ -142,6 +143,15 @@ EXPECTED_PROFILES = {
 #  board-level overrides in boards.txt, so platform.txt keeps the Xtensa
 #  values unchanged. Section names from the C6 port's esp32c6_xip.ld: .text,
 #  .flash.appdesc, .flash.rodata in flash; .data, .bss, .tbss in RAM.
+#
+#  A board-level recipe.size.regex does take precedence over the platform
+#  one: arduino-cli 1.5.2 `compile --show-properties` reports these values
+#  for m5nanoc6_fmp3 and the platform.txt values for the Xtensa boards, and
+#  the size line of a C6 Blink build (.data + .bss = 17760 bytes) shows the
+#  RAM regex leaving out .flash_rodata_dummy, the NOBITS gap the linker
+#  script keeps between .text and the DROM page (size -B counts it as bss).
+#  Adding C6 names to the platform regex, the fallback S1-7 allowed, was
+#  therefore not needed.
 SIZE_REGEX_OVERRIDES = {
     "esp32c6": (r"^(?:\.text|\.flash\.appdesc|\.flash\.rodata)\s+([0-9]+).*",
                 r"^(?:\.data|\.bss|\.tbss)\s+([0-9]+).*"),

@@ -54,7 +54,7 @@
 | `IMPORT_PROVENANCE.md` `diag_recorder.c` `diag_recorder.h` `esp32c6.ld` `esp32c6_usbjtag_hal.c` `target_asm.inc` `target_cfg1_out.h` `target_check.py` `target_class.py` `target_hrt64.c` `target_ipi.h` `target_kernel.cfg` `target_kernel.h` `target_kernel_impl.c` `target_kernel_impl.h` `target_kernel.py` `target_rename.def` `target_rename.h` `target_serial.cfg` `target_serial.h` `target_sil.h` `target_stddef.h` `target_syssvc.h` `target_test.h` `target_timer.c` `target_timer.cfg` `target_timer.h` `target_unrename.h`（計 28 本） | 同名 | なし | バイト同一。`esp32c6.ld`（Direct Boot 用）・`diag_recorder.*`・`target_hrt64.c` は minimal では使わない（後 2 者は dev の Wi-Fi 構成が `fmp` へ足すもので、段3 の wifi-connect で使う）が、target 層を丸ごと写す方針で同梱 |
 | `fmp3/target/m5nanoc6_gcc/app/**`（`fmp_app`、`usj_probe`） | （持ち込まない） | - | dev の hello / 計測用アプリ。arduino のアプリは `ports/m5stack_riscv/app/phase3` |
 
-### seam `runtime/seam/`（dev `esp/boot/`、4 本 + arduino Xtensa port から 1 本）
+### seam `runtime/seam/`（dev `esp/boot/`、4 本 + arduino Xtensa port から 1 本 + 新規 1 本）
 
 | dev のパス | arduino のパス | 改変 | 理由 |
 |---|---|---|---|
@@ -63,6 +63,7 @@
 | `esp/boot/seam_c6_clk.c` | `runtime/seam/seam_c6_clk.c` | なし | 80 -> 160 MHz 昇圧 |
 | `esp/boot/seam_c6_clk.h` | `runtime/seam/seam_c6_clk.h` | なし | 同上のヘッダ |
 | （arduino_esp32 `ports/m5stack_xtensa/runtime/seam/init_array.cpp`） | `runtime/seam/init_array.cpp` | なし（複製） | dev 由来ではない。`esp_run_init_array()` の実体でチップ非依存。Xtensa port のファイルを参照せず複製したのは、Xtensa 側の変更が C6 の stage を黙って変えないようにするため |
+| （新規） | `runtime/seam/newlib_syscalls.c` | -（新規） | dev 由来ではない。newlib-nano の `__stack_chk_fail` 経路が要求する `_exit` / `_kill` / `_getpid` / `_write` / `__getreent` の実体。M5Stack core はスケッチを `-fstack-protector` で建てるため、ローカル配列を持つスケッチはこの 5 本が無いとリンクできない（段1 Task 3 で実測、Blink / LibraryInfo / TwoFileSketch は保護フレームを持たず無くてもリンクする）。型は Xtensa port の `arch/xtensa_gcc/esp32s3/chip_rom_libc.c` の `_exit` / `_kill` / `_getpid`（2026-08-22 に同じ経路で追加）。ファイルを共有しないのは `init_array.cpp` と同じ理由 |
 
 ### config `runtime/config/esp32c6/`（dev `esp/config/esp32c6/`、2 本）
 
