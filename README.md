@@ -124,6 +124,7 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 | `third_party/fmp3_core` | FMP3 本体（submodule） |
 
 ソースからビルドする手順は [`BUILDING.md`](BUILDING.md) にあります。
+ESP32-C6（M5NanoC6）の統合は進行中です（配布物には未収録）。判断と到達点は [`docs/c6-port.md`](docs/c6-port.md)。
 
 ## ライセンス
 

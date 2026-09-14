@@ -6,6 +6,10 @@
   "portBaseCommitDate": "2026-08-18",
   "_portPatchesComment": "Empty on purpose. This port is not expressed as a patch series against the baseline: upstream has moved too far for the hunks to carry context, and the port itself was restructured. Treat the baseline commit above as provenance, not as something these sources can be regenerated from.",
   "portPatches": [],
+  "_portCommentC6": "ESP32-C6 (M5NanoC6) port, planned for ports/m5stack_riscv: its provenance is the PRIVATE development repository directly, the same way the wpa2 archives under ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2 record theirs, because the public snapshot fdd89f8 named above contains no C6 at all (fmp3/arch/riscv_gcc holds esp32p4 only). Replace portBaseRepositoryC6 / portBaseCommitC6 with the public repository and its snapshot #8 commit once that snapshot is published; until then this is the only commit the C6 sources can be compared against. Declared at stage 0, before any C6 source is in this tree; see docs/c6-port.md.",
+  "portBaseRepositoryC6": "https://github.com/exshonda/fmp3_esp_idf_dev.git",
+  "portBaseCommitC6": "c7fef186d3b98e9046005a3f3ab0f2dfb1a2fdfe",
+  "portBaseCommitDateC6": "2026-09-15",
   "entries": [
     {
       "source": "examples/LibraryInfo/LibraryInfo.ino",
