@@ -48,8 +48,12 @@ import os
 import sys
 from pathlib import Path
 
-DEFAULT_BASELINE = Path("build") / "xcheck-baseline"
-DEFAULT_CURRENT = Path("build") / "prebuilt"
+#  Defaults are under the repository, not the working directory, so that this
+#  and xcheck_baseline.py agree on where the stages are wherever they are run
+#  from. An explicit --baseline/--current is relative to the working directory.
+REPOSITORY = Path(__file__).resolve().parent.parent
+DEFAULT_BASELINE = REPOSITORY / "build" / "xcheck-baseline"
+DEFAULT_CURRENT = REPOSITORY / "build" / "prebuilt"
 
 MANIFEST_NAME = "link-manifest.json"
 RESPONSE_NAME = "objects.rsp"
@@ -223,20 +227,21 @@ def report(baseline: Path, current: Path, strict: bool, outcome: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--baseline", default=str(DEFAULT_BASELINE),
+    parser.add_argument("--baseline", default="",
                         help="stages saved by xcheck_baseline.py "
-                             "(default: build/xcheck-baseline)")
-    parser.add_argument("--current", default=str(DEFAULT_CURRENT),
+                             "(default: build/xcheck-baseline under the "
+                             "repository)")
+    parser.add_argument("--current", default="",
                         help="stages built after the change "
-                             "(default: build/prebuilt)")
+                             "(default: build/prebuilt under the repository)")
     parser.add_argument("--strict", action="store_true",
                         help=f"compare {BANNER_OBJECT} too (it differs on "
                              "every rebuild; use this to show that the "
                              "exclusion is the only thing hiding a change)")
     args = parser.parse_args(argv)
 
-    baseline = Path(args.baseline)
-    current = Path(args.current)
+    baseline = Path(args.baseline) if args.baseline else DEFAULT_BASELINE
+    current = Path(args.current) if args.current else DEFAULT_CURRENT
     outcome = compare_trees(baseline, current, args.strict)
     report(baseline, current, args.strict, outcome)
 

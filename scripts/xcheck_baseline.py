@@ -90,9 +90,9 @@ def format_duration(seconds: float) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--baseline-directory", default=str(DEFAULT_BASELINE),
-                        help="where to keep the copy "
-                             "(default: build/xcheck-baseline)")
+    parser.add_argument("--baseline-directory", default="",
+                        help="where to keep the copy (default: "
+                             "build/xcheck-baseline under the repository)")
     parser.add_argument("--chips", nargs="+", choices=CHIPS, default=CHIPS,
                         help="chips to build (default: both)")
     parser.add_argument("--clean", action="store_true",
@@ -110,9 +110,11 @@ def main(argv: list[str] | None = None) -> int:
     library_root = Path(args.library_root).resolve() if args.library_root \
         else builder.parent.parent
     prebuilt_root = library_root / "build" / "prebuilt"
-    baseline_root = Path(args.baseline_directory)
-    if not baseline_root.is_absolute():
-        baseline_root = library_root / baseline_root
+    #  Given explicitly: relative to the working directory, like every other
+    #  path option in these scripts. Defaulted: under the repository, so the
+    #  result lands in the same place whatever the working directory.
+    baseline_root = Path(args.baseline_directory).resolve() \
+        if args.baseline_directory else library_root / DEFAULT_BASELINE
 
     forwarded: list[str] = []
     for option in passthrough:
