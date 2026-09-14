@@ -24,6 +24,11 @@ Cases (AC-0e of the stage 0 plan):
   6. only objs/banner.o differs           -> MATCH by default, DIFF with
                                              --strict; a banner.o elsewhere
                                              (lib/banner.o) is never skipped
+  7. a chip not in the baseline           -> "ignored (not in baseline):
+                                             <chip>", MATCH, not counted;
+                                             while a new profile under a
+                                             chip the baseline covers is
+                                             still a DIFF (only in current)
 plus guards: objects.rsp differing is a DIFF; an empty comparison (no
 stages) exits 1 rather than passing on nothing; an expected stage absent
 from both sides (per BASELINE.json, or per the profile tables when there is
@@ -281,6 +286,59 @@ def main() -> int:
         expect(failures, "6b nested banner",
                "esp32s3/minimal: MATCH (7 files, 1 skipped)" in out, out)
 
+        #  7. a chip the baseline never held (the C6 stages beside a
+        #  baseline of the two Xtensa chips): named once, not compared, and
+        #  the verdict is that of the covered chips alone
+        base, cur = make_pair(work / "c7")
+        make_stage(cur, "esp32c6", "minimal")
+        rc, out = run(base, cur)
+        expect(failures, "7 chip not in baseline", rc == 0, f"rc={rc}\n{out}")
+        expect(failures, "7 chip not in baseline",
+               out.count("ignored (not in baseline): esp32c6") == 1, out)
+        expect(failures, "7 chip not in baseline",
+               "esp32c6/minimal" not in out, out)
+        expect(failures, "7 chip not in baseline",
+               "expected=2 compared=2 match=2 diff=0" in out, out)
+        expect(failures, "7 chip not in baseline",
+               "PASSED: 2 stage(s) match the baseline" in out, out)
+        #  7b. the ignore is by chip, not by "new directory": a new profile
+        #  under a chip the baseline covers is still only-in-current, and
+        #  the ignored chip does not hide it
+        make_stage(cur, "esp32", "wifi-connect")
+        rc, out = run(base, cur)
+        expect(failures, "7b new profile under covered chip", rc == 1,
+               f"rc={rc}\n{out}")
+        expect(failures, "7b new profile under covered chip",
+               "esp32/wifi-connect: DIFF (1 files)" in out
+               and "(stage): only in current" in out, out)
+        expect(failures, "7b new profile under covered chip",
+               out.count("ignored (not in baseline): esp32c6") == 1, out)
+        expect(failures, "7b new profile under covered chip",
+               "expected=2 compared=3 match=2 diff=1" in out, out)
+        #  7c. a chip that is in the baseline directory but not in its
+        #  record is not in the baseline either: the record, not the
+        #  directory listing, says what the baseline covers
+        base, cur = make_pair(work / "c7c")
+        make_stage(base, "esp32h2", "minimal")
+        rc, out = run(base, cur)
+        expect(failures, "7c chip only in baseline dir", rc == 0,
+               f"rc={rc}\n{out}")
+        expect(failures, "7c chip only in baseline dir",
+               out.count("ignored (not in baseline): esp32h2") == 1, out)
+        expect(failures, "7c chip only in baseline dir",
+               "expected=2 compared=2 match=2 diff=0" in out, out)
+        #  7d. without a record the expectation is the profile table, whose
+        #  chips are the Xtensa two; a C6 directory is ignored there as well
+        base, cur = make_pair(work / "c7d", record=False)
+        make_stage(cur, "esp32c6", "minimal")
+        rc, out = run(base, cur)
+        expect(failures, "7d no record", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "7d no record",
+               out.count("ignored (not in baseline): esp32c6") == 1, out)
+        expect(failures, "7d no record",
+               f"expected={expected_n} compared=2" in out, out)
+        expect(failures, "7d no record", "esp32c6/minimal" not in out, out)
+
         #  provenance warnings: a baseline taken at another commit, or on a
         #  dirty tree, is reported but does not fail the comparison. The
         #  HEAD warning needs git to answer for this repository; when it
@@ -337,8 +395,10 @@ def main() -> int:
     print("cases: identical, object, manifest (key / time key / formatting / "
           "mixed), lib,\n       missing file and stage (both directions), "
           "expected stage absent (record / no record),\n       "
-          "banner (default / --strict / nested lib/banner.o), objects.rsp, "
-          "empty, absent dir,\n       host path")
+          "banner (default / --strict / nested lib/banner.o), "
+          "chip not in baseline (ignored / new profile\n       "
+          "under a covered chip / baseline-side / no record), objects.rsp, "
+          "empty, absent dir, host path")
     if failures:
         print(f"\nFAILED, {len(failures)} check(s):")
         for failure in failures:

@@ -37,6 +37,14 @@ profile tables in build_prebuilt_stages.py - and a missing expected stage on
 either side is a failure. Without that, a baseline taken with one chip and a
 rebuild of the other would compare nothing in common and pass.
 
+Only the chips of that expected set are compared. A chip directory that is
+not in the baseline at all (build/prebuilt/esp32c6 beside a baseline of the
+two Xtensa chips) is reported on one line, "ignored (not in baseline):
+<chip>", and does not enter the verdict: the check asks whether the Xtensa
+stages moved, and a new chip's stages say nothing about that. A profile
+directory that is new under a chip the baseline DOES cover is still a DIFF
+(only in current), as is any extra file inside a covered stage.
+
 BASELINE.json also records the commit the baseline was taken at and whether
 the tree was dirty; the report prints both and warns (without failing) when
 the current HEAD is a different commit, because a baseline taken after the
@@ -247,14 +255,27 @@ def read_baseline_record(baseline: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def chip_of(stage: str) -> str:
+    """The <chip> of a <chip>/<profile> stage name."""
+    return stage.split("/", 1)[0]
+
+
 def compare_trees(baseline: Path, current: Path, strict: bool,
                   expected: list[str]) -> dict:
-    """Compare every expected stage, plus any stage found on either side.
+    """Compare every expected stage, plus any stage found on either side
+    under a chip the expected set covers.
+
+    Stages under any other chip are left out of the comparison and listed
+    in "ignored": the expected set says which chips the baseline is about,
+    and a chip it never held cannot have changed relative to it.
 
     Returns {"stages": {name: result}, "expected": n, "compared": n,
-    "match": n, "diff": n, "missing": [name, ...]}.
+    "match": n, "diff": n, "missing": [name, ...], "ignored": [chip, ...]}.
     """
-    found = find_stages(baseline) | find_stages(current)
+    covered = {chip_of(stage) for stage in expected}
+    found_all = find_stages(baseline) | find_stages(current)
+    found = {stage for stage in found_all if chip_of(stage) in covered}
+    ignored = sorted({chip_of(stage) for stage in found_all - found})
     stages = list(expected) + sorted(found - set(expected))
     results = {}
     for stage in stages:
@@ -263,7 +284,8 @@ def compare_trees(baseline: Path, current: Path, strict: bool,
     compared = sum(1 for s in stages if s in found)
     match = sum(1 for r in results.values() if not r["diffs"])
     return {"stages": results, "expected": len(expected), "compared": compared,
-            "match": match, "diff": len(stages) - match, "missing": missing}
+            "match": match, "diff": len(stages) - match, "missing": missing,
+            "ignored": ignored}
 
 
 def displayable(path: Path) -> str:
@@ -316,6 +338,8 @@ def report(baseline: Path, current: Path, strict: bool, outcome: dict,
             print(f"{stage}: MATCH ({result['files']} files{note})")
         for relative, detail in result["notes"]:
             print(f"  note: {relative} {detail}")
+    for chip in outcome["ignored"]:
+        print(f"ignored (not in baseline): {chip}")
     print(f"expected={outcome['expected']} compared={outcome['compared']} "
           f"match={outcome['match']} diff={outcome['diff']}")
 
