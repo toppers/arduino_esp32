@@ -86,7 +86,7 @@ C6 統合は `build_prebuilt_stages.py` / `prebuilt_stage.cmake` / `fmp3_link.py
 バイト列で示す。
 
 ```bash
-# 作業前（共有ファイルを触る前）に 1 回
+# 段の起点 commit で、作業ツリーが clean なうちに 1 回（共有ファイルを触る前）
 python scripts/xcheck_baseline.py            # 7 stage を建て build/xcheck-baseline/ へ退避
 # 作業後に stage を建て直してから
 python scripts/build_prebuilt_stages.py --chip esp32s3 --profiles minimal m5-unified wifi-connect
@@ -96,11 +96,23 @@ python scripts/xcheck_compare.py --strict    # banner.o も比べる（毎回 DI
 python scripts/test_xcheck.py                # 判定器の自己テスト
 ```
 
-- 比べるもの（stage = `<chip>/<profile>` ごと）: `link-manifest.json`（JSON として。
-  時刻系キーがあればそれだけ除外）、`objects.rsp`、`objs/*.o`（sha256。`banner.o` は
-  `--strict` 無しでは除外 -- `__DATE__` / `__TIME__` で毎回変わるため）、`lib/*.a`、
-  その他のファイル（`ld/` 等）。片側にしか無いファイル・stage は差分。
-  **比較対象が 0 件でも rc=1**（比較していないことを成功と読まない）。
+- **baseline の規律。** baseline は「段の起点 commit・clean な作業ツリー」で採る。
+  `xcheck_baseline.py` は `build/xcheck-baseline/BASELINE.json` に採取時の HEAD・dirty の有無
+  （`git status --porcelain` の件数。パスは記録しない）・採取時刻・chip / profile / stage の
+  一覧を書き、既に baseline があれば `--force` 無しでは上書きしない。`xcheck_compare.py` は
+  先頭にその HEAD と dirty を出し、現在の HEAD が違えば警告する（失敗にはしない）。
+  **段1 で `build_prebuilt_stages.py` / `prebuilt_stage.cmake` / `fmp3_link.py` /
+  `install_platform.py` を編集したあとに baseline を採り直してはいけない** -- 編集後の
+  生成物どうしを比べても、編集が Xtensa の配布物を変えたかどうかは分からない。採り直すのは
+  段が終わって `main` へ ff した後、次の段の起点でだけ。
+- 比べるもの（stage = `<chip>/<profile>` ごと）: `link-manifest.json`（バイト一致。違えば
+  JSON として読み、**時刻系キーだけの差なら MATCH（注記つき）**、整形やキー順だけの差でも
+  DIFF）、`objects.rsp`、`objs/*.o`（sha256。`objs/banner.o` だけは `--strict` 無しでは除外
+  -- `__DATE__` / `__TIME__` で毎回変わるため。他の場所の `banner.o` は除外しない）、
+  `lib/*.a`、その他のファイル（`ld/` 等）。片側にしか無いファイル・stage は差分。
+  **期待する stage（`BASELINE.json` の一覧、無ければ `build_prebuilt_stages.py` の表から
+  導く 7 本）が両側とも無ければ rc=1、比較対象が 0 件でも rc=1**（比較していないことを
+  成功と読まない）。出力末尾は `expected=N compared=N match=M diff=K`。
 - 出力は stage からの相対パスだけを持つ（`check_host_paths.py` で 0 件を確認済み）。
 - **X-check が見るのは配布されるバイト列で、ソースの文面ではない。** stage は debug 情報を
   落として配るので、`__LINE__` / `__FILE__` を即値にしない `.c` へコメントを足しても

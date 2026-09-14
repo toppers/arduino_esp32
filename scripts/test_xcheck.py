@@ -13,14 +13,21 @@ Cases (AC-0e of the stage 0 plan):
   1. identical trees                      -> MATCH, exit 0
   2. one objs/*.o differs                 -> DIFF naming that object, exit 1
   3. link-manifest.json differs           -> DIFF naming the manifest and the
-                                             key; a difference confined to a
-                                             time-stamp key is NOT reported
+                                             key; reformatted / reordered but
+                                             JSON-equal is ALSO a DIFF; a
+                                             difference confined to a
+                                             time-stamp key is a MATCH with
+                                             a note
   4. lib/*.a differs                      -> DIFF naming the archive
-  5. a file missing on one side           -> DIFF naming it and the side
-  6. only banner.o differs                -> MATCH by default, DIFF with
-                                             --strict
-plus two guards: objects.rsp differing is a DIFF, and an empty comparison
-(no stages) exits 1 rather than passing on nothing.
+  5. a file or stage on one side only     -> DIFF naming it and the side
+                                             (both directions)
+  6. only objs/banner.o differs           -> MATCH by default, DIFF with
+                                             --strict; a banner.o elsewhere
+                                             (lib/banner.o) is never skipped
+plus guards: objects.rsp differing is a DIFF; an empty comparison (no
+stages) exits 1 rather than passing on nothing; an expected stage absent
+from both sides (per BASELINE.json, or per the profile tables when there is
+no record) exits 1; the report carries no build-machine path.
 """
 
 from __future__ import annotations
@@ -65,13 +72,29 @@ def make_stage(root: Path, chip: str, profile: str,
     return stage
 
 
-def make_pair(work: Path, stages=(("esp32s3", "minimal"),
-                                  ("esp32", "minimal"))) -> tuple[Path, Path]:
+PAIR_STAGES = (("esp32s3", "minimal"), ("esp32", "minimal"))
+
+
+def write_record(baseline: Path, stages, head="0123456789abcdef" * 2 + "01234567",
+                 dirty=False) -> None:
+    """The provenance record xcheck_baseline.py writes; the comparer takes
+    the expected stage list from it."""
+    baseline.mkdir(parents=True, exist_ok=True)
+    (baseline / xcheck_compare.BASELINE_RECORD).write_text(json.dumps({
+        "schema": 1, "head": head, "dirty": dirty, "dirtyCount": 0,
+        "takenAt": "2026-09-15T00:00:00Z",
+        "stages": [f"{chip}/{profile}" for chip, profile in stages],
+    }, indent=2) + "\n", encoding="utf-8")
+
+
+def make_pair(work: Path, stages=PAIR_STAGES, record=True) -> tuple[Path, Path]:
     baseline = work / "baseline"
     current = work / "current"
     for chip, profile in stages:
         make_stage(baseline, chip, profile)
         make_stage(current, chip, profile)
+    if record:
+        write_record(baseline, stages)
     return baseline, current
 
 
@@ -96,9 +119,12 @@ def main() -> int:
         base, cur = make_pair(work / "c1")
         rc, out = run(base, cur)
         expect(failures, "1 identical", rc == 0, f"rc={rc}\n{out}")
-        expect(failures, "1 identical", "compared=2 match=2 diff=0" in out, out)
+        expect(failures, "1 identical",
+               "expected=2 compared=2 match=2 diff=0" in out, out)
         expect(failures, "1 identical",
                "esp32s3/minimal: MATCH (7 files, 1 skipped)" in out, out)
+        expect(failures, "1 identical",
+               "baseline: head=0123456789ab dirty=no" in out, out)
 
         #  2. one object differs: named, once, with the stage
         base, cur = make_pair(work / "c2")
@@ -110,7 +136,8 @@ def main() -> int:
         expect(failures, "2 object",
                out.count("objs/task.o: sha256 differs") == 1, out)
         expect(failures, "2 object", "esp32/minimal: MATCH" in out, out)
-        expect(failures, "2 object", "compared=2 match=1 diff=1" in out, out)
+        expect(failures, "2 object",
+               "expected=2 compared=2 match=1 diff=1" in out, out)
 
         #  3a. manifest differs in a real key
         base, cur = make_pair(work / "c3a")
@@ -123,7 +150,7 @@ def main() -> int:
         expect(failures, "3a manifest",
                "link-manifest.json: JSON differs in key(s): objectOrder" in out,
                out)
-        #  3b. manifest differs only in a time-stamp key: not a difference
+        #  3b. manifest differs only in a time-stamp key: MATCH, with a note
         base, cur = make_pair(work / "c3b")
         stamped = dict(MANIFEST)
         stamped["generatedAt"] = "2026-09-15T00:00:00Z"
@@ -132,7 +159,34 @@ def main() -> int:
         rc, out = run(base, cur)
         expect(failures, "3b manifest time key", rc == 0, f"rc={rc}\n{out}")
         expect(failures, "3b manifest time key",
-               "compared=2 match=2 diff=0" in out, out)
+               "expected=2 compared=2 match=2 diff=0" in out, out)
+        expect(failures, "3b manifest time key",
+               "note: link-manifest.json differs only in time-stamp key(s): "
+               "generatedAt" in out, out)
+        #  3c. manifest reformatted and reordered, JSON-equal: still a DIFF.
+        #  The reviewer showed the first version passing this as MATCH.
+        base, cur = make_pair(work / "c3c")
+        manifest = cur / "esp32s3" / "minimal" / "link-manifest.json"
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        reordered = {k: data[k] for k in reversed(list(data))}
+        manifest.write_text(json.dumps(reordered, indent=4) + "\n",
+                            encoding="utf-8")
+        rc, out = run(base, cur)
+        expect(failures, "3c manifest formatting", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "3c manifest formatting",
+               "link-manifest.json: bytes differ but the JSON is equal" in out,
+               out)
+        #  3d. a time-stamp key AND a real key: the real one is not forgiven
+        base, cur = make_pair(work / "c3d")
+        both = dict(MANIFEST)
+        both["generatedAt"] = "2026-09-15T00:00:00Z"
+        both["objectCount"] = 4
+        shutil.rmtree(cur / "esp32s3" / "minimal")
+        make_stage(cur, "esp32s3", "minimal", both)
+        rc, out = run(base, cur)
+        expect(failures, "3d manifest mixed", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "3d manifest mixed",
+               "JSON differs in key(s): generatedAt, objectCount" in out, out)
 
         #  4. lib/*.a differs
         base, cur = make_pair(work / "c4")
@@ -152,13 +206,54 @@ def main() -> int:
         expect(failures, "5 missing", rc == 1, f"rc={rc}\n{out}")
         expect(failures, "5 missing", "objs/alarm.o: only in baseline" in out, out)
         expect(failures, "5 missing", "ld/extra.ld: only in baseline" in out, out)
-        expect(failures, "5 missing", "compared=2 match=0 diff=2" in out, out)
+        expect(failures, "5 missing",
+               "expected=2 compared=2 match=0 diff=2" in out, out)
         shutil.rmtree(cur / "esp32")
         rc, out = run(base, cur)
         expect(failures, "5 missing stage", rc == 1, f"rc={rc}\n{out}")
         expect(failures, "5 missing stage",
                "esp32/minimal: DIFF (1 files)" in out
                and "(stage): only in baseline" in out, out)
+        #  5b. the other direction: a file and a stage only in current
+        base, cur = make_pair(work / "c5b")
+        (cur / "esp32s3" / "minimal" / "objs" / "extra.o").write_bytes(b"\x7fELF")
+        make_stage(cur, "esp32", "wifi-connect")
+        rc, out = run(base, cur)
+        expect(failures, "5b only in current", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "5b only in current",
+               "objs/extra.o: only in current" in out, out)
+        expect(failures, "5b only in current",
+               "esp32/wifi-connect: DIFF (1 files)" in out
+               and "(stage): only in current" in out, out)
+        expect(failures, "5b only in current",
+               "expected=2 compared=3 match=1 diff=2" in out, out)
+        #  5c. an expected stage (per the record) absent from BOTH sides
+        base, cur = make_pair(work / "c5c")
+        shutil.rmtree(base / "esp32")
+        shutil.rmtree(cur / "esp32")
+        rc, out = run(base, cur)
+        expect(failures, "5c expected absent", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "5c expected absent",
+               "esp32/minimal: DIFF (1 files)" in out
+               and "(stage): missing on both sides" in out, out)
+        expect(failures, "5c expected absent",
+               "FAILED: expected stage(s) absent from both sides: esp32/minimal"
+               in out, out)
+        expect(failures, "5c expected absent",
+               "expected=2 compared=1" in out, out)
+        #  5d. no record at all: the expectation falls back to the full
+        #  profile table (7 stages), so two fabricated stages cannot pass
+        base, cur = make_pair(work / "c5d", record=False)
+        rc, out = run(base, cur)
+        expect(failures, "5d no record", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "5d no record",
+               "baseline: no BASELINE.json" in out, out)
+        expected_n = len(xcheck_compare.expected_stages_from_tables())
+        expect(failures, "5d no record",
+               f"expected={expected_n} compared=2" in out, out)
+        expect(failures, "5d no record",
+               "esp32s3/wifi-connect: DIFF (1 files)" in out
+               and "(stage): missing on both sides" in out, out)
 
         #  6. only banner.o differs: excluded by default, caught by --strict
         base, cur = make_pair(work / "c6")
@@ -167,13 +262,24 @@ def main() -> int:
         rc, out = run(base, cur)
         expect(failures, "6 banner default", rc == 0, f"rc={rc}\n{out}")
         expect(failures, "6 banner default",
-               "compared=2 match=2 diff=0" in out, out)
+               "expected=2 compared=2 match=2 diff=0" in out, out)
         rc, out = run(base, cur, "--strict")
         expect(failures, "6 banner strict", rc == 1, f"rc={rc}\n{out}")
         expect(failures, "6 banner strict",
                out.count("objs/banner.o: sha256 differs") == 1, out)
-        expect(failures, "6 banner strict", "compared=2 match=1 diff=1" in out,
-               out)
+        expect(failures, "6 banner strict",
+               "expected=2 compared=2 match=1 diff=1" in out, out)
+        #  6b. a banner.o that is NOT objs/banner.o is an ordinary file:
+        #  the exclusion is by exact path, not by basename
+        base, cur = make_pair(work / "c6b")
+        (base / "esp32" / "minimal" / "lib" / "banner.o").write_bytes(b"lib A")
+        (cur / "esp32" / "minimal" / "lib" / "banner.o").write_bytes(b"lib B")
+        rc, out = run(base, cur)
+        expect(failures, "6b nested banner", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "6b nested banner",
+               "lib/banner.o: sha256 differs" in out, out)
+        expect(failures, "6b nested banner",
+               "esp32s3/minimal: MATCH (7 files, 1 skipped)" in out, out)
 
         #  guard: objects.rsp differs
         base, cur = make_pair(work / "g1")
@@ -188,7 +294,7 @@ def main() -> int:
         (work / "g2" / "current").mkdir(parents=True)
         rc, out = run(work / "g2" / "baseline", work / "g2" / "current")
         expect(failures, "guard empty", rc == 1, f"rc={rc}\n{out}")
-        expect(failures, "guard empty", "compared=0 match=0 diff=0" in out, out)
+        expect(failures, "guard empty", "compared=0 match=0" in out, out)
         rc, out = run(work / "g2" / "nowhere", work / "g2" / "current")
         expect(failures, "guard absent dir", rc == 1, f"rc={rc}\n{out}")
 
@@ -206,9 +312,11 @@ def main() -> int:
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
-    print("cases: identical, object, manifest (key / time key), lib, "
-          "missing file, missing stage,\n       banner (default / --strict), "
-          "objects.rsp, empty, absent dir, host path")
+    print("cases: identical, object, manifest (key / time key / formatting / "
+          "mixed), lib,\n       missing file and stage (both directions), "
+          "expected stage absent (record / no record),\n       "
+          "banner (default / --strict / nested lib/banner.o), objects.rsp, "
+          "empty, absent dir,\n       host path")
     if failures:
         print(f"\nFAILED, {len(failures)} check(s):")
         for failure in failures:
