@@ -43,7 +43,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp3_link import (APP_DESC_MAGIC, FIXED_VMA_LAYOUTS,  # noqa: E402
                        ImageLayout, LinkError, app_partition_length,
                        build_link_command, check_fixed_vma_image,
-                       collect_arduino_objects, expander, validate_manifest)
+                       collect_arduino_objects, expander,
+                       parse_image_segments, validate_manifest)
 
 
 PROJECT = "LibraryInfo.ino"
@@ -244,21 +245,36 @@ def congruent_segments(text: bytes, rodata: bytes, ram: bytes,
                        ram_load: int = DATA_VMA) -> list:
     """Segments whose mapped members satisfy C-3 by padding, as esptool does.
 
-    The first mapped segment goes first (C-2). A pad segment (load 0) is
-    inserted before the second mapped one so its data offset is congruent
-    with its vaddr modulo the page.
+    The first mapped segment goes first (C-2), then the second mapped one,
+    then the RAM segment: text, rodata, ram. See layout_segments().
+    """
+    return layout_segments([(TEXT_VADDR, text), (RODATA_VADDR, rodata),
+                            (ram_load, ram)])
+
+
+def layout_segments(segments: list) -> list:
+    """Lay (load, data) segments out in the given order, keeping every
+    flash-mapped one page-congruent (C-3) by inserting a pad segment (load 0)
+    in front of it when needed, as esptool does.
+
+    The order is the caller's, so an image that puts a RAM segment first, or
+    carries a third mapped segment, still satisfies C-3 - which is what lets
+    a test break C-2 or C-1 without also breaking C-3.
     """
     page = LAYOUT.page
-    segments = [(TEXT_VADDR, text)]
-    offset = 24 + 8 + len(text)               # where the next header starts
-    if (offset + 8) % page != RODATA_VADDR % page:
-        #  With a pad segment in between, rodata's data begins at
-        #  offset + 8 (pad header) + pad + 8 (rodata header).
-        pad = (RODATA_VADDR - offset - 16) % page or page
-        segments.append((0, b"\0" * pad))
-    segments.append((RODATA_VADDR, rodata))
-    segments.append((ram_load, ram))
-    return segments
+    laid = []
+    offset = 24                                # where the next header starts
+    for load, data in segments:
+        mapped = LAYOUT.drom[0] <= load < LAYOUT.drom[1]
+        if mapped and (offset + 8) % page != load % page:
+            #  With a pad segment in between, this segment's data begins at
+            #  offset + 8 (pad header) + pad + 8 (its own header).
+            pad = (load - offset - 16) % page or page
+            laid.append((0, b"\0" * pad))
+            offset += 8 + pad
+        laid.append((load, data))
+        offset += 8 + len(data)
+    return laid
 
 
 def good_image() -> bytes:
@@ -283,11 +299,18 @@ def image_cases(failures: list) -> None:
           any("C-8 OK" in line and f"/{APP_LENGTH}" in line for line in lines),
           f"lines={lines}")
 
-    #  Each condition broken on its own. The good image is the control.
+    #  Each condition broken on its own. The good image is the control, and
+    #  for the images whose shape could break a second condition as a side
+    #  effect (a third mapped segment, a RAM segment in front, a RAM segment
+    #  outside SRAM), that second condition is asserted to still hold, so
+    #  the check named in the label is the only one that can fail.
     text = image[32:32 + 0x204]
-    three_mapped = synthetic_image(
-        congruent_segments(text, b"R" * 0x100, DATA_BYTES)
-        + [(0x42030000, b"X" * 16)])
+    three_mapped = synthetic_image(layout_segments(
+        [(TEXT_VADDR, text), (RODATA_VADDR, b"R" * 0x100),
+         (DATA_VMA, DATA_BYTES), (0x42030000, b"X" * 16)]))
+    check(failures, "C-1 image: every mapped segment is page-congruent (C-3 holds)",
+          all(seg.file_offset % LAYOUT.page == seg.load % LAYOUT.page
+              for seg in parse_image_segments(three_mapped, LAYOUT).mapped))
     expect_error(failures, "C-1: three mapped segments",
                  lambda: check_fixed_vma_image(three_mapped, elf, LAYOUT, APP_LENGTH),
                  "C-1")
@@ -296,8 +319,12 @@ def image_cases(failures: list) -> None:
     expect_error(failures, "C-2: segment #0 without the app descriptor",
                  lambda: check_fixed_vma_image(bytes(bad_magic), elf, LAYOUT, APP_LENGTH),
                  "C-2")
-    ram_first = synthetic_image([(DATA_VMA, DATA_BYTES)]
-                                + congruent_segments(text, b"R" * 0x100, b"")[:-1])
+    ram_first = synthetic_image(layout_segments(
+        [(DATA_VMA, DATA_BYTES), (TEXT_VADDR, text),
+         (RODATA_VADDR, b"R" * 0x100)]))
+    check(failures, "C-2 image: every mapped segment is page-congruent (C-3 holds)",
+          all(seg.file_offset % LAYOUT.page == seg.load % LAYOUT.page
+              for seg in parse_image_segments(ram_first, LAYOUT).mapped))
     expect_error(failures, "C-2: a RAM segment before the mapped ones",
                  lambda: check_fixed_vma_image(ram_first, elf, LAYOUT, APP_LENGTH),
                  "C-2")
@@ -320,10 +347,17 @@ def image_cases(failures: list) -> None:
     expect_error(failures, "C-5: a RAM segment reaching iram_loader_seg",
                  lambda: check_fixed_vma_image(into_loader, loader_elf, LAYOUT, APP_LENGTH),
                  "C-5")
+    #  Below SRAM, so that the segment's end is also below iram_loader_seg:
+    #  only the range half of C-5 is broken. (A load above SRAM would end
+    #  above iram_loader_seg too, and the other half would catch it as
+    #  well.) The ELF's .data is moved along so C-6 holds.
+    below_sram = 0x3FC00000
     outside_sram = synthetic_image(congruent_segments(
-        text, b"R" * 0x100, DATA_BYTES, ram_load=0x50000000))
+        text, b"R" * 0x100, DATA_BYTES, ram_load=below_sram))
+    check(failures, "C-5 range image: the RAM segment ends below iram_loader_seg",
+          below_sram + len(DATA_BYTES) < LAYOUT.loader_seg)
     expect_error(failures, "C-5: a RAM segment outside SRAM",
-                 lambda: check_fixed_vma_image(outside_sram, elf, LAYOUT, APP_LENGTH),
+                 lambda: check_fixed_vma_image(outside_sram, synthetic_elf(data_vma=below_sram), LAYOUT, APP_LENGTH),
                  "C-5")
     corrupted = bytearray(image)
     corrupted[-1] ^= 0xFF                     # last byte of the RAM segment

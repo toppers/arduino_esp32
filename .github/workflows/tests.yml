@@ -31,3 +31,6 @@ jobs:
 
       - name: Release check on a merged index
         run: python scripts/test_check_release_artifacts.py
+
+      - name: X-check comparator
+        run: python scripts/test_xcheck.py

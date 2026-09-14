@@ -61,12 +61,39 @@ M5STACK_TOOL_DEPENDENCIES = [
     #  for other work, so the platform installed and built anyway. On a clean
     #  machine the M5Core builds would have failed at the first include.
     ("m5stack", "esp32-libs", "3.3.8"),
-    #  The M5NanoC6 board links against the RISC-V toolchain and the ESP32-C6
-    #  SDK, neither of which the Xtensa boards pull in. Same lesson as above:
-    #  a developer machine has them already, a clean one does not.
-    ("m5stack", "esp-rv32", "2601"),
-    ("m5stack", "esp32c6-libs", "3.3.8"),
 ]
+
+#  Tools a board needs only when its chip's stages are in the package. The
+#  M5NanoC6 board links against the RISC-V toolchain and the ESP32-C6 SDK,
+#  neither of which the Xtensa boards pull in - the same lesson as above, a
+#  developer machine has them already and a clean one does not - but the
+#  other way round too: a release that ships no C6 stage must not make every
+#  user download the RISC-V toolchain (hundreds of MB) for a board that is
+#  not there. So these rows are declared only when the platform directory
+#  being packaged holds fmp3-prebuilt/<chip>, which is what install_platform.py
+#  creates exactly when it emits that chip's boards. A platform without the
+#  directory produces the same index as before these rows existed.
+CHIP_TOOL_DEPENDENCIES = {
+    "esp32c6": [
+        ("m5stack", "esp-rv32", "2601"),
+        ("m5stack", "esp32c6-libs", "3.3.8"),
+    ],
+}
+
+STAGE_ROOT_NAME = "fmp3-prebuilt"
+
+
+def tool_dependencies_for(platform_dir: Path) -> list[tuple[str, str, str]]:
+    """The M5Stack tools the packaged platform needs, in a fixed order.
+
+    The unconditional Xtensa rows first, then each chip's rows from
+    CHIP_TOOL_DEPENDENCIES when <platform>/fmp3-prebuilt/<chip> exists.
+    """
+    rows = list(M5STACK_TOOL_DEPENDENCIES)
+    for chip, chip_rows in CHIP_TOOL_DEPENDENCIES.items():
+        if (platform_dir / STAGE_ROOT_NAME / chip).is_dir():
+            rows.extend(chip_rows)
+    return rows
 
 DRIVER_TOOL_NAME = "fmp3-link"
 
@@ -410,7 +437,7 @@ def main() -> int:
 
     tool_dependencies = [
         {"packager": packager, "name": name, "version": version}
-        for packager, name, version in M5STACK_TOOL_DEPENDENCIES
+        for packager, name, version in tool_dependencies_for(platform_dir)
     ]
     if driver_systems:
         tool_dependencies.append({
