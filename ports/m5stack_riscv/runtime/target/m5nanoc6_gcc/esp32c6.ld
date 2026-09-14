@@ -1,0 +1,178 @@
+/*
+ *  ESP32-C6用リンカスクリプト（M5NanoC6・FMP3・段1 用）
+ *
+ *  段1 用。出典 asp3 esp32c6.ld（Direct Boot）。FLASH 0x42000000 の配置は
+ *  seam（段2）で bootloader の受理条件へ合わせて作り直す。
+ *
+ *  以下は出典（asp3_esp_idf asp3/target/esp32c6_espidf/esp32c6.ld）の
+ *  コメントそのまま（Direct Boot・XIP実行．Phase B＝esp-hal統合版）：
+ *  asp3_core の target/esp32c6_gcc/esp32c6.ld（Phase A．レジスタ直
+ *  叩き版）に，esp-halのペリフェラル構造体インスタンス（SYSTIMER等．
+ *  -Lで検索）のINCLUDEを追加しただけ（C3のPhase A→B移行と同じ変更）．
+ *  C6はSOC_DROM_LOW＝SOC_IROM_LOW（共に0x42000000）＝IROM/DROM分離が
+ *  無いため，C3のような複数ORIGIN分割は不要（詳細はPhase A版の
+ *  コメント参照）．
+ */
+
+OUTPUT_ARCH(riscv)
+
+/* esp-halのペリフェラル構造体インスタンス（SYSTIMER等．-Lで検索） */
+INCLUDE esp32c6.peripherals.ld
+
+MEMORY
+{
+    FLASH(rx) : ORIGIN = 0x42000000, LENGTH = 4096k
+    /*
+     *  DIAGNOSTIC（ハンドオフStep0調査・一時的）：
+     *  通常のDirect Bootでは RAM ORIGIN=0x40800000・LENGTH=448k．
+     *  しかしESP-IDFからのハンドオフ実験では，ESP-IDFがロック付きPMPで
+     *  [0x40800000,0x408184b4) を読取専用(R+X,no-W)に保護しているため，
+     *  ASP3の.data/.bss/istackをこの領域に置くとbssクリアのストアがfault
+     *  してハングする（実測でPMP entry4=0x8dと確認）．PMP entry5が
+     *  [0x408184b4,0x40880000) をRW(0x8b)として開けているので，そこへ
+     *  移す．調査完了後にrevertする（通常ビルドは0x40800000/448kに戻す）．
+     */
+    RAM(rwx)  : ORIGIN = 0x40819000, LENGTH = 412k
+}
+
+ENTRY(toppers_start)
+
+SECTIONS
+{
+    /*
+     *  コード・rodataを単一のFLASH領域にまとめる（IROM/DROM分離が無いため
+     *  区別不要）．FMP3 共通 start.S のエントリ toppers_start を使うため，
+     *  asp3 版の Direct Boot ヘッダ用セクションと，そのエントリ
+     *  （.text.entry）は積まない（段2 の seam 配置で作り直す）．
+     */
+    .text : {
+        . = ALIGN(256);            /* trap_vector_tableのアライン */
+        *(.text*)
+        /*
+         *  IRAM_ATTR系関数（.iram1.N＝esp_hw_support/periph_ctrl.c・
+         *  rtc_clk.c等）＋Wi-Fi blob（libcoexist.a/libnet80211.a/
+         *  libpp.a等）が要求する高速実行用セクション一覧（C3の
+         *  esp32c3_espidf/esp32c3.ldと同じ一覧．明示ルールが無いと
+         *  orphan section扱いとなり.dataとLMAが重なる．本ldは独立した
+         *  IRAM領域を持たないDirect Boot XIP構成のため通常コードと
+         *  同じくFLASHへ収容する＝実行速度上の最適化は失うが機能上は
+         *  問題ない）
+         */
+        *(.iram1 .iram1.*)
+        /*
+         *  BLE実施01：libble_app.a（BTコントローラblob）が要求する
+         *  高速実行用セクション．明示ルールが無いとorphan section扱いと
+         *  なり.dataとLMAが重なりリンクエラーになる（実機リンクで判明．
+         *  上のコメントと同じ理由・同じ対策）．
+         */
+        *(.high_perf_code_iram1 .high_perf_code_iram1.*)
+        *(.adv_fast_execute_code_iram1 .adv_fast_execute_code_iram1.*)
+        *(.coexiram .coexiram.*)
+        *(.wifi0iram .wifi0iram.*)
+        *(.wifiextrairam .wifiextrairam.*)
+        *(.wifiorslpiram .wifiorslpiram.*)
+        *(.wifirxiram .wifirxiram.*)
+        *(.wifislpiram .wifislpiram.*)
+        *(.wifislprxiram .wifislprxiram.*)
+        . = ALIGN(16);
+        *(.rodata .rodata.*)
+        *(.srodata .srodata.*)
+        /*
+         *  .rodata_wlog_{debug,error,info,verbose,warning}.N（ログ
+         *  文字列圧縮用セクション．C3のesp32c3_espidf/esp32c3.ldと
+         *  同じ扱い）
+         */
+        *(.rodata_wlog_*)
+        . = ALIGN(16);
+    } > FLASH
+
+    /*
+     *  Main DATA section (RAM)
+     *
+     *  LMAは.textの直後（FLASH基準）を明示する（.dataが空のときに
+     *  LMAがVMA（RAM）へ落ちてフラッシュイメージが巨大化するのを防ぐ）．
+     */
+    .data : AT(LOADADDR(.text) + SIZEOF(.text)) ALIGN(8) {
+        __data_start = .;
+        LONG(0)     /* 番兵（.dataが空だとldがAT指定を無視しLMAがRAMに落ちるため） */
+        *(.data*)
+        /*
+         *  FMP3 のクラス別セクション。入力規則が無いと orphan になり，
+         *  .data のコピー範囲（__idata_*）にも .bss のゼロ初期化にも入らない
+         *  （P4 の esp32p4_xip.ld:232-268 が実機で踏んだ型）。
+         *  .kernel_data_CLS_* は初期値つきデータなので .data に含めてコピーさせる。
+         */
+        *(.kernel_data_CLS_*)
+        /*
+         *  .dram1.N（DRAM_ATTR変数．IRAM_ATTR関数と対の初期化済み
+         *  データ．esp_hw_support/rtc_clk.c等．.dataと同じくRAMへ
+         *  収容する．C3のesp32c3_espidf/esp32c3.ldと同じ扱い）
+         */
+        *(.dram1 .dram1.*)
+        . = ALIGN(8);
+        __global_pointer$ = . + 0x800;
+        *(.sdata .sdata.*)
+        /*
+         *  TLS(スレッドローカルストレージ)初期化イメージ。
+         *  init_additional_regs_start_r（asp3_coreのarch/riscv_gcc/
+         *  esp32c6/chip_asm.inc）がタスク実行開始時にここから読み出し，
+         *  タスクスタック最下位へコピーする。本ldは.dataと同じ
+         *  DROM→RAMコピー機構（__idata_*）をそのまま使うため，.data
+         *  出力セクションの一部として同時にコピーされる（独立した
+         *  ロード処理は追加しない）。
+         */
+        . = ALIGN(8);
+        _thread_local_data_start = .;
+        *(.tdata .tdata.*)
+        _thread_local_data_end = .;
+        . = ALIGN(4);
+    } > RAM
+    /*
+     *  ROM化コピー元はFLASH側のアドレスで取る（start.Sはデータバス
+     *  経由で読み出す．IROM/DROMが同一アドレス空間のためそのまま読める）
+     */
+    __idata_start = LOADADDR(.data);
+    __idata_end = __idata_start + SIZEOF(.data);
+
+    /* MAIN BSS SECTION */
+    .bss (NOLOAD) : ALIGN(4) {
+        __bss_start = .;
+        /*
+         *  __sbss_start/__sbss_end（実装計画 Task 5 のビルドで発覚。fmp3_core 共通
+         *  start.S / chip_start.S が sbss と bss を別々にゼロクリアする
+         *  ため両シンボルが要る。本 ld は sbss を独立領域に分けず .bss の
+         *  先頭にまとめて置くだけなので、境界を __bss_start と同じ位置に
+         *  取る＝sbss 範囲は空とし、実体は後続の bss クリアで一緒に
+         *  ゼロ化される。出典 asp3 の crt0 は sbss/bss を分けてクリアしない
+         *  ため、これらのシンボル自体が出典側に無かった）
+         */
+        __sbss_start = .;
+        __sbss_end = .;
+        *(.sbss .sbss.*)
+        *(.bss*)
+        *(COMMON)
+        /*
+         *  FMP3 のクラス別スタック．入力規則が無いと orphan になり，
+         *  .data の直後（FLASH に LMA を持つ PROGBITS）として配置され，
+         *  ロードイメージに無駄に含まれる上，コピーもゼロ初期化も
+         *  対象にならない．スタック初期値は不要なので .bss（NOLOAD）
+         *  側へ入れてゼロ初期化，非ロード化する．
+         */
+        *(.stack_CLS_*)
+        . = ALIGN(4);
+        __bss_end = .;
+    } > RAM
+
+    /*
+     *  TLS(スレッドローカルストレージ)テンプレートのBSS部分の境界
+     *  シンボル（サイズ計算専用．NOLOADのため内容は読まない．
+     *  init_additional_regs_start_rはこのサイズ分だけタスクスタック
+     *  最下位をゼロ埋めする）。
+     */
+    .tbss (NOLOAD) : ALIGN(8) {
+        _thread_local_bss_start = .;
+        *(.tbss .tbss.*)
+        *(.tcommon)
+        _thread_local_bss_end = .;
+    } > RAM
+}
