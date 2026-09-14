@@ -61,6 +61,11 @@ M5STACK_TOOL_DEPENDENCIES = [
     #  for other work, so the platform installed and built anyway. On a clean
     #  machine the M5Core builds would have failed at the first include.
     ("m5stack", "esp32-libs", "3.3.8"),
+    #  The M5NanoC6 board links against the RISC-V toolchain and the ESP32-C6
+    #  SDK, neither of which the Xtensa boards pull in. Same lesson as above:
+    #  a developer machine has them already, a clean one does not.
+    ("m5stack", "esp-rv32", "2601"),
+    ("m5stack", "esp32c6-libs", "3.3.8"),
 ]
 
 DRIVER_TOOL_NAME = "fmp3-link"

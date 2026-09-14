@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arduino_sdk import SdkError, resolve, tool_executable  # noqa: E402
@@ -62,6 +63,60 @@ SELF_TEST_APPLICATIONS = {"m5-unified": "phase5_m5_selftest"}
 
 NEEDS_SDK_HEADERS = {"m5-unified", "wifi-connect", "all-in-one", "bt-classic"}
 NEEDS_M5_SOURCES = {"m5-unified", "all-in-one"}
+
+
+class Chip(NamedTuple):
+    """How one chip's stages are built.
+
+    Everything that used to be spelled per chip inside main() - which tool
+    directory holds the compiler, what the compiler is called, which port
+    directory holds the runtime and the applications, which toolchain file
+    CMake is given - is a row here, so that adding a chip is adding a row.
+    The Xtensa rows carry exactly the strings main() used to build.
+    """
+
+    #  Tool directory under <arduino data>/packages/m5stack/tools/.
+    tool: str
+    #  The compiler driver's name. One multi-target Xtensa driver serves both
+    #  Xtensa chips, but the per-chip alias is what target.cmake matches on:
+    #  -dumpmachine says "xtensa-esp-elf" for either, so the driver name is
+    #  the only thing that can catch building one chip with the other's
+    #  settings.
+    gcc: str
+    #  ports/<port>/{runtime,app}.
+    port: str
+    #  ports/<port>/runtime/cmake/<toolchain file>.
+    toolchain: str
+    #  Whether every profile needs the SDK include/lib roots, not only the
+    #  ones in NEEDS_SDK_HEADERS. The RISC-V target's own sources include
+    #  hal/soc/esp_rom headers, so minimal cannot be configured without them.
+    sdk_headers_always: bool
+    #  The profiles this chip can stage at all. CHIP_ONLY_PROFILES says which
+    #  chip owns a profile; this says which profiles a chip has a port for.
+    profiles: frozenset
+
+
+CHIPS = {
+    "esp32s3": Chip(tool="esp-x32", gcc="xtensa-esp32s3-elf-gcc",
+                    port="m5stack_xtensa",
+                    toolchain="toolchain-xtensa-esp32s3.cmake",
+                    sdk_headers_always=False,
+                    profiles=frozenset(ALL_PROFILES)),
+    "esp32": Chip(tool="esp-x32", gcc="xtensa-esp32-elf-gcc",
+                  port="m5stack_xtensa",
+                  toolchain="toolchain-xtensa-esp32.cmake",
+                  sdk_headers_always=False,
+                  profiles=frozenset(ALL_PROFILES)),
+    #  ESP32-C6 (RISC-V, single core). The tool and SDK names are the M5Stack
+    #  core's (esp-rv32 2601, esp32c6-libs 3.3.8); the port directory and the
+    #  toolchain file are what the C6 port adds under ports/m5stack_riscv.
+    #  No M5Unified profile: the M5NanoC6 has no display.
+    "esp32c6": Chip(tool="esp-rv32", gcc="riscv32-esp-elf-gcc",
+                    port="m5stack_riscv",
+                    toolchain="toolchain-riscv-esp32c6.cmake",
+                    sdk_headers_always=True,
+                    profiles=frozenset({"minimal", "wifi-connect"})),
+}
 
 
 def sketchbook_libraries() -> Path:
@@ -95,8 +150,10 @@ def run(program: str, arguments: list[str], what: str, env: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    #  Defaulted below, once the chip is known: the shipped profiles the chip
+    #  has a port for.
     parser.add_argument("--profiles", nargs="+", choices=ALL_PROFILES,
-                        default=SHIPPED_PROFILES)
+                        default=None)
     parser.add_argument("--library-root", default="")
     parser.add_argument("--output-directory", default="")
     parser.add_argument("--work-directory", default="")
@@ -108,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--m5unified-source", default="")
     #  Stages are laid out per chip, because a second board (plain M5Core, LX6)
     #  will need its own set.
-    parser.add_argument("--chip", choices=["esp32s3", "esp32"],
+    parser.add_argument("--chip", choices=list(CHIPS),
                         default="esp32s3")
     parser.add_argument("--self-test", action="store_true",
                         help="build the self-test flavour; use a separate "
@@ -116,6 +173,15 @@ def main(argv: list[str] | None = None) -> int:
                              "overwrite each other")
     parser.add_argument("--clean", action="store_true")
     args = parser.parse_args(argv)
+    chip = CHIPS[args.chip]
+    if args.profiles is None:
+        args.profiles = [name for name in SHIPPED_PROFILES
+                         if name in chip.profiles]
+    unsupported = sorted(name for name in args.profiles
+                         if name not in chip.profiles)
+    if unsupported:
+        raise SystemExit(
+            f"the {args.chip} port has no {', '.join(unsupported)} profile")
 
     library_root = Path(args.library_root).resolve() if args.library_root \
         else Path(__file__).resolve().parent.parent
@@ -133,12 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         sdk = resolve(Path(args.arduino_data) if args.arduino_data else None,
                       args.core_version, args.chip)
         package_root = Path(sdk["packageRoot"])
-        #  One multi-target driver serves both, but the per-chip alias is what
-        #  target.cmake matches on: -dumpmachine says "xtensa-esp-elf" for
-        #  either, so the driver name is the only thing that can catch
-        #  building one chip with the other's settings.
-        compiler = tool_executable(package_root, "esp-x32",
-                                   f"xtensa-{args.chip}-elf-gcc")
+        compiler = tool_executable(package_root, chip.tool, chip.gcc)
         esptool = tool_executable(package_root, "esptool_py", "esptool")
     except SdkError as error:
         raise SystemExit(str(error))
@@ -158,7 +219,11 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit(
                     f"m5-unified needs the library sources: {required}")
 
-    runtime = library_root / "ports" / "m5stack_xtensa" / "runtime"
+    port = library_root / "ports" / chip.port
+    runtime = port / "runtime"
+    if not (runtime / "CMakeLists.txt").is_file():
+        raise SystemExit(
+            f"the {args.chip} port has no runtime to stage: {runtime}")
     fmp3_core = library_root / "third_party" / "fmp3_core"
     if not (fmp3_core / "CMakeLists.txt").is_file():
         raise SystemExit(
@@ -194,8 +259,7 @@ def main(argv: list[str] | None = None) -> int:
         #  tree, the same split Build-SeamS3M5.ps1 uses.
         application = (library_root / "fmp_app" / directory_name
                        if outside_ports else
-                       library_root / "ports" / "m5stack_xtensa" / "app"
-                       / directory_name)
+                       port / "app" / directory_name)
 
         build = work_directory / name
         stage = output_directory / name
@@ -205,8 +269,7 @@ def main(argv: list[str] | None = None) -> int:
             "-B", str(build),
             "-G", "Ninja",
             f"-DCMAKE_MAKE_PROGRAM={ninja}",
-            f"-DCMAKE_TOOLCHAIN_FILE="
-            f"{runtime / 'cmake' / f'toolchain-xtensa-{args.chip}.cmake'}",
+            f"-DCMAKE_TOOLCHAIN_FILE={runtime / 'cmake' / chip.toolchain}",
             f"-DFMP3_CORE_ROOT={fmp3_core}",
             f"-DFMP3_APPLICATION_DIR={application}",
             f"-DFMP3_APPLICATION_NAME={application_name}",
@@ -215,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             f"-DARDUINO_SDK_LD_ROOT={sdk['linkerScriptRoot']}",
             f"-DA1_ESPTOOL_EXECUTABLE={esptool}",
         ]
-        if name in NEEDS_SDK_HEADERS:
+        if name in NEEDS_SDK_HEADERS or chip.sdk_headers_always:
             configure += [
                 f"-DARDUINO_SDK_INCLUDE_ROOT={sdk['includeRoot']}",
                 f"-DARDUINO_SDK_LIBRARY_ROOT={sdk['libraryRoot']}",

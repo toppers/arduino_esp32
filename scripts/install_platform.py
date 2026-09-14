@@ -70,6 +70,14 @@ BOARDS = {
                        "M5StickS3 (TOPPERS/FMP3)", "m5stack_sticks3"),
     "m5core_fmp3": ("esp32", "m5stack_core",
                     "M5Core (TOPPERS/FMP3)", "m5stack_core"),
+    #  ESP32-C6 (RISC-V). Derived from the M5Stack core's m5stack_nano_c6
+    #  (boards.txt 3.3.8: tarch=riscv32, mcu=esp32c6, 4MB flash), which is
+    #  what makes {compiler.path} and {compiler.sdk.path} resolve to the
+    #  RISC-V toolchain and esp32c6-libs without anything chip-specific in
+    #  platform.txt. Installed only when esp32c6 stages are present, like
+    #  every other board.
+    "m5nanoc6_fmp3": ("esp32c6", "m5stack_nano_c6",
+                      "M5NanoC6 (TOPPERS/FMP3)", "m5stack_nano_c6"),
 }
 
 
@@ -123,6 +131,20 @@ def profile_macro(profile: str) -> str:
 EXPECTED_PROFILES = {
     "esp32s3": {"minimal", "m5-unified", "wifi-connect"},
     "esp32": {"minimal", "m5-unified", "wifi-connect"},
+    #  The C6 port is being brought up profile by profile: minimal first,
+    #  wifi-connect once its stage builds. m5-unified never - the M5NanoC6
+    #  has no display.
+    "esp32c6": {"minimal"},
+}
+
+#  recipe.size.regex per chip, for a chip whose linker script does not use
+#  the section names platform_lines() writes into platform.txt. Emitted as
+#  board-level overrides in boards.txt, so platform.txt keeps the Xtensa
+#  values unchanged. Section names from the C6 port's esp32c6_xip.ld: .text,
+#  .flash.appdesc, .flash.rodata in flash; .data, .bss, .tbss in RAM.
+SIZE_REGEX_OVERRIDES = {
+    "esp32c6": (r"^(?:\.text|\.flash\.appdesc|\.flash\.rodata)\s+([0-9]+).*",
+                r"^(?:\.data|\.bss|\.tbss)\s+([0-9]+).*"),
 }
 
 
@@ -243,6 +265,10 @@ def board_lines(source_boards: Path, board_id: str,
         #  fmp3-prebuilt/<chip>/<profile>.
         f"{prefix}build.toppers_chip={chip}",
     ]
+    if chip in SIZE_REGEX_OVERRIDES:
+        text_regex, data_regex = SIZE_REGEX_OVERRIDES[chip]
+        lines.append(f"{prefix}recipe.size.regex={text_regex}")
+        lines.append(f"{prefix}recipe.size.regex.data={data_regex}")
     entries = list(MENU_ENTRIES)
     if (stage_root / EXPERIMENTAL_ENTRY[2]).is_dir():
         entries.append(EXPERIMENTAL_ENTRY)
@@ -308,7 +334,9 @@ def main(argv: list[str] | None = None) -> int:
     #  Repeatable. Without it, a stage root laid out per chip installs every
     #  chip it holds; a single chip's stage root installs esp32s3.
     parser.add_argument("--chip", action="append",
-                        choices=["esp32s3", "esp32"], default=None)
+                        choices=list(dict.fromkeys(
+                            entry[0] for entry in BOARDS.values())),
+                        default=None)
     parser.add_argument("--uninstall", action="store_true")
     args = parser.parse_args(argv)
     args.chip_given = args.chip is not None

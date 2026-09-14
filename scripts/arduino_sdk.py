@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Locate and validate the ESP32-S3 SDK bundled with the M5Stack Arduino core.
+"""Locate and validate a chip's SDK bundled with the M5Stack Arduino core.
 
 A port of Resolve-ArduinoEsp32S3Sdk.ps1, which every build
 script goes through and which was the single thing tying them to Windows: it
@@ -30,6 +30,22 @@ import sys
 from pathlib import Path
 
 DEFAULT_CORE_VERSION = "3.3.8"
+
+#  The one header that differs by architecture, keyed by chip: the item name
+#  the error message uses, and its path below <sdk>/include/. The Xtensa rows
+#  are the path resolve() used to build from the chip name; the RISC-V SDK has
+#  no include/xtensa at all, so the C6 row names the header that proves its
+#  own arch tree is there (riscv/include/riscv/csr.h, checked against
+#  esp32c6-libs 3.3.8).
+ARCH_HEADERS = {
+    "esp32s3": ("xtensaCoreIsa",
+                ("xtensa", "esp32s3", "include", "xtensa", "config",
+                 "core-isa.h")),
+    "esp32": ("xtensaCoreIsa",
+              ("xtensa", "esp32", "include", "xtensa", "config",
+               "core-isa.h")),
+    "esp32c6": ("riscvCsr", ("riscv", "include", "riscv", "csr.h")),
+}
 
 
 class SdkError(RuntimeError):
@@ -63,8 +79,13 @@ def resolve(arduino_data: Path | None = None,
 
     The M5Stack core ships one of these trees per chip, laid out identically
     and named for the chip both in the tool directory and in the linker
-    scripts inside it, so the chip is the only thing that varies here.
+    scripts inside it, so the chip is the only thing that varies here - apart
+    from the architecture's own include tree, which ARCH_HEADERS names.
     """
+    if chip not in ARCH_HEADERS:
+        raise SdkError(f"unknown chip {chip!r}; known: "
+                       + ", ".join(ARCH_HEADERS))
+    arch_item, arch_header = ARCH_HEADERS[chip]
     data = Path(arduino_data) if arduino_data else default_arduino_data()
 
     package_root = data / "packages" / "m5stack"
@@ -84,9 +105,7 @@ def resolve(arduino_data: Path | None = None,
         "versions": versions_file,
         "idfVersionHeader":
             include_root / "esp_common" / "include" / "esp_idf_version.h",
-        "xtensaCoreIsa":
-            include_root / "xtensa" / chip / "include" / "xtensa"
-            / "config" / "core-isa.h",
+        arch_item: include_root.joinpath(*arch_header),
         "peripheralLinkerScript": linker_root / f"{chip}.peripherals.ld",
         "romLinkerScript": linker_root / f"{chip}.rom.ld",
         "socArchive": library_root / "libsoc.a",
@@ -151,13 +170,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="Arduino data directory holding packages/ "
                              "(default: this OS's location)")
     parser.add_argument("--core-version", default=DEFAULT_CORE_VERSION)
+    parser.add_argument("--chip", choices=list(ARCH_HEADERS),
+                        default="esp32s3")
     parser.add_argument("--as-json", action="store_true",
                         help="print the layout as JSON")
     args = parser.parse_args(argv)
 
     try:
         result = resolve(Path(args.arduino_data) if args.arduino_data else None,
-                         args.core_version)
+                         args.core_version, args.chip)
     except SdkError as error:
         print(f"arduino_sdk: {error}", file=sys.stderr)
         return 1

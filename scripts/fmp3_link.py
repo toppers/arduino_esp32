@@ -24,6 +24,42 @@ Paths to the toolchain and the SDK are normally passed in, because the Arduino
 recipe already knows them. When they are omitted the script falls back to
 locating the M5Stack package under the Arduino data directory, which is what
 the local regression scripts do.
+
+Manifest schemas
+----------------
+
+The driver accepts schema 1 and schema 2 manifests. Schema 1 is what the
+Xtensa stages carry and it is read exactly as it always was; schema 2 is
+schema 1 plus the keys below, and is what a stage writes when it needs them.
+
+Schema 1 keys (unchanged): ``schema``, ``profile``, ``chip``, ``paddrMode``
+(must be ``"runtime-mmu"``), ``debugInfo``, ``xipLinkerScript``,
+``romLinkerScripts``, ``extraLinkerScripts``, ``linkUFlags``,
+``linkLibGroup``, ``flashMode``, ``flashFreq``, ``flashSize``,
+``objectCount``, ``objectOrder``, ``requiredArduinoObjects``.
+
+Schema 2 adds:
+
+* ``paddrMode``: ``"runtime-mmu"`` or ``"fixed-vma"``. ``runtime-mmu`` is
+  the Xtensa arrangement (the image resolves its own flash mapping at boot).
+  ``fixed-vma`` is the RISC-V arrangement: the ELF is linked at the virtual
+  addresses the bootloader's MMU mapping gives it, esptool lays the segments
+  out from the section headers, and no flash_cache_init object is involved.
+  After elf2image the driver checks such an image against what the
+  bootloader will accept (check_fixed_vma_image, conditions C-1 to C-8).
+* ``linkBaseFlags`` (required, list of strings): the flags placed right after
+  the compiler driver, where the schema 1 link places the literal
+  ``-nostdlib -mlongcalls``. A schema 2 manifest for an Xtensa stage would
+  write exactly ``["-nostdlib", "-mlongcalls"]`` to link identically.
+* ``linkTailFlags`` (optional, list of strings): the flags placed at the very
+  end of the link, where the schema 1 link places the literal ``-lgcc -lc``.
+  Omitted, that literal is used.
+
+The command a schema 2 manifest produces is therefore
+``<gcc> <linkBaseFlags> -Wl,--gc-sections -Wl,--allow-multiple-definition
+-Wl,-T,<xipLinkerScript> -L<sdk ld> -Wl,-T,<romLinkerScripts>...
+<extraLinkerScripts> <linkUFlags> -Wl,-Map=... -o fmp_xip.elf @objects.rsp
+[libarduino.a] <linkLibGroup> <linkTailFlags>``.
 """
 
 from __future__ import annotations
@@ -48,9 +84,32 @@ from typing import NamedTuple
 #  a real hazard: the manifest schema the driver understands is what decides
 #  whether a stage links at all. --version lets the release check compare the
 #  binary it is about to publish against this source.
-DRIVER_VERSION = "2"
+DRIVER_VERSION = "3"
 
-MANIFEST_SCHEMA = 1
+#  The schema a stage written for this driver carries, and every schema this
+#  driver still reads. A schema 1 manifest links exactly as it did under
+#  driver 2; see "Manifest schemas" above for what schema 2 adds.
+MANIFEST_SCHEMA = 2
+SUPPORTED_MANIFEST_SCHEMAS = (1, 2)
+
+PADDR_RUNTIME_MMU = "runtime-mmu"
+PADDR_FIXED_VMA = "fixed-vma"
+#  Schema 1 knows runtime-mmu only; fixed-vma needs the schema 2 keys.
+PADDR_MODES = {1: (PADDR_RUNTIME_MMU,),
+               2: (PADDR_RUNTIME_MMU, PADDR_FIXED_VMA)}
+
+#  What a schema 1 manifest links with, literally, in the two places a schema
+#  2 manifest fills from linkBaseFlags and linkTailFlags. These do not move
+#  into the Xtensa stages' manifests: the stages on disk are schema 1 and are
+#  compared byte for byte against a baseline.
+SCHEMA1_LINK_BASE_FLAGS = ["-nostdlib", "-mlongcalls"]
+SCHEMA1_LINK_TAIL_FLAGS = ["-lgcc", "-lc"]
+
+#  Where the M5Stack platform's upload and merge-bin recipes put
+#  {build.project_name}.bin, for every board (platform.txt: "0x10000
+#  {build.path}/{build.project_name}.bin"). The fixed-vma checks need it to
+#  find the app partition the image has to fit in.
+APP_FLASH_OFFSET = 0x10000
 #  Holds the Arduino objects the manifest does not name; see stage_archive.
 ARCHIVE_NAME = "libarduino.a"
 EXE = ".exe" if os.name == "nt" else ""
@@ -95,20 +154,39 @@ def existing_program(path: Path, what: str) -> Path:
     raise LinkError(f"{what} does not exist: {path}")
 
 
-def ar_beside(gcc: Path) -> Path:
-    """The ar of the same toolchain as the given gcc.
+def tool_beside(gcc: Path, name: str) -> Path:
+    """A binutils tool of the same toolchain as the given gcc.
 
     The Arduino recipe passes {compiler.c.cmd} but has no placeholder that
-    names ar for this chip, so it is derived rather than passed: the two live
-    in the same directory and differ only in the last three characters.
+    names ar for this chip, so it is derived rather than passed: the tools
+    live in the same directory and share the name up to the trailing "gcc".
     """
     stem = gcc.name[:-4] if gcc.name.lower().endswith(".exe") else gcc.name
     if not stem.endswith("gcc"):
-        raise LinkError(f"Cannot find the ar that goes with {gcc}")
-    return existing_program(gcc.with_name(stem[:-3] + "ar"), "ar")
+        raise LinkError(f"Cannot find the {name} that goes with {gcc}")
+    return existing_program(gcc.with_name(stem[:-3] + name), name)
 
 
-def resolve_sdk(args: argparse.Namespace) -> dict[str, Path]:
+def ar_beside(gcc: Path) -> Path:
+    """The ar of the same toolchain as the given gcc."""
+    return tool_beside(gcc, "ar")
+
+
+#  Where the driver looks when the recipe does not pass the tools: keyed by
+#  the stage's chip. The esp32s3 row is what the fallback always was; the
+#  recipe passes every one of these, so a sketch build never comes here.
+#
+#    chip: (tool directory, compiler driver, SDK tool directory)
+#
+SDK_FALLBACKS = {
+    "esp32s3": ("esp-x32", "xtensa-esp32s3-elf-gcc", "esp32s3-libs"),
+    "esp32": ("esp-x32", "xtensa-esp32-elf-gcc", "esp32-libs"),
+    "esp32c6": ("esp-rv32", "riscv32-esp-elf-gcc", "esp32c6-libs"),
+}
+
+
+def resolve_sdk(args: argparse.Namespace,
+                chip: str = "esp32s3") -> dict[str, Path]:
     """Fill in whatever the caller did not pass explicitly."""
     resolved: dict[str, Path] = {}
     package_root = None
@@ -117,14 +195,18 @@ def resolve_sdk(args: argparse.Namespace) -> dict[str, Path]:
         package_root = data / "packages" / "m5stack"
         if not package_root.is_dir():
             raise LinkError(f"M5Stack package directory is missing: {package_root}")
+        if chip not in SDK_FALLBACKS:
+            raise LinkError(f"No default toolchain is known for {chip}; pass "
+                            "--gcc, --esptool, --sdk-ld and --sdk-lib")
+    tool_dir, gcc_name, sdk_dir = SDK_FALLBACKS.get(chip, SDK_FALLBACKS["esp32s3"])
 
     if args.gcc:
         resolved["gcc"] = Path(args.gcc)
     else:
         resolved["gcc"] = newest(
-            str(package_root / "tools" / "esp-x32" / "*" / "bin"
-                / f"xtensa-esp32s3-elf-gcc{EXE}"),
-            "xtensa-esp32s3-elf-gcc")
+            str(package_root / "tools" / tool_dir / "*" / "bin"
+                / f"{gcc_name}{EXE}"),
+            gcc_name)
     if args.esptool:
         resolved["esptool"] = Path(args.esptool)
     else:
@@ -134,12 +216,12 @@ def resolve_sdk(args: argparse.Namespace) -> dict[str, Path]:
     if args.sdk_ld:
         resolved["sdk_ld"] = Path(args.sdk_ld)
     else:
-        resolved["sdk_ld"] = (package_root / "tools" / "esp32s3-libs"
+        resolved["sdk_ld"] = (package_root / "tools" / sdk_dir
                               / args.core_version / "ld")
     if args.sdk_lib:
         resolved["sdk_lib"] = Path(args.sdk_lib)
     else:
-        resolved["sdk_lib"] = (package_root / "tools" / "esp32s3-libs"
+        resolved["sdk_lib"] = (package_root / "tools" / sdk_dir
                                / args.core_version / "lib")
 
     for key in ("gcc", "esptool"):
@@ -151,18 +233,60 @@ def resolve_sdk(args: argparse.Namespace) -> dict[str, Path]:
     return resolved
 
 
+def validate_manifest(manifest: dict) -> dict:
+    """Reject what this driver cannot link; see "Manifest schemas" above.
+
+    Split from load_manifest so the schema rules can be tested without a
+    stage on disk.
+    """
+    schema = int(manifest.get("schema", 0))
+    if schema not in SUPPORTED_MANIFEST_SCHEMAS:
+        raise LinkError(f"Unsupported manifest schema: {manifest.get('schema')}")
+    mode = manifest.get("paddrMode")
+    if mode not in PADDR_MODES[schema]:
+        if schema == 1:
+            #  The message driver 2 gave, for the manifests driver 2 read.
+            raise LinkError(
+                "This driver requires runtime PADDR resolution "
+                f"(manifest={mode})")
+        raise LinkError(
+            f"Unsupported paddrMode {mode!r} for manifest schema {schema} "
+            f"(known: {', '.join(PADDR_MODES[schema])})")
+    if schema >= 2:
+        for key, required in (("linkBaseFlags", True),
+                              ("linkTailFlags", False)):
+            value = manifest.get(key)
+            if value is None and not required:
+                continue
+            if not isinstance(value, list) or \
+                    not all(isinstance(flag, str) for flag in value):
+                raise LinkError(
+                    f"Manifest schema {schema} needs {key} as a list of "
+                    f"strings (manifest={value!r})")
+    return manifest
+
+
 def load_manifest(stage: Path) -> dict:
     manifest_path = stage / "link-manifest.json"
     if not manifest_path.is_file():
         raise LinkError(f"Prebuilt stage is incomplete: {manifest_path}")
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if int(manifest.get("schema", 0)) != MANIFEST_SCHEMA:
-        raise LinkError(f"Unsupported manifest schema: {manifest.get('schema')}")
-    if manifest.get("paddrMode") != "runtime-mmu":
-        raise LinkError(
-            "This driver requires runtime PADDR resolution "
-            f"(manifest={manifest.get('paddrMode')})")
-    return manifest
+    return validate_manifest(
+        json.loads(manifest_path.read_text(encoding="utf-8")))
+
+
+def link_base_flags(manifest: dict) -> list[str]:
+    """What goes right after the compiler driver."""
+    if int(manifest.get("schema", 0)) >= 2:
+        return list(manifest["linkBaseFlags"])
+    return list(SCHEMA1_LINK_BASE_FLAGS)
+
+
+def link_tail_flags(manifest: dict) -> list[str]:
+    """What goes at the very end of the link."""
+    if int(manifest.get("schema", 0)) >= 2 and \
+            manifest.get("linkTailFlags") is not None:
+        return list(manifest["linkTailFlags"])
+    return list(SCHEMA1_LINK_TAIL_FLAGS)
 
 
 class ArduinoObjects(NamedTuple):
@@ -313,8 +437,7 @@ def build_link_command(manifest: dict, stage: Path, sdk: dict[str, Path],
                        expand, archive: str | None = None) -> list[str]:
     command = [
         str(sdk["gcc"]),
-        "-nostdlib",
-        "-mlongcalls",
+        *link_base_flags(manifest),
         "-Wl,--gc-sections",
         "-Wl,--allow-multiple-definition",
         "-Wl,-T," + str(stage / manifest["xipLinkerScript"]),
@@ -331,7 +454,7 @@ def build_link_command(manifest: dict, stage: Path, sdk: dict[str, Path],
     if archive:
         command += [archive]
     command += [expand(flag) for flag in manifest.get("linkLibGroup", [])]
-    command += ["-lgcc", "-lc"]
+    command += link_tail_flags(manifest)
     return command
 
 
@@ -570,6 +693,291 @@ def write_partition_table(csv_path: Path, bin_path: Path) -> None:
     print(f"Wrote {len(entries)} partitions to {bin_path}")
 
 
+#
+#  fixed-vma image checks (C-1 .. C-8).
+#
+#  A runtime-mmu (Xtensa) image maps itself at boot, so a mistake in its
+#  layout shows up as its own boot code failing. A fixed-vma image is laid
+#  out by esptool from the ELF section headers and mapped by the ESP-IDF
+#  second-stage bootloader, which asserts its own conditions on the segment
+#  list - and a bootloader assert on a board with no console attached looks
+#  like a board that does nothing. So the conditions are checked here, on the
+#  bytes that would be flashed, and a violation stops the build with the
+#  condition named. Each condition cites the bootloader source it comes from
+#  (ESP-IDF v5.5.4, the version the M5Stack core 3.3.8 bundles):
+#
+#    C-1  exactly two segments are mapped from flash
+#         (bootloader_utility.c:836,843: assert(rom_index < 2) while
+#          collecting, assert(rom_index == 2) after)
+#    C-2  segment #0 begins with ESP_APP_DESC_MAGIC_WORD, 0xABCD5432
+#         (esp_image_format.c:767-777 reads segment #0 as esp_app_desc_t)
+#    C-3  every mapped segment has file_offset % page == vaddr % page
+#         (esp_image_format.c:873-880; the app is flashed at APP_FLASH_OFFSET,
+#          a multiple of the page, so the offset inside the image is what
+#          the offset in flash is, modulo the page)
+#    C-4  the entry point lies in a segment the image actually carries
+#    C-5  no RAM segment reaches the bootloader's own iram_loader_seg
+#         (loading over it kills the loader; bootloader.ld asserts the
+#          address)
+#    C-6  every RAM segment's bytes equal the ELF .data bytes at that address
+#         (esptool builds segments from section headers; this is the direct
+#          check that .data went in with its contents, and it fails closed
+#          when either .data or the RAM segment list is empty)
+#    C-7  the two mapped segments' MMU page ranges do not overlap
+#    C-8  the image fits the app partition it is flashed to
+#         (the length comes from the build's partitions.csv, not a constant:
+#          a changed partition scheme must move this check with it)
+#
+#  Unit tests build synthetic images that break one condition at a time and
+#  confirm the check names it; a check that cannot be made to fail is not one.
+#
+
+class ImageLayout(NamedTuple):
+    """Where a chip's bootloader expects a fixed-vma image to sit."""
+
+    #  CONFIG_MMU_PAGE_SIZE of the bootloader the M5Stack core ships.
+    page: int
+    #  [low, high) of the flash-mapped (IROM = DROM) window.
+    drom: tuple[int, int]
+    #  [low, high) of internal SRAM.
+    iram: tuple[int, int]
+    #  Start of the bootloader's iram_loader_seg; the app's RAM must end
+    #  below it.
+    loader_seg: int
+
+
+#  esp32c6: soc.h:154-165 (SOC_IROM_LOW 0x42000000, 256 pages of 64 KB;
+#  SOC_IRAM_LOW/HIGH 0x40800000/0x40880000), bootloader.ld:48
+#  (bootloader_iram_loader_seg_start == 0x4086E610), sdkconfig of
+#  esp32c6-libs 3.3.8 (CONFIG_MMU_PAGE_SIZE=0x10000).
+FIXED_VMA_LAYOUTS = {
+    "esp32c6": ImageLayout(page=0x10000,
+                           drom=(0x42000000, 0x43000000),
+                           iram=(0x40800000, 0x40880000),
+                           loader_seg=0x4086E610),
+}
+
+IMAGE_MAGIC = 0xE9
+IMAGE_HEADER_SIZE = 24          # 8-byte header plus the 16-byte extended one
+APP_DESC_MAGIC = 0xABCD5432
+
+
+def fixed_vma_layout(chip: str) -> ImageLayout:
+    if chip not in FIXED_VMA_LAYOUTS:
+        raise LinkError(
+            f"paddrMode fixed-vma is not supported for {chip}: this driver "
+            "knows the bootloader layout of "
+            + ", ".join(FIXED_VMA_LAYOUTS) + " only")
+    return FIXED_VMA_LAYOUTS[chip]
+
+
+class ImageSegment(NamedTuple):
+    index: int
+    load: int
+    file_offset: int
+    length: int
+
+
+class ImageSegments(NamedTuple):
+    entry: int
+    mapped: list
+    ram: list
+    pad: list
+
+
+def parse_image_segments(image: bytes, layout: ImageLayout) -> ImageSegments:
+    """Split an esp_image into its segments by where each one loads."""
+    if len(image) < IMAGE_HEADER_SIZE or image[0] != IMAGE_MAGIC:
+        raise LinkError("C-0: the image does not start with the esp_image "
+                        f"magic 0x{IMAGE_MAGIC:02x}")
+    _, count, _, _, entry = struct.unpack("<BBBBI", image[:8])
+    offset = IMAGE_HEADER_SIZE
+    mapped, ram, pad = [], [], []
+    for index in range(count):
+        if offset + 8 > len(image):
+            raise LinkError(f"C-0: segment {index} header runs past the image")
+        load, length = struct.unpack("<II", image[offset:offset + 8])
+        data_offset = offset + 8
+        if data_offset + length > len(image):
+            raise LinkError(f"C-0: segment {index} data runs past the image")
+        segment = ImageSegment(index, load, data_offset, length)
+        if layout.drom[0] <= load < layout.drom[1]:
+            mapped.append(segment)
+        elif load < 0x10000000:
+            #  esptool inserts these (load address 0) to keep the mapped
+            #  segments page-congruent; the bootloader skips them.
+            pad.append(segment)
+        else:
+            ram.append(segment)
+        offset = data_offset + length
+    return ImageSegments(entry, mapped, ram, pad)
+
+
+def elf_section(elf: bytes, name: str) -> tuple[int, bytes] | None:
+    """(sh_addr, bytes) of a PROGBITS section of a 32-bit little-endian ELF.
+
+    Read from the section headers directly rather than through objcopy and
+    readelf, so the check needs no tool beyond the driver itself and can be
+    exercised on a synthetic ELF.
+    """
+    if elf[:4] != b"\x7fELF" or elf[4] != 1 or elf[5] != 1:
+        raise LinkError("C-6: the ELF is not a 32-bit little-endian ELF")
+    (shoff, shentsize, shnum,
+     shstrndx) = struct.unpack("<I", elf[32:36]) + struct.unpack(
+        "<HHH", elf[46:52])
+    if shnum == 0 or shstrndx >= shnum:
+        raise LinkError("C-6: the ELF has no section headers")
+
+    def header(index: int) -> tuple:
+        start = shoff + index * shentsize
+        return struct.unpack("<IIIIIIIIII", elf[start:start + 40])
+
+    _, _, _, _, str_offset, str_size, _, _, _, _ = header(shstrndx)
+    strings = elf[str_offset:str_offset + str_size]
+    for index in range(shnum):
+        sh_name, sh_type, _, sh_addr, sh_offset, sh_size, *_ = header(index)
+        end = strings.find(b"\0", sh_name)
+        if strings[sh_name:end].decode("ascii", "replace") != name:
+            continue
+        if sh_type != 1:        # SHT_PROGBITS
+            continue
+        return sh_addr, elf[sh_offset:sh_offset + sh_size]
+    return None
+
+
+def app_partition_length(csv_path: Path,
+                         flash_offset: int = APP_FLASH_OFFSET) -> int:
+    """Size of the app partition the image is flashed to.
+
+    The M5Stack recipes write the application at flash_offset regardless of
+    the partition scheme, so the partition is found by that offset. No
+    partition there, or no partitions.csv, is a failure: C-8 cannot be
+    checked and must not be reported as passed.
+    """
+    if not csv_path.is_file():
+        raise LinkError(f"C-8: partitions.csv was not found: {csv_path}")
+    entries = partition_table_from_csv(csv_path.read_text(encoding="utf-8"))
+    for entry in entries:
+        if entry.type == PARTITION_APP_TYPE and entry.offset == flash_offset:
+            return entry.size
+    raise LinkError(
+        f"C-8: {csv_path} has no app partition at 0x{flash_offset:x}, where "
+        "the image is flashed")
+
+
+def check_fixed_vma_image(image: bytes, elf: bytes, layout: ImageLayout,
+                          app_length: int) -> list[str]:
+    """Check an esp_image against the bootloader's conditions C-1 to C-8.
+
+    Returns the lines to report on success; raises LinkError naming the
+    condition on the first failure.
+    """
+    page = layout.page
+    if APP_FLASH_OFFSET % page:
+        raise LinkError(
+            f"C-3: the app flash offset 0x{APP_FLASH_OFFSET:x} is not a "
+            f"multiple of the MMU page 0x{page:x}, so offsets inside the "
+            "image do not stand for offsets in flash")
+    segments = parse_image_segments(image, layout)
+    entry, mapped, ram, pad = segments
+    lines = [f"fixed-vma image: segments={len(mapped) + len(ram) + len(pad)} "
+             f"entry=0x{entry:08x} mapped={len(mapped)} ram={len(ram)} "
+             f"pad={len(pad)}"]
+    for kind, group in (("mapped", mapped), ("ram", ram), ("pad", pad)):
+        for seg in group:
+            lines.append(f"  {kind:<6} seg{seg.index} load=0x{seg.load:08x} "
+                         f"file_offset=0x{seg.file_offset:06x} "
+                         f"len={seg.length}")
+
+    #  C-1
+    if len(mapped) != 2:
+        raise LinkError(
+            f"C-1: {len(mapped)} segment(s) map from flash; the bootloader "
+            "asserts exactly 2 (bootloader_utility.c: rom_index == 2)")
+    #  C-2
+    if mapped[0].index != 0:
+        raise LinkError("C-2: segment #0 is not a flash-mapped segment, but "
+                        "the app descriptor is read from segment #0")
+    word = struct.unpack("<I", image[mapped[0].file_offset:
+                                     mapped[0].file_offset + 4])[0]
+    if word != APP_DESC_MAGIC:
+        raise LinkError(
+            f"C-2: segment #0 starts with 0x{word:08x}, not the app "
+            f"descriptor magic 0x{APP_DESC_MAGIC:08x}")
+    #  C-3
+    for seg in mapped:
+        if seg.file_offset % page != seg.load % page:
+            raise LinkError(
+                f"C-3: seg{seg.index} is not page-congruent: file_offset % "
+                f"page = 0x{seg.file_offset % page:x}, vaddr % page = "
+                f"0x{seg.load % page:x} (page 0x{page:x})")
+    #  C-4
+    if not any(seg.load <= entry < seg.load + seg.length
+               for seg in mapped + ram):
+        raise LinkError(
+            f"C-4: entry 0x{entry:08x} lies in no segment the image carries")
+    #  C-5
+    for seg in ram:
+        if not (layout.iram[0] <= seg.load < layout.iram[1]):
+            raise LinkError(
+                f"C-5: ram seg{seg.index} loads at 0x{seg.load:08x}, outside "
+                "internal SRAM")
+        end = seg.load + seg.length
+        if end > layout.loader_seg:
+            raise LinkError(
+                f"C-5: ram seg{seg.index} ends at 0x{end:08x}, inside the "
+                f"bootloader's iram_loader_seg (0x{layout.loader_seg:08x})")
+    #  C-6
+    data = elf_section(elf, ".data")
+    if data is None or not data[1]:
+        raise LinkError(
+            "C-6: the ELF has no non-empty .data section; the linker script "
+            "is expected to place the kernel's initialized data there, so "
+            "an empty one means the check cannot be made, not that it passed")
+    data_vma, data_bytes = data
+    if not ram:
+        raise LinkError(
+            "C-6: the image carries no RAM segment although the ELF .data is "
+            f"{len(data_bytes)} bytes; esptool dropped it")
+    for seg in ram:
+        offset = seg.load - data_vma
+        if offset < 0 or offset + seg.length > len(data_bytes):
+            raise LinkError(
+                f"C-6: ram seg{seg.index} [0x{seg.load:08x},+{seg.length}) "
+                f"is not within the ELF .data [0x{data_vma:08x},"
+                f"+{len(data_bytes)})")
+        expected = data_bytes[offset:offset + seg.length]
+        actual = image[seg.file_offset:seg.file_offset + seg.length]
+        if actual != expected:
+            raise LinkError(
+                f"C-6: ram seg{seg.index} differs from the ELF .data bytes "
+                f"at 0x{seg.load:08x} ({seg.length} bytes)")
+        lines.append(f"  C-6 OK: ram seg{seg.index} equals ELF "
+                     f".data[0x{offset:x}:0x{offset + seg.length:x}]")
+    #  C-7
+    def page_range(seg: ImageSegment) -> tuple[int, int]:
+        return (seg.load & ~(page - 1),
+                (seg.load + seg.length - 1) & ~(page - 1))
+
+    (lo0, hi0), (lo1, hi1) = page_range(mapped[0]), page_range(mapped[1])
+    if not (hi0 < lo1 or hi1 < lo0):
+        raise LinkError(
+            f"C-7: seg{mapped[0].index} pages [0x{lo0:08x},0x{hi0:08x}] and "
+            f"seg{mapped[1].index} pages [0x{lo1:08x},0x{hi1:08x}] overlap")
+    lines.append(f"  C-7 OK: seg{mapped[0].index} pages [0x{lo0:08x},"
+                 f"0x{hi0:08x}] and seg{mapped[1].index} pages "
+                 f"[0x{lo1:08x},0x{hi1:08x}] are disjoint")
+    #  C-8
+    if len(image) > app_length:
+        raise LinkError(
+            f"C-8: the image is {len(image)} bytes, over the app partition's "
+            f"{app_length} bytes by {len(image) - app_length}")
+    lines.append(f"  C-8 OK: image {len(image)}/{app_length} bytes "
+                 f"({app_length - len(image)} free)")
+    lines.append("fixed-vma image: C-1 to C-8 satisfied")
+    return lines
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Link a prebuilt FMP3 stage into the XIP image.")
@@ -581,7 +989,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="{build.project_name}, e.g. Fmp3Minimal.ino")
     parser.add_argument("--output-directory", default="",
                         help="work directory (default: <build-path>/fmp3-prebuilt-link)")
-    parser.add_argument("--gcc", default="", help="xtensa-esp32s3-elf-gcc")
+    parser.add_argument("--gcc", default="", help="the stage chip's gcc driver")
     parser.add_argument("--esptool", default="", help="esptool executable")
     parser.add_argument("--sdk-ld", default="", help="SDK ld directory")
     parser.add_argument("--sdk-lib", default="", help="SDK lib directory")
@@ -636,7 +1044,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     manifest = load_manifest(stage)
-    sdk = resolve_sdk(args)
+    sdk = resolve_sdk(args, manifest["chip"])
 
     work = Path(args.output_directory) if args.output_directory else (
         build_path / "fmp3-prebuilt-link")
@@ -655,6 +1063,17 @@ def main(argv: list[str] | None = None) -> int:
          "--flash-freq", manifest["flashFreq"],
          "--flash-size", args.flash_size or manifest["flashSize"],
          "-o", "app_xip.bin", "fmp_xip.elf"], work, "elf2image")
+
+    if manifest["paddrMode"] == PADDR_FIXED_VMA:
+        #  The image goes to flash unchanged, so what the bootloader will
+        #  make of it is decided here. The app partition it must fit in
+        #  comes from the same partitions.csv the partition recipe converts.
+        layout = fixed_vma_layout(manifest["chip"])
+        app_length = app_partition_length(build_path / "partitions.csv")
+        for line in check_fixed_vma_image(
+                (work / "app_xip.bin").read_bytes(),
+                (work / "fmp_xip.elf").read_bytes(), layout, app_length):
+            print(line)
 
     destination_elf = build_path / f"{args.project_name}.elf"
     destination_bin = build_path / f"{args.project_name}.bin"
