@@ -64,6 +64,30 @@ repository:
 When source code is imported or adapted, preserve its file header, record the exact
 source commit, and document the modification boundary here.
 
+## ESP32-C6 (M5NanoC6) port
+
+`ports/m5stack_riscv/runtime` contains the RISC-V chip layer (`arch/riscv_gcc/esp32c6`),
+the M5NanoC6 target layer (`target/m5nanoc6_gcc`), the seam boot glue, and the
+`esp32c6`/`hal_stub_include` configuration headers, selected from the development
+repository `https://github.com/exshonda/fmp3_esp_idf_dev.git` at commit
+`c7fef186d3b98e9046005a3f3ab0f2dfb1a2fdfe` (2026-09-15). That repository is not yet
+public; this follows the same direct-provenance precedent already used for
+`ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2`. Its files remain governed by their
+original TOPPERS / project license headers; the vendored `sdkconfig.h` header carries
+Espressif's Apache License 2.0 header, which is retained unchanged.
+
+The full file-by-file provenance, the exact source path for every file, and the
+boundary and rationale of every modification (SDK path remapping, `.init_array`/
+`.ctors` linker input, and the `TA_FPU` removal) are recorded in
+[`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md);
+this notice does not restate that list. `ports/m5stack_riscv/app/phase3` and
+`ports/m5stack_riscv/runtime/seam/newlib_syscalls.c` were newly written for this
+repository (the former derived from `ports/m5stack_xtensa/app/phase3`), not taken from
+the development repository; see the same provenance file for details. At build time
+the port links Wi-Fi/RISC-V toolchain and SDK headers/libraries supplied by M5Stack
+Arduino core 3.3.8 (`esp32c6-libs`, `esp-rv32`); those archives are not copied into
+the Release ZIP.
+
 ## BlueDroid (ESP-IDF Bluetooth host stack)
 
 `third_party/bluedroid/` — Espressif Systems, Apache License 2.0.
