@@ -171,8 +171,22 @@ def main(argv: list[str] | None = None) -> int:
                         help="build the self-test flavour; use a separate "
                              "--output-directory so the two sets do not "
                              "overwrite each other")
+    #  Extra CMake cache entries for the port's runtime, passed through as
+    #  -DKEY=VALUE after the ones this script sets. Chip-agnostic; the
+    #  configure line is unchanged when it is not given. The first use is
+    #  the C6 port's A1_C6_CPU_FREQ_MHZ=80 fallback (docs/c6-port.md), which
+    #  could not be reached from here before without calling CMake by hand.
+    parser.add_argument("--cmake-define", action="append", default=[],
+                        metavar="KEY=VALUE",
+                        help="additional CMake cache entry for the runtime "
+                             "configure step; repeatable")
     parser.add_argument("--clean", action="store_true")
     args = parser.parse_args(argv)
+    for entry in args.cmake_define:
+        key, separator, _ = entry.partition("=")
+        if not separator or not key:
+            raise SystemExit(
+                f"--cmake-define needs KEY=VALUE, got: {entry}")
     chip = CHIPS[args.chip]
     if args.profiles is None:
         args.profiles = [name for name in SHIPPED_PROFILES
@@ -289,6 +303,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"-DM5UNIFIED_SOURCE_ROOT={m5unified}",
                 f"-DTOPPERS_LIBRARY_SOURCE_ROOT={library_root / 'src'}",
             ]
+        configure += [f"-D{entry}" for entry in args.cmake_define]
 
         print(f"\n=== staging {name} ===", flush=True)
         run(cmake, configure, f"Configuring {name}", env)

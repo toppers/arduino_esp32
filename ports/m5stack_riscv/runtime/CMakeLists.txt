@@ -95,29 +95,44 @@ set(A1_CHIP_ROM_LD esp32c6.rom.ld)
 
 #
 #  ROM linker scripts the sketch link applies, relative to the SDK's ld/
-#  directory (the driver adds -L there). The 13 scripts are what the dev
-#  repository's C6 Wi-Fi build links (target.cmake's two plus the eleven of
-#  a1_c6_stage1.cmake), taken over unchanged so that the wifi-connect stage
-#  of stage 3 links the same set. The dev minimal build links only the first
-#  two; the extra scripts bind libc/libgcc/newlib and Wi-Fi symbols to ROM
-#  addresses with plain assignments, so what a symbol resolves to in the
-#  sketch image is recorded from nm, not assumed (AC-1f). Every name is
-#  checked to exist in the SDK at configure time.
+#  directory (the driver adds -L there), chosen per profile.
 #
-set(A1_ROM_LDS
+#  minimal links exactly the two the dev repository's seam-c6-min links
+#  (target/m5nanoc6_gcc/target.cmake): esp32c6.rom.ld (the ROM's exported
+#  data/functions the chip layer needs) and esp32c6.rom.api.ld (PROVIDE()d
+#  esp_rom_* API). Nothing else, on purpose. The other eleven scripts the
+#  dev Wi-Fi build adds (a1_c6_stage1.cmake: rom.libc, rom.libgcc,
+#  rom.newlib, rom.libc-suboptimal_for_misaligned_mem, rom.version,
+#  riscv rom.api, rom.net80211, rom.pp, rom.phy, rom.systimer, rom.coexist)
+#  bind libc/newlib functions to ROM addresses with plain assignments, and
+#  under the driver's -Wl,--allow-multiple-definition a plain assignment
+#  wins over the toolchain's libc_nano.a silently. The ROM's newlib
+#  (atoi, rand, strtol, printf, malloc, ...) reaches the outside world only
+#  through syscall_table_ptr and _global_impure_ptr, ROM data that the
+#  minimal stage never initializes (no heap, no _sbrk, no reent for the
+#  ROM); a sketch that called such a function would link cleanly and fault
+#  on a NULL table at run time. With the two scripts a sketch either takes
+#  the function from libc_nano.a (newlib objects, honest about what they
+#  need, e.g. _sbrk) or fails to link with an undefined reference - never a
+#  silent ROM win. Measured with a probe sketch; the results are in
+#  docs/c6-port.md (stage 1 record, ROM linker script winners).
+#
+#  The wifi-connect list is stage 3's, together with the libc supply
+#  decision (which of the eleven to take and what supplies the rest); it is
+#  not written here in advance so that nothing links them by accident.
+#  Every name is checked to exist in the SDK at configure time, and the
+#  list goes into the manifest as romLinkerScripts, so the driver links the
+#  same set for every sketch.
+#
+set(A1_ROM_LDS_minimal
     esp32c6.rom.ld
-    esp32c6.rom.api.ld
-    esp32c6.rom.libc.ld
-    esp32c6.rom.libgcc.ld
-    esp32c6.rom.newlib.ld
-    esp32c6.rom.libc-suboptimal_for_misaligned_mem.ld
-    esp32c6.rom.version.ld
-    rom.api.ld
-    esp32c6.rom.net80211.ld
-    esp32c6.rom.pp.ld
-    esp32c6.rom.phy.ld
-    esp32c6.rom.systimer.ld
-    esp32c6.rom.coexist.ld)
+    esp32c6.rom.api.ld)
+if(NOT DEFINED A1_ROM_LDS_${FMP3_RUNTIME_PROFILE})
+    message(FATAL_ERROR
+        "no ROM linker script list for profile '${FMP3_RUNTIME_PROFILE}' "
+        "(A1_ROM_LDS_${FMP3_RUNTIME_PROFILE} is not set)")
+endif()
+set(A1_ROM_LDS ${A1_ROM_LDS_${FMP3_RUNTIME_PROFILE}})
 
 foreach(required_path
         "${FMP3_CORE_ROOT}/CMakeLists.txt"

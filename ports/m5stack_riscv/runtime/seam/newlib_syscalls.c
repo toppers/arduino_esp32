@@ -38,11 +38,15 @@
  *  kernel, so the hooks are terminal: they say what happened on the kernel
  *  log and stop. _write forwards fd 1 and 2 to the kernel's log port so the
  *  "*** stack smashing detected ***" message reaches the console instead of
- *  vanishing. __getreent returns newlib's single global reent
- *  (_impure_ptr): the minimal stage has no per-task reent (the Xtensa port
- *  embeds one in each task context; the C6 arch layer, vendored unchanged
- *  from the development repository, does not), and the only newlib code on
- *  this path that dereferences it is _write_r's errno handling.
+ *  vanishing; any other fd fails with -1 and errno = EBADF, the way a
+ *  syscall reports a descriptor it does not have (newlib's _write_r copies
+ *  errno into the reent it was given, so a caller that looks sees EBADF
+ *  rather than whatever errno held before). __getreent returns newlib's
+ *  single global reent (_impure_ptr): the minimal stage has no per-task
+ *  reent (the Xtensa port embeds one in each task context; the C6 arch
+ *  layer, vendored unchanged from the development repository, does not),
+ *  and the only newlib code on this path that dereferences it is _write_r's
+ *  errno handling.
  *
  *  Defining a hook pulls nothing else in: these are leaves. What pulls the
  *  newlib objects in is the sketch's reference to __stack_chk_fail, and
@@ -57,6 +61,7 @@
  */
 
 #include <stddef.h>
+#include <errno.h>
 #include <t_syslog.h>
 #include "target_syssvc.h"
 
@@ -96,6 +101,7 @@ _write(int fd, const void *buffer, size_t length)
 	size_t index;
 
 	if (fd != 1 && fd != 2) {
+		errno = EBADF;
 		return -1;
 	}
 	for (index = 0; index < length; index++) {
