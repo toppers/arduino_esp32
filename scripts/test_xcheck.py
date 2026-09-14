@@ -281,6 +281,28 @@ def main() -> int:
         expect(failures, "6b nested banner",
                "esp32s3/minimal: MATCH (7 files, 1 skipped)" in out, out)
 
+        #  provenance warnings: a baseline taken at another commit, or on a
+        #  dirty tree, is reported but does not fail the comparison. The
+        #  HEAD warning needs git to answer for this repository; when it
+        #  cannot (no git), the warning is simply not expected.
+        base, cur = make_pair(work / "p1")
+        write_record(base, PAIR_STAGES,
+                     head=xcheck_compare.git_head(xcheck_compare.REPOSITORY)
+                     or "0123456789abcdef" * 2 + "01234567")
+        rc, out = run(base, cur)
+        expect(failures, "provenance same head", rc == 0, f"rc={rc}\n{out}")
+        expect(failures, "provenance same head", "warning:" not in out, out)
+        write_record(base, PAIR_STAGES, head="f" * 40, dirty=True)
+        rc, out = run(base, cur)
+        expect(failures, "provenance warnings", rc == 0, f"rc={rc}\n{out}")
+        expect(failures, "provenance warnings",
+               "baseline: head=ffffffffffff dirty=yes" in out, out)
+        expect(failures, "provenance warnings",
+               "warning: the baseline was taken on a dirty tree" in out, out)
+        if xcheck_compare.git_head(xcheck_compare.REPOSITORY):
+            expect(failures, "provenance warnings",
+                   "differs from the baseline's ffffffffffff" in out, out)
+
         #  guard: objects.rsp differs
         base, cur = make_pair(work / "g1")
         (cur / "esp32s3" / "minimal" / "objects.rsp").write_text(
