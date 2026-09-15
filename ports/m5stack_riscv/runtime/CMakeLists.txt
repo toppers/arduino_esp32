@@ -22,7 +22,9 @@ cmake_minimum_required(VERSION 3.23)
 #    seam_cxx        init_array.cpp (esp_run_init_array for the sketch bridge)
 #    wifi_objects    (wifi-connect) the ESP-IDF OS shim, PHY/Wi-Fi hal sources,
 #                    the six esp-idf originals and the lwIP glue under wifi/
-#                    (second copy of the dev esp/shim, IMPORT_PROVENANCE.md)
+#                    (second copy of the dev esp/shim, IMPORT_PROVENANCE.md),
+#                    plus the Arduino-facing adapter (wifi/adapter) and
+#                    attachInterrupt (arduino/)
 #    fmp3_prebuilt   cmake/prebuilt_stage_c6.cmake -> ${CMAKE_BINARY_DIR}/prebuilt
 #
 #  Build facts come from the dev repository's cmake/a1_c6_stage1.cmake (the
@@ -297,7 +299,12 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         #  cfg INCLUDE("esp_shim.cfg") / INCLUDE("net.cfg") resolve here too.
         "${WIFI_ROOT}/shim"
         "${WIFI_ROOT}/hal_src"
-        "${WIFI_ROOT}/net/port")
+        "${WIFI_ROOT}/net/port"
+        #  The Arduino-facing adapter (toppers_wifi_core.h) and the
+        #  attachInterrupt cfg piece with its constants header
+        #  (arduino_interrupt.cfg / .h; cfg INCLUDE resolves here).
+        "${WIFI_ROOT}/adapter"
+        "${RUNTIME_ROOT}/arduino")
     list(APPEND FMP3_INCLUDE_DIRS ${WIFI_INCLUDE_DIRS})
 
     #  From build_incflags_esp32c6_espidf.txt (TOPPERS_ESP32C6 dropped: chip_stddef.h
@@ -486,6 +493,14 @@ add_dependencies(seam_cxx generate_cfg_gen_files)
 #                   sys_arch port; liblwip.a itself is prebuilt
 #    target         diag_recorder.c (diag_event() the shim and the netif
 #                   call) and target_hrt64.c (target_hrt_get_current64())
+#    wifi/adapter   the Arduino-facing adapter (toppers_fmp3_wifi_* for
+#                   src/ToppersFMP3_WiFi.cpp), the C6 version of the Xtensa
+#                   port's wifi/adapter: one shared bring-up
+#                   (toppers_wifi_core.c, dev C6 order, no WPA callback
+#                   table and no --wrap=esp_supplicant_init = D6), scan,
+#                   connect on the dev netif (D7), and the weak stubs
+#    arduino        attachInterrupt on line 19 through the kernel's
+#                   esp32c6_intmtx_route (S3-4; linked, not yet measured)
 #
 if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     add_library(wifi_objects OBJECT
@@ -519,7 +534,12 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         "${WIFI_ROOT}/net/netif_esp32s3.c"
         "${WIFI_ROOT}/net/port/sys_arch.c"
         "${FMP3_TARGET_DIR}/diag_recorder.c"
-        "${FMP3_TARGET_DIR}/target_hrt64.c")
+        "${FMP3_TARGET_DIR}/target_hrt64.c"
+        "${WIFI_ROOT}/adapter/toppers_wifi_core.c"
+        "${WIFI_ROOT}/adapter/toppers_wifi_scan.c"
+        "${WIFI_ROOT}/adapter/toppers_wifi_connect.c"
+        "${WIFI_ROOT}/adapter/toppers_wifi_optional_stubs.c"
+        "${RUNTIME_ROOT}/arduino/arduino_interrupt.c")
     target_link_libraries(wifi_objects PRIVATE seam_common)
     add_dependencies(wifi_objects generate_cfg_gen_files)
 endif()

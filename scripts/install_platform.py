@@ -132,10 +132,9 @@ def profile_macro(profile: str) -> str:
 EXPECTED_PROFILES = {
     "esp32s3": {"minimal", "m5-unified", "wifi-connect"},
     "esp32": {"minimal", "m5-unified", "wifi-connect"},
-    #  The C6 port is being brought up profile by profile: minimal first,
-    #  wifi-connect once its stage builds. m5-unified never - the M5NanoC6
-    #  has no display.
-    "esp32c6": {"minimal"},
+    #  The C6 port offers minimal and wifi-connect (docs/c6-port.md, D11).
+    #  m5-unified never - the M5NanoC6 has no display.
+    "esp32c6": {"minimal", "wifi-connect"},
 }
 
 #  recipe.size.regex per chip, for a chip whose linker script does not use

@@ -233,3 +233,18 @@ wifi-connect だけが include path に加える（minimal は不変）。
 - `fmp3/target/m5nanoc6_gcc/diag_recorder.c` `target_hrt64.c`: 段1 で target 層ごと同梱済み。
   wifi-connect の `wifi_objects` がコンパイルする（dev と同じ）。
 
+
+## 段3 Task 2（2026-09-15）: adapter の C6 版・`attachInterrupt`・`app/wifi_connect/`（arduino Xtensa port からの派生、dev 由来ではない）
+
+いずれも vendoring ではなく、`ports/m5stack_xtensa` の同名ファイルを写して C6 分岐にしたもの
+（コメントは英語に書き直した）。設計判断は `docs/c6-port.md` の D6 / D7 / S3-1..S3-6。
+
+| 元（arduino Xtensa port） | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `runtime/wifi/adapter/toppers_wifi_core.{h,c}` | `runtime/wifi/adapter/toppers_wifi_core.{h,c}` | **あり** | D6: `g_ic+0x1b4` の WPA コールバック表・`__real_esp_supplicant_init` 経由の auth backend 選択・OPEN 用の `wpa_crypto_funcs` ゼロ化を**持たない**（supplicant は `esp_wifi_init` に任せる。Open AP は段4 まで未検証と明記）。初期化順は dev `esp/app/wifi_sta.c` の C6 経路（`esp_shim_initialize` -> handler -> `esp_shim_coex_adapter_register` -> `wifi_module_enable` -> `esp_wifi_init`）。`sar_periph_ctrl_init` / `esp_bbpll_enable_480m` / `esp_wifi_clock_init_pll`（S3/LX6 専用）を呼ばない。`toppers_wifi_core_has_supplicant()` は定数 true |
+| `runtime/wifi/adapter/toppers_wifi_connect.c` | `runtime/wifi/adapter/toppers_wifi_connect.c` | **あり** | D6: `__wrap_esp_supplicant_init` を持たない。D7: `toppers_netif.h`（Xtensa 型）ではなく dev 型 `netif_esp32s3.h`（`netif_esp32s3_start` / `_notify_link` / `_get_ipaddr`）へ接続。gateway / netmask は lwIP の `netif_default` から読む。`toppers_fmp3_wifi_host_by_name` は `lwip_getaddrinfo` が無い（`liblwip.a` は `LWIP_DNS 0`）ため、数値表記だけ `ip4addr_aton` で解決し名前は失敗値 0 を返す（Low#1）。`SO_RCVTIMEO` は `LWIP_SO_SNDRCVTIMEO_NONSTANDARD=1`（int ms）で渡す |
+| `runtime/wifi/adapter/toppers_wifi_scan.c` | `runtime/wifi/adapter/toppers_wifi_scan.c` | コメントのみ | scan の手順は dev `wifi_sta_c6_scan_run` と同じ。C6 では backend 選択が無いことをコメントに |
+| `runtime/wifi/adapter/toppers_wifi_optional_stubs.c` | `runtime/wifi/adapter/toppers_wifi_optional_stubs.c` | コメントのみ（英訳） | weak な失敗値スタブ（`BUILDING.md`）。記号・戻り値は同一 |
+| `runtime/arduino/arduino_interrupt.{c,cfg,h}` | `runtime/arduino/arduino_interrupt.{c,cfg,h}` | **あり** | S3-4: 線 19、GPIO ソース `ETS_GPIO_INTR_SOURCE`（30）を kernel の `_kernel_esp32c6_intmtx_route` で配線（MAP レジスタ直書きではない）。`hal/gpio_ll.h` の esp32c6 版（`status_high` 系は無い = 32 本未満）。衝突検査は `INTNO_TIMER` / `INTNO_SIO` / `esp_shim_intr_intmtx_lines.h` の範囲 / 18,20,21。未対応モードは失敗（WARNING + attach しない）。段3 はリンクまで、動作は段6 |
+| `app/wifi_connect/phase9_wifi_connect_app.{c,cfg,h}` | `app/wifi_connect/phase9_wifi_connect_app.{c,cfg,h}` | **あり** | `TA_FPU` 除去、`CLASS(CLS_PRC1)`、`INCLUDE("net.cfg")` を追加（dev 型 lwIP の `NET_TSK` / sys_arch プール）。`esp_shim_intr_intmtx.cfg` は CMake が cfg ファイルとして先に渡す |
+| （新規） | `runtime/CMakeLists.txt` の追記 | - | `wifi_objects` に上記 5 TU を追加、`FMP3_INCLUDE_DIRS` に `wifi/adapter` と `arduino`（cfg の INCLUDE 解決） |
