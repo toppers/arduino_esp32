@@ -873,6 +873,8 @@ kernel 表は残るため。
 vendored `wifi/net/netif_esp32s3.c` は dev のデモ用の挙動をそのまま持っている（無改変で写す方針、R12）:
 
 - **DHCP bound のたびに `net: DHCP bound ip=<a.b.c.d> gw=<a.b.c.d>` を LOG_NOTICE で出す**（`netif_status_cb`）。
+  （段5 S5-3 で確定: 出荷物の既定 `TOPPERS_C6_NET_DIAG=OFF` では `net: DHCP bound` のみを出し、
+  `ip=/gw=` の付加・以下の ping・echo は ON のビルドだけ。台本の `dhcp` マーカーは接頭辞一致で両方に一致する。）
 - **DHCP bound 直後にデフォルトゲートウェイへ raw API の ping を 1 回（`ping_init`。停止 API は無く、
   足す側を一度きりにしてある = BL-H-8 の訂正、ソースコメント）**。
 - **`tcpip_init` 完了時に TCP echo / UDP echo サーバ（ポート 7、`tcpecho_raw_init` / `udpecho_raw_init`）を開く**。

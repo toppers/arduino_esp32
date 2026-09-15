@@ -22,9 +22,10 @@
 
 ## 改変の方針
 
-改変は次の 5 種（段1）＋ 段3 の 2 種だけで、いずれも下表に理由を書く（3 と 5 は
-段1 Task 2 の逸脱として reviewer が受理したもの。`docs/c6-port.md`「逸脱の受理」。
-6 と 7 は段3 Task 1 の逸脱で、`docs/c6-port.md` 段3 節に記録する）。
+改変は次の 5 種（段1）＋ 段3 の 2 種 ＋ 段4 の 1 種 ＋ 段5 の 1 種だけで、いずれも下表に
+理由を書く（3 と 5 は段1 Task 2 の逸脱として reviewer が受理したもの。`docs/c6-port.md`
+「逸脱の受理」。6 と 7 は段3 Task 1 の逸脱で、`docs/c6-port.md` 段3 節に記録する。
+8 は段4 Task 0、9 は段5 Task 2 の R12 例外）。
 
 1. **SDK パスの写像**（`target.cmake`）: dev は esp-idf submodule の
    `components/<comp>/...` を include / link するが、arduino_esp32 は「ESP-IDF を
@@ -47,7 +48,10 @@
    `BUILDING.md`「ESP-IDF を複製しない」からの逸脱。dev の C6 Wi-Fi 構成が esp-idf submodule
    から直接コンパイルする 6 本（`.c`）と、`netif_esp32s3.c` が include する lwIP contrib の
    ヘッダ 3 本（M5Stack core の SDK には含まれない）。内容は無改変、Apache-2.0 / BSD-3 の
-   ヘッダを保持。段5 で core の `.a` メンバ + シム案を再評価する（`docs/c6-port.md` D8）。
+   ヘッダを保持。**段5 の判断 S5-2（2026-09-15）: 維持** -- core の `.a` メンバ + `vPort*` シム案は
+   未検証で、段4 の実機実績は vendored 版のもの。再評価の条件は M5Stack core の固定版が
+   動くとき（`BUILDING.md` の例外条項）。なお 9（下記）の既定 OFF では lwIP contrib ヘッダ 3 本は
+   どの TU からも include されない（ON のときだけ使う）が、同梱は維持する。
 7. **ファイル名の変更のみ**（`idf_src/efuse_hal_esp32c6.c`）: esp-idf の `hal/efuse_hal.c` と
    `hal/esp32c6/efuse_hal.c` は同名で、stage は全オブジェクトを 1 つのディレクトリに
    basename で置く（`prebuilt_stage_c6.cmake` が衝突を fatal にする）ため、チップ側を改名した。
@@ -67,6 +71,20 @@
    sha256 で確認）。`lwipopts.h` は `liblwip.a` と stage の TU の両方を決めるので、
    **`lwipopts.h`・`liblwip.a`・`prebuilt/lwip/README.md` は同じ commit で動かす**
    （`docs/c6-port.md` 段3「段4 の入口条件」DNS）。
+9. **dev 診断フックの `TOPPERS_C6_NET_DIAG` 化（段5 Task 2、2026-09-15、判断 S5-3。R12 の例外）**
+   （`runtime/wifi/net/netif_esp32s3.c`）: dev のデモ用フック -- DHCP bound 直後のゲートウェイ
+   ping 鎖（`netif_esp32s3_ping_gateway` / `ping_init`、`net_ping_result`、`ping_stop` の no-op）、
+   `tcpip_init_done` の TCP/UDP echo サーバ（ポート 7、`tcpecho_raw_init` / `udpecho_raw_init`）、
+   `net: DHCP bound ip=%s gw=%s` 行のアドレス部 -- を `#if TOPPERS_C6_NET_DIAG` で包んだ
+   （contrib ヘッダ 3 本の `#include` も同じ条件）。OFF（既定）では `net: DHCP bound` だけを
+   出す（`scripts/capture_c6_usj.sh` の `dhcp` マーカーは接頭辞一致なので両方に一致する）。
+   理由: 出荷するランタイムが利用者に無断で待受けソケットを開き ICMP を送ってはならない。
+   呼出し口を adapter 側で選べる形（`netif_esp32s3_start()` の引数等）は vendored ファイルに
+   無く（ping と echo は `netif_status_cb` / `tcpip_init_done` の内部で無条件）、最小改変は
+   ファイル側の `#if` になった。`netif_esp32s3.h` の `netif_esp32s3_ping_gateway` 宣言は残す
+   （OFF で呼べばリンクエラー = fail-closed）。それ以外の行は dev と同一。CMake option は
+   `runtime/CMakeLists.txt` の `TOPPERS_C6_NET_DIAG`（ON で `-DTOPPERS_C6_NET_DIAG=1`）。
+   段4 の実機記録（`ping gateway -> OK` の回数等）は ON 相当で採ったもの。
 
 ## ファイル一覧
 
@@ -205,7 +223,8 @@ M5Stack core の SDK（`esp32c6-libs/3.3.8/include/lwip/`）は contrib apps を
 
 | dev のパス | arduino のパス | 改変 | 理由 |
 |---|---|---|---|
-| `esp/wifi/net/netif_esp32s3.c` `netif_esp32s3.h` | 同名 | なし | Wi-Fi driver と lwIP を結ぶ netif（名前は S3 由来だがチップ共通） |
+| `esp/wifi/net/netif_esp32s3.c` | 同名 | **あり（段5 Task 2、方針 9）** | Wi-Fi driver と lwIP を結ぶ netif（名前は S3 由来だがチップ共通）。段4 まではバイト同一。2026-09-15 に ping / port-7 echo / `ip=/gw=` を `#if TOPPERS_C6_NET_DIAG`（既定 OFF）で包んだ |
+| `esp/wifi/net/netif_esp32s3.h` | 同名 | なし | 同上のヘッダ（`netif_esp32s3_ping_gateway` の宣言は残す） |
 | `esp/wifi/net/net.cfg` `net_cfg.h` | 同名 | なし | `NET_SEM1..8` / `NET_MBOX1..10` / `NET_TSK`。アプリ cfg が `INCLUDE("net.cfg")` する（Task 2） |
 | `esp/wifi/net/port/sys_arch.c` `port/include/arch/cc.h` `port/include/arch/sys_arch.h` | 同名 | なし | lwIP の OS ポート |
 | `esp/wifi/net/port/include/lwipopts.h` | 同名 | **あり（段4 Task 0、方針 8）** | 段3 時点はバイト同一（`LWIP_DNS 0`）。2026-09-15 に `LWIP_DNS 1` / `MEMP_NUM_SYS_TIMEOUT 9` / `ERANGE` を加えた。`liblwip.a` を建てたときの物と同一でなければならない（本リポジトリの `liblwip.a` はこのファイルで建てた） |

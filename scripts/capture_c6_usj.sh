@@ -140,9 +140,13 @@
 #               (the adapter prints placeholders; any other spelling is a
 #               leak of a neighbour's SSID into the log -- must be 0)
 #    connected  "[WiFiConnect] connected authmode="
-#    dhcp       "net: DHCP bound"                 (netif_esp32s3.c)
+#    dhcp       "net: DHCP bound"                 (netif_esp32s3.c; a prefix:
+#               the shipped stage prints exactly this, a stage built with
+#               TOPPERS_C6_NET_DIAG=ON appends " ip=.. gw=.." - stage 5 S5-3)
 #    dhcpdone   "[WiFiConnect] DHCP completed"    (the adapter's own line)
-#    ping       "net: ping gateway -> OK"        (netif_esp32s3.c, once)
+#    ping       "net: ping gateway -> OK"        (netif_esp32s3.c; only with
+#               TOPPERS_C6_NET_DIAG=ON, so 0 is the expected count for the
+#               shipped stage; the stage 4 counts were taken with it ON)
 #    dnsok      "[WiFiConnect] DNS resolved"
 #    dnsfail    "[WiFiConnect] DNS failed"
 #    tcp        "[WiFiConnect] TCP received="

@@ -349,6 +349,21 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     if(TOPPERS_C6_WIFI_DIAG)
         list(APPEND FMP3_COMPILE_OPTIONS -DA1_C6_WIFI_DIAG=1)
     endif()
+    #  The dev demo's network diagnostics in the vendored wifi/net/
+    #  netif_esp32s3.c: the gateway ping chain started on DHCP bound, the
+    #  TCP/UDP echo servers on port 7, and the ip=/gw= text of the
+    #  "net: DHCP bound" line (stage 5 decision S5-3; the vendored file
+    #  carries the #if blocks, recorded as an R12 exception in
+    #  IMPORT_PROVENANCE.md). Stage 4's hardware record was taken with them
+    #  ON; the shipped runtime must not listen or ping unasked, so OFF.
+    #  OFF also leaves the ping's sys_timeout slot unused (lwipopts.h
+    #  MEMP_NUM_SYS_TIMEOUT margin 1 -> 2; the pool size does not change).
+    option(TOPPERS_C6_NET_DIAG
+        "wifi-connect: dev network diagnostics (gateway ping, port-7 echo servers, ip=/gw= line) (default OFF)"
+        OFF)
+    if(TOPPERS_C6_NET_DIAG)
+        list(APPEND FMP3_COMPILE_OPTIONS -DTOPPERS_C6_NET_DIAG=1)
+    endif()
 
     #  CFG_INT/DEF_INH for the blob's CPU interrupt lines 1..15 (the S3/LX6
     #  line block of esp_shim.cfg is outside TOPPERS_ESP32C6). Before the
@@ -488,9 +503,17 @@ add_dependencies(seam_cxx generate_cfg_gen_files)
 #    wifi/idf_src   the six esp-idf v5.5.4 originals (D8: vendored, a
 #                   recorded deviation from BUILDING.md; the chip efuse_hal.c
 #                   is renamed efuse_hal_esp32c6.c because the stage keeps
-#                   every object in one directory by basename)
+#                   every object in one directory by basename). Stage 5
+#                   decision S5-2: kept as vendored copies. The alternative
+#                   (the core's .a members plus vPort* shims) is unverified,
+#                   and stage 4's hardware record is with these files; the
+#                   condition for re-evaluating is a move of the pinned
+#                   M5Stack core version (BUILDING.md exception clause).
 #    wifi/net       lwIP glue of the dev type (D7): netif_esp32s3.c and the
-#                   sys_arch port; liblwip.a itself is prebuilt
+#                   sys_arch port; liblwip.a itself is prebuilt. The three
+#                   lwIP contrib headers under net/lwip_contrib_include are
+#                   the other half of D8 (S5-2: kept); they are included
+#                   only when TOPPERS_C6_NET_DIAG is ON
 #    target         diag_recorder.c (diag_event() the shim and the netif
 #                   call) and target_hrt64.c (target_hrt_get_current64())
 #    wifi/adapter   the Arduino-facing adapter (toppers_fmp3_wifi_* for

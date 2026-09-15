@@ -38,8 +38,27 @@
 #include "lwip/dhcp.h"
 #include "lwip/ip4_addr.h"
 #include "netif/ethernet.h"
+
+/*
+ *  arduino_esp32 (2026-09-15, stage 5 Task 2, decision S5-3; the R12
+ *  exception is recorded in IMPORT_PROVENANCE.md): the dev demo's
+ *  network diagnostics in this file - the gateway ping chain started on
+ *  DHCP bound, the TCP/UDP echo servers on port 7, and the ip=/gw= text
+ *  of the "DHCP bound" line - compile only with TOPPERS_C6_NET_DIAG=1
+ *  (runtime/CMakeLists.txt option TOPPERS_C6_NET_DIAG, default OFF). A
+ *  shipped Arduino runtime must not open listening sockets or send ICMP
+ *  unasked. Stage 4's hardware record was taken with them ON. Every
+ *  #if TOPPERS_C6_NET_DIAG block below is that change; the rest of the
+ *  file is the dev original. The "net: DHCP bound" prefix is kept in
+ *  both arms (scripts/capture_c6_usj.sh counts it).
+ */
+#ifndef TOPPERS_C6_NET_DIAG
+#define TOPPERS_C6_NET_DIAG	0
+#endif
+#if TOPPERS_C6_NET_DIAG
 #include "tcpecho_raw.h"
 #include "udpecho_raw.h"
+#endif
 
 #include "esp_wifi.h"
 #include "esp_private/wifi.h"
@@ -48,7 +67,9 @@
 #include "esp_shim.h"
 #include "net_cfg.h"
 #include "netif_esp32s3.h"
+#if TOPPERS_C6_NET_DIAG
 #include "ping.h"
+#endif
 #include "diag_recorder.h"		/* 常設recorder基盤（クラッシュ/ハング診断） */
 
 static struct netif	s_netif;
@@ -158,6 +179,7 @@ netif_esp32s3_init(struct netif *netif)
 	return(ERR_OK);
 }
 
+#if TOPPERS_C6_NET_DIAG
 /*
  *  ---- ping（lwip契約のcontrib/apps/ping．PING_USE_SOCKETS=0固定
  *  ＝raw API版．sys_timeoutベースでtcpip_thread内蔵のタイマ処理から
@@ -199,6 +221,7 @@ netif_esp32s3_ping_gateway(void)
 	s_ping_started = true;
 	ping_init(netif_ip4_gw(&s_netif));
 }
+#endif /* TOPPERS_C6_NET_DIAG */
 
 /*
  *  ---- DHCP完了検出（ポーリング不要．netifのアドレスが変化する度に
@@ -207,16 +230,26 @@ netif_esp32s3_ping_gateway(void)
 static void
 netif_status_cb(struct netif *netif)
 {
+#if TOPPERS_C6_NET_DIAG
 	char	ip_buf[16], gw_buf[16];
+#endif
 
 	if (s_ip_reported || ip4_addr_isany_val(*netif_ip4_addr(netif))) {
 		return;
 	}
+#if TOPPERS_C6_NET_DIAG
 	(void) ip4addr_ntoa_r(netif_ip4_addr(netif), ip_buf, sizeof(ip_buf));
 	(void) ip4addr_ntoa_r(netif_ip4_gw(netif), gw_buf, sizeof(gw_buf));
 	syslog(LOG_NOTICE, "net: DHCP bound ip=%s gw=%s", ip_buf, gw_buf);
+#else
+	/*  S5-3: no addresses on the console in the shipped runtime (the
+	 *  sketch reads them through WiFi.localIP() etc. if it wants them). */
+	syslog(LOG_NOTICE, "net: DHCP bound");
+#endif
 	s_ip_reported = true;
+#if TOPPERS_C6_NET_DIAG
 	netif_esp32s3_ping_gateway();
+#endif
 }
 
 /*
@@ -259,7 +292,7 @@ handle_link_up(void *ctx)
 	HD("handle_link_up 出口");
 }
 
-#if defined(TOPPERS_ESPIDF_SUPPLY)
+#if TOPPERS_C6_NET_DIAG && defined(TOPPERS_ESPIDF_SUPPLY)
 /*  $ESPIDF v5.5.4 の lwip-contrib ping.c は ping_stop() を持たない(TOPPERS が $HAL 版へ
  *  独自追加していた)ので、ここで no-op を置いて link-down 経路のリンクを通している。
  *
@@ -280,7 +313,9 @@ handle_link_down(void *ctx)
 	(void) ctx;
 	HD("handle_link_down 入口（tcpip_thread 文脈）");
 	syslog(LOG_NOTICE, "net: link down");
+#if TOPPERS_C6_NET_DIAG
 	ping_stop();
+#endif
 	HD_U32("ping_stop 後 dhcp_started=", s_dhcp_started ? 1U : 0U);
 	if (s_dhcp_started) {
 		HD_U32("dhcp_release_and_stop 直前 dhcp state=",
@@ -341,12 +376,14 @@ tcpip_init_done(void *arg)
 	netif_set_default(&s_netif);
 	netif_set_status_callback(&s_netif, netif_status_cb);
 
+#if TOPPERS_C6_NET_DIAG
 	/*
 	 *  TCPエコーサーバ（ポート7．IP_ANY_TYPEでbindするためlink up前でも
 	 *  呼べる）
 	 */
 	tcpecho_raw_init();
 	udpecho_raw_init();	/* UDP echo(port7) */
+#endif
 }
 
 /*

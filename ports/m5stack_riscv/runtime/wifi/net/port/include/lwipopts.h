@@ -87,6 +87,9 @@
  *  uses for its other values. The guard keeps a real <errno.h> in charge
  *  wherever one is on the include path (the stage's stub is included
  *  first there and lacks ERANGE, so the guard is not taken today).
+ *  Stage 5 decision S5-5: this block stays. The permanent home of ERANGE
+ *  is the dev repository's hal_stub_include/errno.h (dev-side backlog);
+ *  once it is defined there, this #ifndef is dead code and can go.
  */
 #ifndef ERANGE
 #define ERANGE                      34  /* Math result not representable */
@@ -124,6 +127,15 @@
  *  cyclic timer; 9 keeps the same one-slot margin. Exhausting this pool is
  *  an LWIP_ASSERT in sys_timeout() (the port's assert handler parks the
  *  tcpip thread), so the margin is not optional.
+ *  Stage 5 decision S5-5: 9 stays, as a note only. The margin of 1 is the
+ *  stage 4 arithmetic (7 cyclic timers + the ping chain), not a guarantee:
+ *  whoever adds an lwIP feature that brings a cyclic timer must re-read
+ *  lwip_num_cyclic_timers (.srodata of lw_timeouts.o in liblwip.a) and
+ *  raise this value with it. With the shipped default TOPPERS_C6_NET_DIAG
+ *  OFF (stage 5, S5-3) the ping chain is not started, so the margin is 2
+ *  there; the value is not lowered because the ON build still needs 9.
+ *  This file also configures the prebuilt liblwip.a: a change here that is
+ *  not a comment requires rebuilding the archive (prebuilt/lwip/README.md).
  */
 #define MEMP_NUM_SYS_TIMEOUT        9
 
