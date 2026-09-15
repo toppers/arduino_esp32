@@ -829,9 +829,12 @@ class ImageLayout(NamedTuple):
 #  (CONFIG_MMU_PAGE_SIZE=0x10000; the C5 has no SOC_MMU_PAGE_SIZE_CONFIGURABLE,
 #  so the bootloader uses that value unconditionally). C-9: chip_id
 #  ESP_CHIP_ID_ESP32C5 = 0x0017 (esp_app_format.h:28); the M5Stamp-C5 is
-#  chip revision v1.0 = 100 (dev C5 plan stage 0 efuse readout; the SDK's
-#  CONFIG_ESP32C5_REV_MIN_FULL=100 / CONFIG_ESP_REV_MAX_FULL=199 are what
-#  esptool's defaults write into the header).
+#  chip revision v1.0 = 100 (dev C5 plan stage 0 efuse readout). The rev
+#  window in the header is whatever the esptool in use writes: the core's
+#  esptool 5.2.0 writes min 0 / max 65535 (measured on a Blink build), the
+#  dev repo's IDF esptool wrote 100 / 199 from its sdkconfig; the check
+#  only requires min <= 100 <= max, so on shipped builds the chip_id half
+#  of C-9 is the discriminating one.
 FIXED_VMA_LAYOUTS = {
     "esp32c6": ImageLayout(page=0x10000,
                            drom=(0x42000000, 0x43000000),
