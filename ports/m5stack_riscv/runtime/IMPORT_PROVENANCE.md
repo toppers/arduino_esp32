@@ -394,7 +394,7 @@ C5 版、`.a` 4 本の C5 版、`-DCONFIG_IDF_TARGET_ESP32C5=1` と include の�
 - 取込みの方法（shim）: **dev の差分 `git diff c7fef18 1d96bcba -- esp/shim`（+ `esp/bt/stub/include/
   freertos/FreeRTOS.h` の 1 行）を、パス接頭辞を `ports/m5stack_riscv/runtime/wifi/shim/`
   （`wifi/freertos_stub/freertos/`）に書き換えただけで `git apply` した**（hunk の失敗 0、手編集なし。
-  `stage3/logs/task1-apply-shim-diff.txt`）。適用後の shim 34 本すべてが dev `1d96bcba` の `esp/shim/` と
+  `stage3/logs/task1-apply-shim-diff.txt`）。適用後の shim 33 本すべて（+ `FreeRTOS.h`）が dev `1d96bcba` の `esp/shim/`（`esp/bt/stub/include/freertos/`）と
   `cmp` で同一。dev 側はこの差分を「同じ行数での `#if` 条件の書換え・空行 1 本の `#include` 置換・EOF 追記」
   の 3 形に限っており（dev `.steering/20260915-c5-plan/stage4/README.md` 0-3 節、seam-c6-wifi golden の
   DWARF 感受性のため）、本リポジトリでも同じ差分を当てた結果 C6 の objs が不変であることを X-check で示した。
@@ -465,7 +465,7 @@ defined(TOPPERS_C5_NET_DIAG) && !defined(TOPPERS_C6_NET_DIAG)` で `TOPPERS_C6_N
 
 | 元 | arduino のパス | 改変 | 理由 |
 |---|---|---|---|
-| `runtime/wifi/adapter/toppers_wifi_core.{h,c}` `toppers_wifi_connect.c` `toppers_wifi_scan.c`（C6 版、段3 Task 2） | 同名（C6 / C5 共用） | **あり（C5 分岐）** | `#if !defined(TOPPERS_ESP32C6)` の `#error` を `&& !defined(TOPPERS_ESP32C5)` に。`toppers_wifi_scan.c` は APM 読み戻しを `#if defined(TOPPERS_ESP32C5)` で `esp_wifi_adapter_c5_apm_readback` に切替え（`toppers_wifi_apm_readback` マクロ）、C5 だけ scan 後に `[WiFiScan] bands: 2.4GHz=N 5GHz=M (of K listed)` を 1 行出す（ch > 14 を 5 GHz と数える dev の規則、S3-6: 記録のみ）。初期化順・D6・D7 は C6 と同一（dev の C5 経路 `wifi_sta.c` + `wifi_sta_c5.inc` も同じ順）。C6 の objs は不変（X-check） |
+| `runtime/wifi/adapter/toppers_wifi_core.{h,c}` `toppers_wifi_connect.c` `toppers_wifi_scan.c`（C6 版、段3 Task 2） | 同名（C6 / C5 共用） | **あり（C5 分岐）** | `#if !defined(TOPPERS_ESP32C6)` の `#error` を `&& !defined(TOPPERS_ESP32C5)` に。`toppers_wifi_scan.c` は APM 読み戻しを `#if defined(TOPPERS_ESP32C5)` で `esp_wifi_adapter_c5_apm_readback` に切替え（`toppers_wifi_apm_readback` マクロ）、C5 だけ scan 後に `[WiFiScan] bands: 2.4GHz=N 5GHz=M (of K listed)` を 1 行出す（ch > 14 を 5 GHz と数える dev の規則、S3-6: 記録のみ）。`toppers_wifi_connect.c` は C5 だけ DHCP 完了時に `[C5-HEAP] peak=<bytes> total=<bytes>` を 1 回出す（fix round 1、レビュー F2: `esp_shim_heap_peak_used()` / `esp_shim_heap_total()`、`ESP_SHIM_HEAP_STATS`）。初期化順・D6・D7 は C6 と同一（dev の C5 経路 `wifi_sta.c` + `wifi_sta_c5.inc` も同じ順）。C6 の objs は不変（X-check） |
 | `app/wifi_connect/phase9_wifi_connect_app.{c,cfg,h}`（C6） | `app/wifi_connect_c5/phase9_wifi_connect_app.{c,cfg,h}` | **あり（cfg の INCLUDE 1 行）** | `INCLUDE("arduino_interrupt.cfg")` -> `INCLUDE("arduino_interrupt_c5.cfg")`（線 23）。`.c` / `.h` は C6 の写し。cfg は `#ifdef` で切らない（`BUILDING.md`）ので別ディレクトリにし、`scripts/build_prebuilt_stages.py` の `CHIP_APPLICATIONS[("esp32c5", "wifi-connect")]` が選ぶ |
 | `scripts/build_prebuilt_stages.py` `install_platform.py` `verify_package.py` `test_check_release_artifacts.py` `packaging/release-allowlist.json` `.github/workflows/verify-package.yml` | 同名 | 表の行 | esp32c5 の profile を `minimal` + `wifi-connect` に（6 表）。drift test に `verify_package.BOARD_PROFILES` の写像（段1 レビュー F1）。`--list-builds` 62 -> 68 |
 | `examples/GpioInterrupt/GpioInterrupt.ino` | 同名 | `#elif defined(ARDUINO_M5STACK_STAMP_C5)` の 3 行 | 試験ピン G1（A10。リンクのみ、実機は段4） |

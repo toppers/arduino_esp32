@@ -437,7 +437,7 @@ C5 で違う次の 5 点を足した（台本ヘッダに列挙）:
 - **移し漏れ表**: dev C5 段4 の Task 0 差分 20 項目（port/measure/new/skip）を段3 の AC に写す。
 - 実機の入口: 板は条件 A の Blink のまま。段4 の書込みは同じ台本（`erase 0x0-0x1FFF` は冪等）。
 
-## 段3 の記録（2026-09-16、branch `feature/c5-arduino-stage3`、commit `057fadc`（Task 1）/ `dd5eb6f`（Task 2）+ 記録）
+## 段3 の記録（2026-09-16、branch `feature/c5-arduino-stage3`、commit `057fadc`（Task 1）/ `dd5eb6f`（Task 2）/ `b60ef2d`（記録）+ fix round 1）
 
 `wifi-connect` stage が建ち、`m5stampc5_fmp3:FMP3Runtime=wificonnect` で `WiFiConnect` /
 `WiFiScan` / `Blink` / `LibraryInfo` / `NanoC6Gpio`（no-op）/ `GpioInterrupt`（G1）の 6 例題が
@@ -457,7 +457,7 @@ C5 で違う次の 5 点を足した（台本ヘッダに列挙）:
 | 3a | `build_prebuilt_stages.py --chip esp32c5 --profiles wifi-connect --clean` rc=0、stage（objs/ld/lib/manifest/rsp）、重複定義監査 PASS、`check_host_paths.py` rc=0、manifest の `romLinkerScripts` 13 本 | PASS | `task2-build-wifi-connect-1.txt`（85 objects / 837 strong / 0 duplicated / 0 allowed、`romLinkerScripts` = `esp32c5.rom.ld` `esp32c5.rom.api.ld` + dev `A1_C5_ROM_LD_WIFI_LIST` 11 本の順、eco3 無し、`linkBaseFlags` 末尾 `-Wl,-e,seam_c5_entry_boost`、`lib/` に `.a` 4 本、`check_host_paths` 92 files PASS）。commit 後の `--clean` 再ビルドは 92 本中 91 本 sha 同一（差は `objs/banner.o`、`task2-build-wifi-connect-2-committed.txt`） |
 | 3b | X-check 9/9 MATCH（Task ごとに `--clean` 再ビルド後）。`git diff --stat 755a833 -- ports/m5stack_xtensa src third_party` 空 | PASS | `task1-xcheck.txt`（Task 1 末）、`task2-xcheck.txt`（Task 2 commit 後。`--strict` の差は 9 stage とも `banner.o` のみ。`examples/` の差は `GpioInterrupt.ino` の C5 ピン 5 行だけ） |
 | 3c | platform 再生成で `m5stampc5_fmp3` の FMP3Runtime に `wificonnect`。既存 4 板の `boards.txt` 行と `platform.txt` は不変 | PASS | `task2-install-platform.txt`（5 板・11 stage。`boards.txt` の差は `m5stampc5_fmp3.menu.FMP3Runtime.wificonnect` の 3 行の追加のみ、`platform.txt` / `programmers.txt` は cmp 同一、`listall` に 5 板） |
-| 3d | `m5stampc5_fmp3:FMP3Runtime=wificonnect` で 6 例題 rc=0、C-1..C-9 PASS、最終 ELF の `nm -u` 空 | PASS | `task2-compile-c5-{WiFiConnect,WiFiScan,Blink,LibraryInfo,NanoC6Gpio,GpioInterrupt}-wificonnect.txt`（C-8: WiFiConnect **548816**、WiFiScan **487312**、Blink 111552、LibraryInfo 111600、NanoC6Gpio 111552、GpioInterrupt 113920 / 1310720。C-9 `chip_id=0x0017`、rev 100。WiFiConnect は RAM セグメント 2 本で C-6 とも OK）。`task2-nm-u-elf.txt`（6 本とも `nm -u` 0。総記号 5013 / 4517 / 1610 / 1612 / 1607 / 1632） |
+| 3d | `m5stampc5_fmp3:FMP3Runtime=wificonnect` で 6 例題 rc=0、C-1..C-9 PASS、最終 ELF の `nm -u` 空 | PASS | `task2-compile-c5-{WiFiConnect,WiFiScan,Blink,LibraryInfo,NanoC6Gpio,GpioInterrupt}-wificonnect.txt`（C-8: WiFiConnect **548816**（fix round 1 の `[C5-HEAP]` 行で **548912**、RAM は不変）、WiFiScan **487312**、Blink 111552、LibraryInfo 111600、NanoC6Gpio 111552、GpioInterrupt 113920 / 1310720。C-9 `chip_id=0x0017`、rev 100。WiFiConnect は RAM セグメント 2 本で C-6 とも OK）。`task2-nm-u-elf.txt`（6 本とも `nm -u` 0。総記号 5013 / 4517 / 1610 / 1612 / 1607 / 1632） |
 | 3e | 移し漏れ表: dev C5 供給表の非 blob 記号それぞれに arduino 側の供給元。UNRESOLVED 0 | PASS | `task2-supply-table.md`（203 行）、`task2-nm-u-stage.txt`（130 記号）。内訳は下記「供給表の要約」 |
 | 3f | ROM ld 勝者一覧と、stage obj / `.a` の定義が置換された記号の交差 | PASS | `task2-rom-winners.txt`。内訳は下記「ROM ld 勝者」 |
 | 3g | `size`・RAM 余裕（LENGTH 320,928）。`.iram1` 群が RAM セグメントに載る | PASS | `task2-size.txt`。内訳は下記「size と RAM」 |
@@ -465,7 +465,7 @@ C5 で違う次の 5 点を足した（台本ヘッダに列挙）:
 | 3i | `IMPORT_PROVENANCE.md` に全件、`THIRD_PARTY_NOTICES.md` に A8 の逸脱と `.a` の由来、`wifi/prebuilt/*/README.md` に C5 の sha256 | PASS | `ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`「ESP32-C5 段3 Task 1」「ESP32-C5 段3 Task 2」節（改変方針 10 を追加）、`THIRD_PARTY_NOTICES.md`「C5 段3」節、`wifi/prebuilt/{wpa2,lwip}/README.md` の C5 節 |
 | 3j | minimal の非退行 | PASS | `task2-minimal-sha-compare.txt`（`--clean` 再ビルドで 51 本中 50 本 sha 同一、差は `objs/banner.o`）、`task2-compile-c5-{Blink,LibraryInfo}-minimal.txt`（rc=0、Blink 21664 / 21488 B = 段1 と同じ） |
 | 3k | **C6 wifi-connect の objs が byte 不変**（shim の共有ファイルを触った直後） | PASS | `task1-xcheck-after-shim-diff.txt`（shim 差分の適用直後・CMake を触る前に esp32c6 の 2 stage を `--clean` で建て直し 9/9 MATCH = dev の同行数編集の検証） |
-| 3l | **dev diff の適用が clean** | PASS | `task1-apply-shim-diff.txt`（13 + 1 ファイル `git apply` で hunk 失敗 0、手編集なし。適用後の shim 34 本 + `FreeRTOS.h` が dev `1d96bcba` と `cmp` 同一） |
+| 3l | **dev diff の適用が clean** | PASS | `task1-apply-shim-diff.txt`（13 + 1 ファイル `git apply` で hunk 失敗 0、手編集なし。適用後の shim 33 本 + `FreeRTOS.h`（= 34 本）が dev `1d96bcba` と `cmp` 同一） |
 
 ### 判断 S3-1..S3-6 の結果
 
@@ -534,7 +534,7 @@ RAM/flash 版が走る、逆に pp は ROM 版が増える（dev 段4 3-3 節の
 
 | 例題 | image bytes（C-8） | RAM（LOAD の末尾 - 0x40800000） | 余裕（320,928 B に対し） |
 | --- | --- | --- | --- |
-| WiFiConnect | 548816 / 1310720 | **287,744 B**（89.7%） | **33,184 B** |
+| WiFiConnect | 548816 / 1310720（fix round 1: 548912） | **287,744 B**（89.7%、fix round 1 でも不変） | **33,184 B** |
 | WiFiScan | 487312 / 1310720 | 249,824 B | 71,104 B |
 | Blink / LibraryInfo / NanoC6Gpio（wificonnect） | 111552 / 111600 / 111552 | 46,736 B | 274,192 B |
 | GpioInterrupt（wificonnect） | 113920 | 46,928 B | 274,000 B |
@@ -592,7 +592,13 @@ C6 段3 の Low#1（DNS 名前解決 0）は無い（C6 段4 の DNS 実装と D
   = 採取ログの scan 行を文書へ貼らないこと。
 - **GpioInterrupt（G1）**: `examples/GpioInterrupt` は `ARDUINO_M5STACK_STAMP_C5` で `PROBE_PIN 1`。
   線 23 の配線・`acre_isr` は未計測（C6 W-3 と同型）。
-- **RAM 余裕 33 KB**: 段4 で `[SHIM-HEAP]` の高水位を採る（dev は `ESP_SHIM_HEAP_STATS` の計器を持つ）。
+- **RAM 余裕 33 KB**: 段4 で shim heap の高水位を採る。印字経路は fix round 1（レビュー F2）で足した:
+  `toppers_wifi_connect.c`（C5 のみ、`#if defined(TOPPERS_ESP32C5)`）が `toppers_fmp3_wifi_status()` で
+  DHCP 完了を初めて見たとき（`[WiFiConnect] DHCP completed` の直後）に 1 回だけ
+  **`[C5-HEAP] peak=<bytes> total=<bytes>`**（`esp_shim_heap_peak_used()` / `esp_shim_heap_total()`、
+  stage は `-DESP_SHIM_HEAP_STATS` 付き）を出す。`peak=4294967295` は「一度も malloc されていない」の
+  意味（shim の (size_t)-1 = 測れていない、0 ではない）。scan だけのスケッチでは出ない（接続後の
+  状態遷移が無い）。C6 の出力は不変（X-check 9/9）。
 - **C6 段3 の watch item W-1..W-4**（scan 無しの connect、scan 後の stop->start サイクル、線の未発火、
   `stage_log` の `logtask_flush`）は C5 にもそのまま当てはまる。adapter のマーカー文字列も C6 と同じ
   （`docs/c6-port.md`「adapter が出すマーカー文字列」）+ C5 の `bands:` 行。

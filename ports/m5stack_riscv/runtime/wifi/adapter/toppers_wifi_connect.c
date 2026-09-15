@@ -48,6 +48,33 @@
 #error "toppers_wifi_connect.c (ports/m5stack_riscv) is the ESP32-C6 / ESP32-C5 version"
 #endif
 
+#if defined(TOPPERS_ESP32C5)
+/*
+ * Shim-heap high-water print (C5 plan stage 3 fix round 1, review F2).
+ * The C5 wifi-connect image has 33 KB of static RAM margin (docs/c5-port.md
+ * stage 3), and the only instrument for the dynamic side is the shim's
+ * heap counters (wifi/shim/esp_shim.c, ESP_SHIM_HEAP_STATS, which the
+ * stage passes; the dev demo prints them under TOPPERS_APP_HEAP_REPORT,
+ * a -D this runtime does not carry). One line, once, when the connect
+ * reaches its done state, so a stage 4 capture records it. C5 only:
+ * the C6 objects must not change.
+ */
+extern size_t esp_shim_heap_total(void);
+extern size_t esp_shim_heap_peak_used(void);
+
+static void c5_heap_report_once(void)
+{
+    static bool reported;
+
+    if (!reported) {
+        reported = true;
+        syslog(LOG_NOTICE, "[C5-HEAP] peak=%u total=%u",
+               (uint_t)esp_shim_heap_peak_used(),
+               (uint_t)esp_shim_heap_total());
+    }
+}
+#endif
+
 enum { TOPPERS_WL_IDLE = 0, TOPPERS_WL_NO_SSID = 1,
        TOPPERS_WL_CONNECTED = 3, TOPPERS_WL_CONNECT_FAILED = 4,
        TOPPERS_WL_CONNECTION_LOST = 5, TOPPERS_WL_DISCONNECTED = 6 };
@@ -263,6 +290,9 @@ uint8_t toppers_fmp3_wifi_status(void)
                    (uint_t)address);
             stage_log("[WiFiConnect] DHCP completed");
             address_logged = true;
+#if defined(TOPPERS_ESP32C5)
+            c5_heap_report_once();
+#endif
         }
     }
     return connection_status;
