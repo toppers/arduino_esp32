@@ -225,6 +225,119 @@ def check_driver_version(problems: list[str], release: Path, tool: dict,
             print(f"  ok   driver {this_host:<27} {actual}")
 
 
+STAGE_ROOT_NAME = "fmp3-prebuilt"
+MANIFEST_NAME = "link-manifest.json"
+
+
+def platform_contents(archive: Path) -> tuple[dict[str, set[str]], dict[str, str]]:
+    """What the platform archive holds: {chip: {profile, ...}} for every
+    fmp3-prebuilt/<chip>/<profile>/link-manifest.json, and {board: chip}
+    from the build.toppers_chip lines of its boards.txt."""
+    import zipfile
+    stages: dict[str, set[str]] = {}
+    boards: dict[str, str] = {}
+    with zipfile.ZipFile(archive) as handle:
+        for name in handle.namelist():
+            parts = name.split("/")
+            #  <root>/fmp3-prebuilt/<chip>/<profile>/link-manifest.json
+            if (len(parts) == 5 and parts[1] == STAGE_ROOT_NAME
+                    and parts[4] == MANIFEST_NAME):
+                stages.setdefault(parts[2], set()).add(parts[3])
+            elif len(parts) == 2 and parts[1] == "boards.txt":
+                text = handle.read(name).decode("utf-8", errors="replace")
+                for match in re.finditer(
+                        r"^([A-Za-z0-9_]+)\.build\.toppers_chip=([A-Za-z0-9_]+)\s*$",
+                        text, re.MULTILINE):
+                    boards[match.group(1)] = match.group(2)
+    return stages, boards
+
+
+def check_platform_contents(problems: list[str], release: Path,
+                            entry: dict, wanted: dict) -> None:
+    """The stages the archive holds against the allowlist's prebuiltStages
+    table, and the M5Stack tools the index must declare for each chip that
+    ships (chipToolDependencies).
+
+    A chip's board is only as good as its stages and its tools: a stage
+    missing surfaces as a link failure at the user, and a tool missing from
+    toolsDependencies as a compile failure at the first include - on a clean
+    machine only, which is why neither was noticed on the developer's. The
+    C6 board added the second kind (esp-rv32, esp32c6-libs), declared by
+    make_package_index.py only when the C6 stages are packaged; this holds
+    that gate to its word.
+    """
+    table = wanted.get("prebuiltStages")
+    tools_table = wanted.get("chipToolDependencies", {})
+    if not isinstance(table, dict) or not table:
+        print("  --   platform contents                "
+              "not checked (the allowlist has no prebuiltStages table)")
+        return
+    archive = release / str(entry.get("archiveFileName", ""))
+    if not archive.is_file():
+        return  # check_archive already reported it
+    stages, boards = platform_contents(archive)
+    if not stages:
+        problems.append(
+            f"{archive.name} holds no prebuilt stage "
+            f"({STAGE_ROOT_NAME}/<chip>/<profile>/{MANIFEST_NAME}); "
+            "nothing in it can link a sketch")
+        return
+    declared = [(str(d.get("packager", "")), str(d.get("name", "")),
+                 str(d.get("version", "")))
+                for d in entry.get("toolsDependencies", [])]
+    for chip in sorted(stages):
+        before = len(problems)
+        expected = table.get(chip)
+        if expected is None:
+            problems.append(
+                f"{archive.name} holds stages for {chip} "
+                f"({', '.join(sorted(stages[chip]))}), a chip "
+                f"{ALLOWLIST} prebuiltStages does not list. Add the row, or "
+                "leave the chip's stages out of the platform.")
+            continue
+        missing = sorted(set(expected) - stages[chip])
+        extra = sorted(stages[chip] - set(expected))
+        if missing:
+            problems.append(
+                f"{archive.name}: {chip} ships without the "
+                f"{', '.join(missing)} stage(s) {ALLOWLIST} requires; the "
+                "board offers a runtime it cannot link")
+        if extra:
+            problems.append(
+                f"{archive.name}: {chip} ships stage(s) no board offers: "
+                f"{', '.join(extra)} (a stray build directory was packaged)")
+        chip_boards = sorted(b for b, c in boards.items() if c == chip)
+        if not chip_boards:
+            problems.append(
+                f"{archive.name}: {chip} stages are packaged but no board in "
+                "boards.txt has build.toppers_chip=" + chip)
+        for packager, name, version in (
+                (str(t.get("packager", "")), str(t.get("name", "")),
+                 str(t.get("version", "")))
+                for t in tools_table.get(chip, [])):
+            if (packager, name, version) not in declared:
+                problems.append(
+                    f"the index entry for platform {entry.get('version', '?')} "
+                    f"does not declare tool {packager}:{name}@{version}, which "
+                    f"{ALLOWLIST} requires whenever {chip} stages ship. On a "
+                    "machine without it the board installs and then fails at "
+                    "the first include; see CHIP_TOOL_DEPENDENCIES in "
+                    "make_package_index.py.")
+        if len(problems) == before:
+            print(f"  ok   stages {chip:<27} "
+                  f"{' '.join(sorted(stages[chip]))} "
+                  f"(board{'s' if len(chip_boards) > 1 else ''}: "
+                  f"{', '.join(chip_boards)})")
+    for board, chip in sorted(boards.items()):
+        if chip not in stages:
+            problems.append(
+                f"{archive.name}: board {board} names build.toppers_chip="
+                f"{chip}, and the archive holds no {chip} stage")
+    for chip in sorted(set(table) - set(stages)):
+        print(f"  note no {chip} stages in this release; its board and tools "
+              "are not required")
+
+
 def check_version_agreement(problems: list[str], repository: Path,
                             platforms: list[dict]) -> None:
     """The three places a version appears must say the same thing.
@@ -349,6 +462,8 @@ def main(argv: list[str] | None = None) -> int:
     for entry in current:
         check_archive(problems, f"platform {entry.get('version', '?')}",
                       release, entry)
+        check_platform_contents(problems, release, entry,
+                                wanted.get("platformArchive", {}))
     for entry in kept:
         check_kept(problems, f"platform {entry.get('version', '?')}", entry,
                    PROBE, args.skip_url_probe)

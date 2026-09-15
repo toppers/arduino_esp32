@@ -84,17 +84,33 @@ PROFILES = {
     "btclassic": ["BluetoothSPP", "Blink", "LibraryInfo", MULTI_FILE_SKETCH],
 }
 
-#  Profiles only one board offers. The ESP32-S3 has no Bluetooth Classic radio,
-#  so the CoreS3 board has no btclassic menu entry and asking for one fails at
-#  FQBN resolution rather than at the link - a failure that would say nothing
-#  about the code. Skipped, not expected to fail.
-BOARD_ONLY_PROFILES = {"btclassic": "m5core_fmp3"}
+#  board -> the menu options that board offers. Every board the platform
+#  offers is a row here, and verifying one says nothing about another: the
+#  chips have different linker scripts, different ROM symbols and different
+#  Wi-Fi supplicant archives. Which examples an option is checked with is
+#  PROFILES above, the same for every board.
+#
+#  Not every board offers every option, and asking for one it does not have
+#  fails at FQBN resolution rather than at the link - a failure that would
+#  say nothing about the code - so the row, not a "skip" list, decides:
+#    - btclassic is the M5Core's alone: the ESP32-S3 has no Bluetooth Classic
+#      radio, so the CoreS3 and StickS3 boards have no such menu entry
+#      (this row used to be spelled as BOARD_ONLY_PROFILES = {"btclassic":
+#      "m5core_fmp3"}; the Xtensa sets are exactly what that produced).
+#    - the M5NanoC6 (ESP32-C6, RISC-V) offers minimal and wificonnect only:
+#      it has no display, so there is no m5 option (docs/c6-port.md, D11),
+#      and no BR/EDR radio either.
+#  Adding a board is adding a row (the value is a set; the order the builds
+#  run in is that of sorted(PROFILES), unchanged from before the table).
+BOARD_PROFILES = {
+    "m5cores3_fmp3": {"minimal", "m5", "wificonnect"},
+    "m5sticks3_fmp3": {"minimal", "m5", "wificonnect"},
+    "m5core_fmp3": {"minimal", "m5", "wificonnect", "btclassic"},
+    "m5nanoc6_fmp3": {"minimal", "wificonnect"},
+}
 
-#  Every board the platform offers. The package holds both now, and verifying
-#  one says nothing about the other: the two chips have different linker
-#  scripts, different ROM symbols and a different Wi-Fi supplicant archive.
-#  Both were checked to build this same matrix.
-BOARDS = ["m5cores3_fmp3", "m5sticks3_fmp3", "m5core_fmp3"]
+#  Every board the platform offers, in the order they are verified.
+BOARDS = list(BOARD_PROFILES)
 
 PACKAGE = "toppers:esp32"
 
@@ -117,6 +133,36 @@ def multi_file_sketch(work: Path) -> Path:
         "volatile unsigned long helperTicks;\n"
         "void helperTick(void) { ++helperTicks; }\n", encoding="utf-8")
     return sketch
+
+
+def planned_builds(boards, options) -> list[tuple[str, str, str]]:
+    """Every (board, option, example) the arguments select, in build order.
+
+    Board order is the caller's (BOARDS by default); within a board the
+    options run in sorted(PROFILES) order, which is what the run order was
+    before BOARD_PROFILES existed, so summaries stay comparable.
+    """
+    return [(board, option, example)
+            for board in boards
+            for option in sorted(PROFILES)
+            if option in options and option in BOARD_PROFILES[board]
+            for example in PROFILES[option]]
+
+
+def print_plan(plan) -> int:
+    """Print the matrix and the counts it implies; return the total."""
+    print("Planned builds (from BOARD_PROFILES x PROFILES):")
+    total = 0
+    for board in dict.fromkeys(board for board, _, _ in plan):
+        rows = [(option, example) for b, option, example in plan
+                if b == board]
+        options = list(dict.fromkeys(option for option, _ in rows))
+        print(f"  {board:<16} {len(rows):>2} builds: "
+              + " ".join(f"{option}({sum(1 for o, _ in rows if o == option)})"
+                         for option in options))
+        total += len(rows)
+    print(f"  {'total':<16} {total:>2} builds on {len(set(b for b, _, _ in plan))} board(s)")
+    return total
 
 
 class VerifyError(Exception):
@@ -264,8 +310,9 @@ def main() -> int:
     repository = Path(__file__).resolve().parent.parent
     parser = argparse.ArgumentParser(
         description="Verify the Boards Manager package on this machine.")
-    parser.add_argument("--platform-dir", required=True,
-                        help="platform to package and install")
+    parser.add_argument("--platform-dir", default="",
+                        help="platform to package and install (required "
+                             "unless --list-builds)")
     #  Default from library.properties rather than a literal. A literal here is
     #  a second place to remember on every version bump, and forgetting it
     #  builds a package labelled with the old version while bundling the new
@@ -285,7 +332,12 @@ def main() -> int:
     parser.add_argument("--profiles", nargs="*", choices=sorted(PROFILES),
                         default=sorted(PROFILES))
     parser.add_argument("--boards", nargs="*", choices=BOARDS, default=BOARDS,
-                        help="boards to build on; both by default")
+                        help="boards to build on; every board by default")
+    parser.add_argument("--list-builds", action="store_true",
+                        help="print the board/profile/example matrix the "
+                             "options select, with the expected count per "
+                             "board and in total, and exit without "
+                             "packaging, installing or building anything")
     parser.add_argument("--skip-core", action="store_true",
                         help="the M5Stack core is already installed")
     parser.add_argument("--skip-libraries", action="store_true",
@@ -298,6 +350,23 @@ def main() -> int:
                              "an isolated data directory instead of the one the "
                              "IDE uses")
     args = parser.parse_args()
+
+    #  The matrix is fixed before anything runs, so that the count of builds
+    #  at the end can be held against a number derived from the tables
+    #  rather than against whatever happened. A board's row in BOARD_PROFILES
+    #  says which options it has; --profiles narrows that; PROFILES says how
+    #  many sketches each option is checked with.
+    plan = planned_builds(args.boards, args.profiles)
+    expected_total = print_plan(plan)
+    if not plan:
+        #  --boards m5nanoc6_fmp3 --profiles m5 selects nothing; a run that
+        #  builds nothing must not end in PASSED.
+        raise VerifyError("the selected boards offer none of the selected "
+                          "profiles; nothing to build")
+    if args.list_builds:
+        return 0
+    if not args.platform_dir:
+        parser.error("--platform-dir is required")
 
     platform_dir = Path(args.platform_dir).resolve()
     if not (platform_dir / "boards.txt").is_file():
@@ -419,41 +488,37 @@ def main() -> int:
         print("Building every runtime profile on every board")
         results = []
         failures = 0
-        for board in args.boards:
-            for option in args.profiles:
-                if BOARD_ONLY_PROFILES.get(option, board) != board:
-                    continue
-                for example in PROFILES[option]:
-                    label = f"{board}/{option}/{example}"
-                    stem = f"{board}-{option}-{example}"
-                    output = work / f"out-{stem}"
-                    #  MULTI_FILE_SKETCH is generated, not shipped; see
-                    #  multi_file_sketch().
-                    sketch = (multi_file_sketch(work)
-                              if example == MULTI_FILE_SKETCH
-                              else repository / "examples" / example)
-                    print(f"  {label}")
-                    try:
-                        #  No library path: the library is in the platform.
-                        run(cli + ["compile", "-b",
-                                   f"{PACKAGE}:{board}:FMP3Runtime={option}",
-                                   "--build-path", str(work / f"bp-{stem}"),
-                                   "--output-dir", str(output),
-                                   str(sketch)],
-                            f"building {label}", capture=True)
-                    except VerifyError as error:
-                        print(f"    {error}")
-                        results.append((label, "BUILD FAILED", ""))
-                        failures += 1
-                        continue
-                    image = output / f"{example}.ino.bin"
-                    if not image.is_file() or image.stat().st_size < 4096:
-                        results.append((label, "NO IMAGE", ""))
-                        failures += 1
-                        continue
-                    digest = hashlib.sha256(image.read_bytes()).hexdigest()
-                    results.append((label, f"{image.stat().st_size} bytes",
-                                    digest))
+        for board, option, example in plan:
+            label = f"{board}/{option}/{example}"
+            stem = f"{board}-{option}-{example}"
+            output = work / f"out-{stem}"
+            #  MULTI_FILE_SKETCH is generated, not shipped; see
+            #  multi_file_sketch().
+            sketch = (multi_file_sketch(work)
+                      if example == MULTI_FILE_SKETCH
+                      else repository / "examples" / example)
+            print(f"  {label}")
+            try:
+                #  No library path: the library is in the platform.
+                run(cli + ["compile", "-b",
+                           f"{PACKAGE}:{board}:FMP3Runtime={option}",
+                           "--build-path", str(work / f"bp-{stem}"),
+                           "--output-dir", str(output),
+                           str(sketch)],
+                    f"building {label}", capture=True)
+            except VerifyError as error:
+                print(f"    {error}")
+                results.append((label, "BUILD FAILED", ""))
+                failures += 1
+                continue
+            image = output / f"{example}.ino.bin"
+            if not image.is_file() or image.stat().st_size < 4096:
+                results.append((label, "NO IMAGE", ""))
+                failures += 1
+                continue
+            digest = hashlib.sha256(image.read_bytes()).hexdigest()
+            results.append((label, f"{image.stat().st_size} bytes",
+                            digest))
     finally:
         server.shutdown()
 
@@ -468,11 +533,18 @@ def main() -> int:
                                       encoding="utf-8", newline="\n")
         print(f"summary: {args.summary}")
     print()
+    #  Every planned build has a row, one way or the other; a shortfall here
+    #  would mean a build was neither attempted nor recorded, which no row
+    #  above would show.
+    if len(results) != expected_total:
+        print(f"FAILED: {len(results)} builds recorded, {expected_total} "
+              "planned")
+        return 1
     if failures:
         print(f"FAILED: {failures} of {len(results)} builds")
         return 1
     print(f"PASSED: {len(results)} builds from the installed package "
-          f"on {host}")
+          f"on {host} ({expected_total} planned)")
     print("Compare the hashes with a run on another host; they are expected to "
           "match.")
     return 0

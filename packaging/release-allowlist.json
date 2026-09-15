@@ -6,7 +6,7 @@
   "portBaseCommitDate": "2026-08-18",
   "_portPatchesComment": "Empty on purpose. This port is not expressed as a patch series against the baseline: upstream has moved too far for the hunks to carry context, and the port itself was restructured. Treat the baseline commit above as provenance, not as something these sources can be regenerated from.",
   "portPatches": [],
-  "_portCommentC6": "ESP32-C6 (M5NanoC6) port under ports/m5stack_riscv (vendored at stage 1, commit 709b36a; file-by-file record in ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md): its provenance is the PRIVATE development repository directly, the same way the wpa2 archives under ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2 record theirs, because the public snapshot fdd89f8 named above contains no C6 at all (fmp3/arch/riscv_gcc holds esp32p4 only). Replace portBaseRepositoryC6 / portBaseCommitC6 with the public repository and its snapshot #8 commit once that snapshot is published; until then this is the only commit the C6 sources can be compared against. The C6 board is not in the release allowlist entries yet (stage 5); see docs/c6-port.md.",
+  "_portCommentC6": "ESP32-C6 (M5NanoC6) port under ports/m5stack_riscv (vendored at stage 1, commit 709b36a; file-by-file record in ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md; stages 2-4 added the wifi-connect runtime, DNS and the M5NanoC6 board, docs/c6-port.md): its provenance is the PRIVATE development repository directly, the same way the wpa2 archives under ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2 record theirs, because the public snapshot fdd89f8 named above contains no C6 at all (fmp3/arch/riscv_gcc holds esp32p4 only). Replace portBaseRepositoryC6 / portBaseCommitC6 with the public repository and its snapshot #8 commit once that snapshot is published; until then this is the only commit the C6 sources can be compared against. The two commits the C6 provenance records name the SAME sources: portBaseCommitC6 (c7fef18) is what the port and the four prebuilt archives were taken from, and the lwIP archive's README also names 5bdac26e, which is only the dev tree's HEAD on the day that archive was rebuilt with LWIP_DNS 1 (stage 4) - the script, the lwIP sources and the port files it reads are unchanged between the two. What the release carries for the C6 board is the same shape as for the Xtensa boards, and the entries below are chip-neutral on purpose: the runtime SOURCES under ports/m5stack_riscv are not distributed (no ports/ source of any chip is; the platform archive carries prebuilt stages, fmp3-prebuilt/<chip>/<profile>, and the bundled library), the four prebuilt archives under ports/m5stack_riscv/runtime/wifi/prebuilt/{wpa2,lwip}/esp32c6 (Git-tracked, with their READMEs and licenses beside them) reach the user only inside the esp32c6/wifi-connect stage's lib/, and every example is shared across the boards - the examples a C6 profile is verified with are scripts/verify_package.py BOARD_PROFILES x PROFILES. scripts/capture_c6_usj.sh (the development-side flash-and-capture script) is not distributed, like everything else under scripts/. Which stages and which M5Stack tools the C6 board requires is releaseArtifacts.platformArchive below.",
   "portBaseRepositoryC6": "https://github.com/exshonda/fmp3_esp_idf_dev.git",
   "portBaseCommitC6": "c7fef186d3b98e9046005a3f3ab0f2dfb1a2fdfe",
   "portBaseCommitDateC6": "2026-09-15",
@@ -65,7 +65,20 @@
     "platformArchive": {
       "kind": "platform",
       "architecture": "esp32",
-      "fileNamePattern": "toppers-esp32-{version}.zip"
+      "fileNamePattern": "toppers-esp32-{version}.zip",
+      "_prebuiltStagesComment": "chip -> the prebuilt stages (fmp3-prebuilt/<chip>/<profile>/link-manifest.json) the archive must hold for every chip it ships a board for. A chip present in the archive with a profile missing here, or a chip the archive holds that has no row, fails check_release_artifacts.py. A chip in this table that the archive does not hold at all is reported, not failed: whether a chip ships is decided by which stages install_platform.py was given. The same table as the stage check in .github/workflows/verify-package.yml and EXPECTED_PROFILES in scripts/install_platform.py.",
+      "prebuiltStages": {
+        "esp32s3": ["minimal", "m5-unified", "wifi-connect"],
+        "esp32": ["minimal", "m5-unified", "wifi-connect", "bt-classic"],
+        "esp32c6": ["minimal", "wifi-connect"]
+      },
+      "_chipToolDependenciesComment": "chip -> M5Stack tools the current platform entry's toolsDependencies must name whenever the archive holds that chip's stages (R9 of the C6 plan). The Xtensa tools are unconditional in the index and are not listed here; the RISC-V toolchain and the ESP32-C6 SDK are declared by make_package_index.py only when fmp3-prebuilt/esp32c6 is packaged, so that a release without the C6 board does not make every user download them - and this row is what catches the gate silently ceasing to fire while the C6 stages still ship. The values mirror CHIP_TOOL_DEPENDENCIES in scripts/make_package_index.py; scripts/test_check_release_artifacts.py holds the two together.",
+      "chipToolDependencies": {
+        "esp32c6": [
+          {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
+          {"packager": "m5stack", "name": "esp32c6-libs", "version": "3.3.8"}
+        ]
+      }
     },
     "linkDriver": {
       "kind": "tool",

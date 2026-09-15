@@ -43,7 +43,7 @@ env:
 jobs:
   package:
     #
-    #  Builds the platform both boards ship in.
+    #  Builds the platform every board ships in.
     #
     #  This job used to run on Windows and drive New-Fmp3PrebuiltStages.ps1 and
     #  Install-ArduinoIdeIntegration.ps1, PowerShell twins of
@@ -94,11 +94,19 @@ jobs:
           #  "Replacing M5GFX@0.2.27 with M5GFX@0.2.28".
           arduino-cli lib install --no-deps "M5GFX@$M5GFX_VERSION" "M5Unified@$M5UNIFIED_VERSION"
 
-      - name: Build the prebuilt stages for both chips
+      - name: Build the prebuilt stages for every chip
+        #  One call per chip with the default profile set, which
+        #  build_prebuilt_stages.py narrows to what the chip's port can stage
+        #  (esp32s3 / esp32: minimal m5-unified wifi-connect; esp32c6:
+        #  minimal wifi-connect - the M5NanoC6 has no display, so no
+        #  m5-unified). The M5 source paths are passed to every call and used
+        #  only by the profiles that need them. The RISC-V toolchain
+        #  (esp-rv32) and the esp32c6-libs SDK come with the M5Stack core
+        #  installed above, like the Xtensa ones.
         run: |
           sketchbook=$(arduino-cli config get directories.user)
           test -n "$sketchbook" || { echo "arduino-cli did not report directories.user"; exit 1; }
-          for chip in esp32s3 esp32; do
+          for chip in esp32s3 esp32 esp32c6; do
             python scripts/build_prebuilt_stages.py \
               --chip "$chip" \
               --core-version "$CORE_VERSION" \
@@ -115,7 +123,7 @@ jobs:
             --m5unified-source "$sketchbook/libraries/M5Unified/src"
 
       - name: Assemble the platform
-        #  The parent stage root, so both chips' boards go into one platform.
+        #  The parent stage root, so every chip's boards go into one platform.
         run: |
           python scripts/install_platform.py \
             --sketchbook "${{ github.workspace }}/ci-sketchbook" \
@@ -128,19 +136,25 @@ jobs:
         run: |
           root=ci-sketchbook/hardware/toppers/esp32
           test -f "$root/boards.txt" || { echo "no boards.txt"; exit 1; }
-          for board in m5cores3_fmp3 m5sticks3_fmp3 m5core_fmp3; do
+          for board in m5cores3_fmp3 m5sticks3_fmp3 m5core_fmp3 m5nanoc6_fmp3; do
             grep -q "^$board\.name=" "$root/boards.txt" \
               || { echo "missing board: $board"; exit 1; }
           done
-          for chip in esp32s3 esp32; do
-            for p in minimal m5-unified wifi-connect; do
+          #  chip:profiles - what each chip's boards offer, so a stage missing
+          #  here is named now rather than four jobs later. The same table as
+          #  packaging/release-allowlist.json prebuiltStages, which
+          #  check_release_artifacts.py holds the release against.
+          for spec in \
+              "esp32s3:minimal m5-unified wifi-connect" \
+              "esp32:minimal m5-unified wifi-connect bt-classic" \
+              "esp32c6:minimal wifi-connect"; do
+            chip=${spec%%:*}
+            for p in ${spec#*:}; do
               test -f "$root/fmp3-prebuilt/$chip/$p/link-manifest.json" \
                 || { echo "missing stage: $chip/$p"; exit 1; }
             done
           done
           #  esp32 only: the ESP32-S3 has no Bluetooth Classic radio.
-          test -f "$root/fmp3-prebuilt/esp32/bt-classic/link-manifest.json" \
-            || { echo "missing stage: esp32/bt-classic"; exit 1; }
           grep -q "^m5core_fmp3\.menu\.FMP3Runtime\.btclassic=" "$root/boards.txt" \
             || { echo "M5Core does not offer the btclassic menu entry"; exit 1; }
           #  ★if/then, not `grep && { exit 1; }`. Under `set -e` the && form
@@ -150,6 +164,22 @@ jobs:
             echo "CoreS3 must not offer btclassic (it has no BR/EDR radio)"
             exit 1
           fi
+          #  The M5NanoC6 has no display and no BR/EDR radio: neither the m5
+          #  nor the btclassic entry may appear on it, and no esp32c6 stage
+          #  may exist for a profile the board does not offer (a stray stage
+          #  directory would be packaged and distributed for nothing).
+          for key in m5 btclassic; do
+            if grep -q "^m5nanoc6_fmp3\.menu\.FMP3Runtime\.$key=" "$root/boards.txt"; then
+              echo "M5NanoC6 must not offer the $key menu entry"
+              exit 1
+            fi
+          done
+          for p in m5-unified bt-classic all-in-one; do
+            if [ -e "$root/fmp3-prebuilt/esp32c6/$p" ]; then
+              echo "unexpected stage packaged: esp32c6/$p"
+              exit 1
+            fi
+          done
           #  gen_esp32part.exe is not shipped any more, so nothing may depend
           #  on it. The verify jobs cannot catch this: their runners have
           #  python3, so the non-Windows tool definition would still work.
