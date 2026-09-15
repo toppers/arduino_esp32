@@ -68,13 +68,22 @@
 #                  capture window, starting JOURNAL_LEAD_SEC = 30 s before the
 #                  by-id wait so the power-off line is inside it, so the
 #                  power-cycle evidence is self-contained), .sha.txt (sha256
-#                  of what this run wrote).
+#                  of what this run wrote), .jtag.log / .jtag.txt (the JTAG
+#                  liveness probe's raw openocd output and its parsed
+#                  summary; only when the probe ran, see C6_JTAG_ON_SILENT).
 #    LOG_DIR       default directory for OUT
 #                  (default $HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/.steering/
 #                   20260915-c6-arduino-plan/stage2/logs).
 #    CAPTURE_SEC   capture length in seconds (default 60; digits only).
 #    MARKERS       ERE; when it matches the capture, stop early (default empty
 #                  = always capture the full CAPTURE_SEC).
+#    EXTRA_MARKERS `|`-separated FIXED strings (grep -F, not regex; default
+#                  empty). Each is counted (matching lines) in the capture and
+#                  one line "extra: <s1>=<n> <s2>=<n> ..." is printed after
+#                  the standard "markers:" line and appended to .sha.txt;
+#                  empty prints nothing. Meant for an example's own lines,
+#                  e.g. EXTRA_MARKERS='[C6-INTR] VERDICT PASS|[C6-RGB] tx_done'
+#                  (the brackets are literal, which is why it is -F).
 #    DRYRUN=1      identify the DUT read-only, print what WOULD be written and
 #                  the exact esptool command line, write nothing, capture
 #                  nothing. NOTE: the identification enters the ROM download
@@ -95,14 +104,40 @@
 #                  for the by-id node to disappear and reappear (COLD_WAIT_SEC,
 #                  default 120, digits only), records both instants, then
 #                  opens the port.
+#    C6_JTAG_ON_SILENT  (default 1) after the marker count, when COLD=1 AND
+#                  heartbeat=0 (a silent cold run: no output at all), run the
+#                  JTAG liveness probe (below). 0 disables it.
+#    C6_JTAG_FORCE (default 0) 1 runs the probe regardless of the counts --
+#                  the positive control on a healthy warm run (a probe that
+#                  only ever runs on a silent board has never been seen to
+#                  say "alive").
+#    OPENOCD       openocd-esp32 binary for the probe (default
+#                  $HOME/.arduino15/packages/m5stack/tools/openocd-esp32/
+#                  v0.12.0-esp32-20251215/bin/openocd, under
+#                  ARDUINO_DIRECTORIES_DATA; its scripts directory is
+#                  <bin>/../share/openocd/scripts, passed with -s). When the
+#                  binary is missing the probe writes one line "# not run:
+#                  openocd not found at <path>" to .jtag.txt and nothing
+#                  else; PATH is never searched for another openocd.
+#    ELF           the linked ELF the probe reads the address of
+#                  toppers_arduino_loop_calls from (default
+#                  $SKETCH_BUILD/fmp3-prebuilt-link/link/fmp_xip.elf when
+#                  SKETCH_BUILD is set -- fmp3_link.py links there and copies
+#                  it to <sketch>.elf; empty otherwise). nm is the M5Stack
+#                  core's riscv32-esp-elf-nm (newest tools/esp-rv32/<ver>/bin,
+#                  the same rule ESPTOOL uses). Without the ELF, the tool or
+#                  the symbol the probe still reads PC/EP1_CONF/INT_RAW and
+#                  records "loop_calls: symbol unavailable (<why>)".
 #    WIFI_CREDS    credentials shell file for the redact needles (default
 #                  $HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/esp/boot/
 #                  wifi_credentials.sh; absent = no needles).
 #    IDF_PYTHON    python of an ESP-IDF python env that has esp_idf_monitor
 #                  (default: newest $HOME/tools/espressif/python_env/
 #                  idf*_py3.*_env or $HOME/.espressif/python_env/... by sort -V).
-#    C6_MASK_SELFTEST=1  run the redact/mask self-test and the marker-count
-#                  self-test on fixtures and exit. Touches no hardware.
+#    C6_MASK_SELFTEST=1  run the redact/mask self-test, the marker-count
+#                  self-test (EXTRA_MARKERS included) and the JTAG probe's
+#                  decision/parser self-test on fixtures and exit. Touches no
+#                  hardware (openocd is never started).
 #    C6_REDACT_ONLY=1  `C6_REDACT_ONLY=1 bash capture_c6_usj.sh <file>...`
 #                  runs the redact stage (needles from WIFI_CREDS, peer-MAC,
 #                  IPv4, hex address) over existing files in place and checks
@@ -115,6 +150,48 @@
 #                  mistake would be masked into nonsense with no way back.
 #                  C6_REDACT_ANYWHERE=1 lifts the LOG_DIR bound (never the
 #                  git-tracked one) for a log kept elsewhere.
+#
+#  JTAG liveness probe (stage 6 task 2). Two cold runs (stages 2 and 4)
+#  produced NO output at all (heartbeat=0) and came back on the next warm
+#  reset; the capture cannot tell "alive with the USB Serial/JTAG console
+#  stuck" from "hung". The chip's USB-JTAG is a second interface of the same
+#  USB device (303a:1001) and openocd reads memory through it WITHOUT a reset
+#  (the development side did this 6/6 on this board). So, AFTER the monitor
+#  is killed (the CDC-ACM interface is free) and only when wanted
+#  (c6_jtag_wanted: DRYRUN never; C6_JTAG_FORCE=1 always; else COLD=1 and
+#  heartbeat=0 with C6_JTAG_ON_SILENT=1), the script runs, under a 30 s
+#  timeout, capturing stdout+stderr raw to .jtag.log:
+#    openocd -s <scripts> -c "adapter serial <DUT_MAC upper-case>" \
+#            -f board/esp32c6-builtin.cfg -c init -c halt -c "reg pc" \
+#            -c "mdw 0x6000F004" -c "mdw 0x6000F008" [-c "mdw <loop_calls>"] \
+#            -c resume -c "sleep 2000" -c halt -c "reg pc" [-c "mdw <loop_calls>"] \
+#            -c resume -c shutdown
+#  i.e. halt only as long as two reads take, never reset, never flash.
+#  Board pinning is mandatory and fail-closed: `adapter serial` is the FIRST
+#  -c (the USB-JTAG serial of the chip is its base MAC, derived from
+#  DUT_MAC), and afterwards the output MUST contain
+#  "esp_usb_jtag: serial (<that serial>)" -- the development side once had
+#  openocd grab a DIFFERENT board because no serial was given. Without that
+#  line .jtag.txt gets "# REFUSED: openocd did not report the pinned serial",
+#  no value is trusted, and a [C6] warning is printed. Registers:
+#  0x6000F004 = USB_SERIAL_JTAG_EP1_CONF (bit0 WR_DONE, bit1
+#  SERIAL_IN_EP_DATA_FREE = the "data_free" printed, bit2
+#  SERIAL_OUT_EP_DATA_AVAIL), 0x6000F008 = USB_SERIAL_JTAG_INT_RAW (soc/
+#  usb_serial_jtag_reg.h, esp32c6). The parsed sidecar .jtag.txt:
+#    # jtag probe <date> reason=<silent-cold|forced> serial=<pinned> elf=<path or none>
+#    pc1=0x........ pc2=0x........
+#    ep1_conf=0x........ int_raw=0x........   (data_free=<0|1>)
+#    loop_calls: <a> -> <b> delta=<b-a>        (or "symbol unavailable (...)")
+#    verdict: alive | not-advancing | refused | not-run
+#  alive = loop_calls delta > 0; not-advancing = delta == 0, or (symbol
+#  unknown) pc1 == pc2; refused = the pinned serial line is absent; not-run
+#  = no verdict (openocd missing, no output, fewer than two reads, or symbol
+#  unknown and pc moved -- inconclusive; the qualifier in parentheses says
+#  which). The verdict and loop_calls lines go to .sha.txt under "# jtag:".
+#  The probe is evidence, not a gate: it never changes the exit status.
+#  Caveat: if the 30 s timeout kills openocd between halt and resume the
+#  chip stays halted; the next reset or power cycle recovers it (recorded
+#  in .jtag.txt as "openocd rc=124").
 #
 #  Markers counted at the end (strings from src/bridge/ArduinoSketchBridge.cpp,
 #  third_party/fmp3_core/syssvc/banner.c and arch/riscv_gcc/common):
@@ -404,6 +481,178 @@ c6_count_markers() {
 #  The APM readback lines (register values only; no MAC, no IP, no SSID).
 c6_apm_lines() { $GREP -aE 'wifi_adapter\(c6\): apm ' "$1" || true; }
 
+#  ---------------------------------------------------------------- extra markers
+#  EXTRA_MARKERS: `|`-separated FIXED strings, each counted with grep -F
+#  ("[C6-INTR] VERDICT PASS" is a literal, not a bracket expression). Prints
+#    extra: <string1>=<n> <string2>=<n> ...
+#  or nothing when EXTRA_MARKERS is empty. Exercised by C6_MASK_SELFTEST=1.
+EXTRA_MARKERS="${EXTRA_MARKERS:-}"
+c6_count_extra() {
+    local f="$1" s n out=""
+    local -a list=()
+    [ -n "$EXTRA_MARKERS" ] || return 0
+    IFS='|' read -ra list <<< "$EXTRA_MARKERS"
+    for s in ${list[@]+"${list[@]}"}; do
+        [ -n "$s" ] || continue
+        n="$($GREP -acF -- "$s" "$f" || true)"
+        out="$out $s=$n"
+    done
+    [ -z "$out" ] || echo "extra:$out"
+    return 0
+}
+
+#  ---------------------------------------------------------------- jtag probe
+#  Decision (pure; exercised by the selftest):
+#    c6_jtag_wanted <cold> <heartbeat> <force> <dryrun> [<on_silent>=1]
+#  prints yes/no. DRYRUN wins over everything; then C6_JTAG_FORCE; then the
+#  silent-cold rule (COLD=1, heartbeat=0, C6_JTAG_ON_SILENT=1).
+c6_jtag_wanted() {
+    local cold="$1" hb="$2" force="$3" dryrun="$4" on_silent="${5:-1}"
+    if [ "$dryrun" = "1" ]; then echo no; return 0; fi
+    if [ "$force" = "1" ]; then echo yes; return 0; fi
+    if [ "$on_silent" = "1" ] && [ "$cold" = "1" ] && [ "${hb:-0}" = "0" ]; then echo yes; return 0; fi
+    echo no
+}
+
+#  Parser (pure over a file; exercised by the selftest):
+#    c6_jtag_parse <raw openocd log> <loop_calls addr hex or ""> [<why unavailable>]
+#  prints the .jtag.txt body: pc1/pc2, ep1_conf/int_raw (data_free), the
+#  loop_calls line and the verdict line. The pinned serial is $dut_uc. What
+#  it reads (openocd prints command output without the "Info :" prefix):
+#    Info : esp_usb_jtag: serial (9C:13:9E:D3:62:18)   <- the pin check
+#    pc (/32): 0x40800abc                              <- reg pc
+#    0x6000f004: 00000002                              <- mdw (8 hex digits)
+#  Verdicts: alive (delta > 0) / not-advancing (delta == 0, or symbol
+#  unknown and pc1 == pc2) / refused (serial line absent: NOTHING from the
+#  run is trusted, no values are printed) / not-run (no verdict: no output,
+#  fewer than two reads, or symbol unknown and pc moved -- inconclusive).
+#  A missing second read is never "alive".
+c6_jtag_parse() {
+    local raw="$1" addr="${2:-}" why="${3:-no ELF}"
+    local pc1 pc2 ep1 intraw a b free delta n
+    if [ ! -s "$raw" ]; then
+        echo "# no openocd output"
+        echo "loop_calls: not read (no openocd output)"
+        echo "verdict: not-run (no openocd output)"
+        return 0
+    fi
+    if ! $GREP -aqF "esp_usb_jtag: serial ($dut_uc)" "$raw"; then
+        echo "# REFUSED: openocd did not report the pinned serial ($dut_uc); no value from this run is trusted"
+        { $GREP -aF 'esp_usb_jtag: serial (' "$raw" || true; } | sed 's/^/#   seen: /'
+        echo "loop_calls: not trusted (refused)"
+        echo "verdict: refused"
+        return 0
+    fi
+    _nth_hex() {   # <n> <ERE with the value as the last hex run> -> the value or ""
+        $GREP -aoiE "$2" "$raw" | sed -n "${1}p" | $GREP -oiE '[0-9a-f]+$' || true
+    }
+    pc1="$(_nth_hex 1 'pc \(/[0-9]+\): 0x[0-9a-f]+')"
+    pc2="$(_nth_hex 2 'pc \(/[0-9]+\): 0x[0-9a-f]+')"
+    ep1="$(_nth_hex 1 '0x6000f004: [0-9a-f]{8}')"
+    intraw="$(_nth_hex 1 '0x6000f008: [0-9a-f]{8}')"
+    echo "pc1=${pc1:+0x}${pc1:-?} pc2=${pc2:+0x}${pc2:-?}"
+    if [ -n "$ep1" ]; then
+        free=$(( (16#$ep1 >> 1) & 1 ))
+        echo "ep1_conf=0x$ep1 int_raw=${intraw:+0x}${intraw:-?}   (data_free=$free)"
+    else
+        echo "ep1_conf=? int_raw=${intraw:+0x}${intraw:-?}   (data_free=?)"
+    fi
+    if [ -n "$addr" ]; then
+        #  openocd prints the address as 0x%08x, lower case, whatever spelling
+        #  the mdw command was given.
+        n="$(printf '%08x' "$((16#${addr#0x}))")"
+        a="$(_nth_hex 1 "0x${n}: [0-9a-f]{8}")"
+        b="$(_nth_hex 2 "0x${n}: [0-9a-f]{8}")"
+        if [ -z "$a" ] || [ -z "$b" ]; then
+            echo "loop_calls: incomplete (read 1: ${a:-missing}, read 2: ${b:-missing})"
+            echo "verdict: not-run (incomplete: $([ -n "$a" ] && echo second || echo first) read missing)"
+            return 0
+        fi
+        a=$((16#$a)); b=$((16#$b)); delta=$(( (b - a) & 0xFFFFFFFF ))
+        echo "loop_calls: $a -> $b delta=$delta"
+        if [ "$delta" -gt 0 ]; then echo "verdict: alive"; else echo "verdict: not-advancing (loop_calls delta=0)"; fi
+        return 0
+    fi
+    echo "loop_calls: symbol unavailable ($why)"
+    if [ -z "$pc1" ] || [ -z "$pc2" ]; then
+        echo "verdict: not-run (incomplete: $([ -n "$pc1" ] && echo second || echo first) pc read missing)"
+    elif [ "$pc1" = "$pc2" ]; then
+        echo "verdict: not-advancing (loop_calls unknown; pc1 == pc2)"
+    else
+        echo "verdict: not-run (loop_calls unknown; pc moved -- inconclusive)"
+    fi
+    return 0
+}
+
+#  Runner (hardware: the USB-JTAG interface, through openocd only). Writes
+#  $JTAG_LOG (raw) and $JTAG_TXT (parsed), both redacted on exit; appends the
+#  verdict and loop_calls lines to $SHA_TXT under "# jtag:". Never changes
+#  the exit status; never resets, never flashes; never searches PATH.
+c6_jtag_probe() {   # <reason: silent-cold|forced>
+    local reason="$1" elf="${ELF:-}" addr="" why="no ELF" nm="" d scripts rc=0 v
+    local -a cmd=()
+    mkdir -p "$(dirname "$JTAG_TXT")"
+    C6_FILES+=("$JTAG_TXT")
+    if [ ! -x "$OPENOCD" ]; then
+        echo "# not run: openocd not found at $OPENOCD" > "$JTAG_TXT"
+        { echo "# jtag: reason=$reason not run (openocd not found at $OPENOCD)"; echo "verdict: not-run (openocd not found)"; } >> "$SHA_TXT"
+        say "jtag: not run: openocd not found at $OPENOCD (OPENOCD= to point at openocd-esp32; PATH is not searched)"
+        return 0
+    fi
+    #  The symbol address, from the ELF with the core's riscv32-esp-elf-nm.
+    if [ -z "$elf" ] && [ -n "${SKETCH_BUILD:-}" ]; then
+        elf="$SKETCH_BUILD/fmp3-prebuilt-link/link/fmp_xip.elf"
+    fi
+    if [ -n "$elf" ]; then
+        if [ ! -f "$elf" ]; then
+            why="ELF missing: $elf"
+        else
+            d="$(_newest_dir "$ARDUINO_DATA/packages/m5stack/tools/esp-rv32")"
+            nm="${d:+$d/bin/riscv32-esp-elf-nm}"
+            if [ -z "$nm" ] || [ ! -x "$nm" ]; then
+                why="riscv32-esp-elf-nm not found under $ARDUINO_DATA/packages/m5stack/tools/esp-rv32"
+            else
+                addr="$("$nm" "$elf" 2>/dev/null | awk '$3=="toppers_arduino_loop_calls"{print $1; exit}' || true)"
+                case "$addr" in
+                    ''|*[!0-9a-fA-F]*) addr=""; why="symbol toppers_arduino_loop_calls not in $elf" ;;
+                esac
+            fi
+        fi
+    fi
+    scripts="$(dirname "$OPENOCD")/../share/openocd/scripts"
+    #  `adapter serial` FIRST, before the board cfg and init; halt only for
+    #  the reads; resume in between; never reset.
+    cmd=("$OPENOCD" -s "$scripts" -c "adapter serial $dut_uc" -f board/esp32c6-builtin.cfg
+         -c init -c halt -c 'echo {== read 1 ==}' -c 'reg pc' -c 'mdw 0x6000F004' -c 'mdw 0x6000F008')
+    [ -z "$addr" ] || cmd+=(-c "mdw 0x$addr")
+    cmd+=(-c resume -c 'sleep 2000' -c halt -c 'echo {== read 2 ==}' -c 'reg pc')
+    [ -z "$addr" ] || cmd+=(-c "mdw 0x$addr")
+    cmd+=(-c resume -c shutdown)
+    say "==== 4. jtag liveness probe (reason=$reason, serial pinned to $dut_uc, halt/read/resume, no reset) ===="
+    say "  openocd: $OPENOCD"
+    say "  elf: ${elf:-none}  loop_calls: $([ -n "$addr" ] && echo "0x$addr" || echo "unavailable ($why)")"
+    {
+        echo "# jtag probe $(date '+%F %T') reason=$reason serial=$dut_uc elf=${elf:-none}"
+        echo "# openocd: $OPENOCD"
+        printf '# command: '; printf '%q ' "${cmd[@]}"; printf '\n'
+    } > "$JTAG_TXT"
+    C6_FILES+=("$JTAG_LOG")
+    timeout 30 "${cmd[@]}" > "$JTAG_LOG" 2>&1 || rc=$?
+    echo "# openocd rc=$rc$([ "$rc" -eq 124 ] && echo ' (killed by the 30 s timeout; the chip may be left halted -- reset or power-cycle it)')" >> "$JTAG_TXT"
+    c6_jtag_parse "$JTAG_LOG" "$addr" "$why" >> "$JTAG_TXT"
+    {
+        echo "# jtag: reason=$reason serial=$dut_uc openocd rc=$rc"
+        $GREP -aE '^(verdict|loop_calls):' "$JTAG_TXT" || true
+    } >> "$SHA_TXT"
+    v="$($GREP -aE '^verdict:' "$JTAG_TXT" || true)"
+    case "$v" in
+        "verdict: refused"*) say "WARNING: jtag: openocd did not report the pinned serial ($dut_uc); the probe's values are NOT trusted (see $JTAG_LOG)" ;;
+    esac
+    { $GREP -aE '^(pc1=|ep1_conf=|loop_calls:|verdict:)' "$JTAG_TXT" || true; } | sed 's/^/[C6] jtag: /'
+    say "jtag: raw -> $JTAG_LOG  parsed -> $JTAG_TXT"
+    return 0
+}
+
 #  ---------------------------------------------------------------- self-test
 if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     #  Positive controls on fixtures. Touches no hardware, writes only to a
@@ -560,8 +809,90 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     printf 'got ip 192.168.4.23\n' > "$_sd/logs/y.log"
     ( C6_MASK_SELFTEST=0 C6_REDACT_ONLY=1 LOG_DIR="$_sd/logs" WIFI_CREDS="$_sd/no-such-creds.sh" bash "$_self" "$_sd/logs/y.log" >/dev/null 2>&1 ) || _fail "(15b) a file inside LOG_DIR was refused"
     [ "$(cat "$_sd/logs/y.log")" = 'got ip <IPv4>' ] || _fail "(15b) the file inside LOG_DIR was not masked: $(cat "$_sd/logs/y.log")"
+    #  --- (16) EXTRA_MARKERS: fixed strings, counted literally ---
+    _ex="$_sd/extra.log"
+    printf '%s\n' '[C6-INTR] VERDICT PASS edges=10' 'noise C6' '[C6-RGB] tx_done=3' \
+        '[C6-INTR] VERDICT PASS edges=11' '[C6-INTR] VERDICT FAIL' 'C' '6' '[C6] tag' > "$_ex"
+    _el="$(EXTRA_MARKERS='[C6-INTR] VERDICT PASS|[C6-RGB] tx_done' c6_count_extra "$_ex")" || _fail "(16) c6_count_extra returned non-zero"
+    [ "$_el" = 'extra: [C6-INTR] VERDICT PASS=2 [C6-RGB] tx_done=1' ] || _fail "(16) extra line: $_el"
+    #  regex metacharacters are literal: as an ERE "[C6]" matches every line
+    #  holding a C or a 6 (all 8 -- checked here so the discriminator is
+    #  known to discriminate); as a fixed string exactly the one "[C6] tag"
+    [ "$($GREP -acE '[C6]' "$_ex")" -eq 8 ] || _fail "(16) the ERE control does not match all 8 lines"
+    _el="$(EXTRA_MARKERS='[C6]' c6_count_extra "$_ex")" || _fail "(16) c6_count_extra returned non-zero on [C6]"
+    [ "$_el" = 'extra: [C6]=1' ] || _fail "(16) '[C6]' was not counted as a fixed string: $_el"
+    _el="$(EXTRA_MARKERS='' c6_count_extra "$_ex")" || _fail "(16) c6_count_extra returned non-zero on an empty list"
+    [ -z "$_el" ] || _fail "(16) empty EXTRA_MARKERS printed something: $_el"
+    _el="$(EXTRA_MARKERS='absent-string' c6_count_extra "$_ex")" || _fail "(16) c6_count_extra returned non-zero on an absent string"
+    [ "$_el" = 'extra: absent-string=0' ] || _fail "(16) an absent string is not 0: $_el"
+    #  --- (17) probe decision: pure function on (cold heartbeat force dryrun) ---
+    _jw() { [ "$(c6_jtag_wanted "$1" "$2" "$3" "$4" ${5:+"$5"})" = "$6" ] || _fail "(17) c6_jtag_wanted $1 $2 $3 $4${5:+ $5} is not $6"; }
+    _jw 1 0 0 0 '' yes; _jw 1 5 0 0 '' no; _jw 0 0 0 0 '' no; _jw 0 5 1 0 '' yes; _jw 1 0 0 1 '' no; _jw 1 0 1 1 '' no
+    _jw 1 0 0 0 0 no       # C6_JTAG_ON_SILENT=0 disables the silent-cold rule
+    _jw 1 0 1 0 0 yes      # ... but not the forced mode
+    #  --- (18) probe parser on canned openocd output ---
+    _jl="$_sd/jtag.log"
+    _jfix() {   # <serial line or ""> <pc1> <pc2> <read-1 value> <read-2 value or ""> -> fixture
+        {
+            echo 'Open On-Chip Debugger v0.12.0-esp32-20251215 (2025-12-15-18:17)'
+            [ -z "$1" ] || echo "$1"
+            echo 'Info : esp_usb_jtag: Device found. Base speed 40000KHz, div range 1 to 255'
+            echo 'Info : [esp32c6] Target halted, pc=0x40800abc'
+            echo '== read 1 =='
+            echo "pc (/32): $2"
+            echo '0x6000f004: 00000002 '
+            echo '0x6000f008: 00000000 '
+            echo "0x40800123: $4 "
+            echo '== read 2 =='
+            echo "pc (/32): $3"
+            [ -z "$5" ] || echo "0x40800123: $5 "
+            echo 'shutdown command invoked'
+        } > "$_jl"
+    }
+    _jfix "Info : esp_usb_jtag: serial ($dut_uc)" 0x40800abc 0x40800def 000003e8 000007d0
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) c6_jtag_parse returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'loop_calls: 1000 -> 2000 delta=1000' || _fail "(18) loop_calls line: $_jp"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: alive' || _fail "(18) verdict is not alive: $_jp"
+    printf '%s\n' "$_jp" | $GREP -qxF 'pc1=0x40800abc pc2=0x40800def' || _fail "(18) pc line: $_jp"
+    printf '%s\n' "$_jp" | $GREP -qxF 'ep1_conf=0x00000002 int_raw=0x00000000   (data_free=1)' || _fail "(18) ep1_conf line: $_jp"
+    #  the address spelling is normalized (upper case, no leading zeros)
+    _jp="$(c6_jtag_parse "$_jl" 40800123)" || _fail "(18) c6_jtag_parse (bare addr) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: alive' || _fail "(18) bare-address spelling not accepted: $_jp"
+    #  equal values -> not-advancing (the pc differing must not rescue it)
+    _jfix "Info : esp_usb_jtag: serial ($dut_uc)" 0x40800abc 0x40800def 000003e8 000003e8
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (equal) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'loop_calls: 1000 -> 1000 delta=0' || _fail "(18) equal loop_calls line: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q '^verdict: not-advancing' || _fail "(18) equal values are not not-advancing: $_jp"
+    #  no serial line -> refused, and no value is printed at all
+    _jfix "" 0x40800abc 0x40800def 000003e8 000007d0
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (no serial) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: refused' || _fail "(18) missing serial is not refused: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q '^# REFUSED: openocd did not report the pinned serial' || _fail "(18) REFUSED line missing: $_jp"
+    printf '%s\n' "$_jp" | $GREP -qE '^(pc1=|ep1_conf=)|delta=' && _fail "(18) a value was printed although refused: $_jp"
+    #  a DIFFERENT board's serial (the recorded accident) -> refused too
+    _jfix "Info : esp_usb_jtag: serial (F4:12:FA:5B:4A:58)" 0x40800abc 0x40800def 000003e8 000007d0
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (other serial) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: refused' || _fail "(18) another board's serial is not refused: $_jp"
+    #  mutation control: second read missing -> not-run, never alive
+    _jfix "Info : esp_usb_jtag: serial ($dut_uc)" 0x40800abc 0x40800def 000003e8 ""
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (second read missing) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -q '^verdict: not-run (incomplete: second read missing)' || _fail "(18) missing second read is not not-run: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q 'alive' && _fail "(18) missing second read reported alive: $_jp"
+    #  symbol unknown: pc equal -> not-advancing; pc moved -> not-run (inconclusive)
+    _jfix "Info : esp_usb_jtag: serial ($dut_uc)" 0x40800abc 0x40800abc 000003e8 000007d0
+    _jp="$(c6_jtag_parse "$_jl" "" "no ELF")" || _fail "(18) parse (no symbol) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'loop_calls: symbol unavailable (no ELF)' || _fail "(18) symbol-unavailable line: $_jp"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: not-advancing (loop_calls unknown; pc1 == pc2)' || _fail "(18) no symbol + equal pc: $_jp"
+    _jfix "Info : esp_usb_jtag: serial ($dut_uc)" 0x40800abc 0x40800def 000003e8 000007d0
+    _jp="$(c6_jtag_parse "$_jl" "")" || _fail "(18) parse (no symbol, pc moved) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -q '^verdict: not-run (loop_calls unknown; pc moved' || _fail "(18) no symbol + moved pc: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q 'alive' && _fail "(18) no symbol + moved pc reported alive: $_jp"
+    #  no output at all (openocd died before printing) -> not-run
+    : > "$_jl"
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (empty) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -q '^verdict: not-run (no openocd output)' || _fail "(18) empty output is not not-run: $_jp"
     rm -rf "$_sd"
-    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact (dhcp 2 = both spellings), scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C6_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C6_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked"
+    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact (dhcp 2 = both spellings), scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C6_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C6_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked (16) EXTRA_MARKERS: fixed strings counted (2/1), '[C6]' literal = 1 (ERE would be 8), empty -> nothing, absent -> 0 (17) c6_jtag_wanted: 6 asserted tuples + on_silent=0 (18) c6_jtag_parse: alive (1000 -> 2000, data_free=1) / not-advancing / refused (no serial, other serial: no values) / second read missing -> not-run, never alive / no symbol: pc equal -> not-advancing, pc moved -> not-run / empty -> not-run"
     exit 0
 fi
 
@@ -602,7 +933,8 @@ trap 'c6_redact_on_exit' EXIT
 
 #  ---------------------------------------------------------------- modes
 DRYRUN="${DRYRUN:-0}"; NOFLASH="${NOFLASH:-0}"; COLD="${COLD:-0}"; NORESET="${NORESET:-0}"
-for _v_name in DRYRUN NOFLASH COLD NORESET; do
+C6_JTAG_ON_SILENT="${C6_JTAG_ON_SILENT:-1}"; C6_JTAG_FORCE="${C6_JTAG_FORCE:-0}"
+for _v_name in DRYRUN NOFLASH COLD NORESET C6_JTAG_ON_SILENT C6_JTAG_FORCE; do
     eval "_v_val=\$$_v_name"
     case "$_v_val" in
         0|1) ;;
@@ -644,6 +976,10 @@ if [ -z "${BOOT_APP0:-}" ]; then
     _d="$(_newest_dir "$ARDUINO_DATA/packages/m5stack/hardware/esp32")"
     BOOT_APP0="${_d:+$_d/tools/partitions/boot_app0.bin}"
 fi
+#  The probe's openocd is pinned to the version the core ships (not
+#  _newest_dir: a different openocd-esp32 has not been run against this
+#  board). PATH is never searched.
+OPENOCD="${OPENOCD:-$ARDUINO_DATA/packages/m5stack/tools/openocd-esp32/v0.12.0-esp32-20251215/bin/openocd}"
 
 #  Pick the sketch images from SKETCH_BUILD (one project unless PROJECT= says).
 _pick_image() {   # suffix -> path (exactly one match required)
@@ -731,6 +1067,7 @@ OUT="${OUT:-$LOG_DIR/c6-capture-$(date +%Y%m%d-%H%M%S).log}"
 BASE="${OUT%.log}"
 IDENT_LOG="$BASE.ident.log"; FLASH_LOG="$BASE.flash.log"; COLD_TXT="$BASE.cold.txt"; SHA_TXT="$BASE.sha.txt"
 JOURNAL_TXT="$BASE.journal.txt"
+JTAG_LOG="$BASE.jtag.log"; JTAG_TXT="$BASE.jtag.txt"
 
 #  ---------------------------------------------------------------- 3. capture prerequisites
 #  Checked BEFORE anything touches the board: a write followed by a monitor
@@ -917,9 +1254,28 @@ fi
 MARKER_LINES="$(c6_count_markers "$OUT")"
 printf '%s\n' "$MARKER_LINES" | sed 's/^/[C6] /'
 printf '%s\n' "$MARKER_LINES" >> "$SHA_TXT"
+#  EXTRA_MARKERS (fixed strings; nothing when unset).
+EXTRA_LINE="$(c6_count_extra "$OUT")"
+if [ -n "$EXTRA_LINE" ]; then
+    say "$EXTRA_LINE"
+    printf '%s\n' "$EXTRA_LINE" >> "$SHA_TXT"
+fi
 #  APM readback evidence (register values only) for the stage 4 control.
 if [ -n "$(c6_apm_lines "$OUT")" ]; then
     { echo "# apm readback lines:"; c6_apm_lines "$OUT" | sed 's/^/#   /'; } >> "$SHA_TXT"
 fi
 say "record -> $SHA_TXT"
+
+#  ---------------------------------------------------------------- 8. jtag liveness probe
+#  After the monitor is gone (the CDC-ACM interface is free). Evidence only:
+#  the exit status is not changed by anything the probe finds.
+HEARTBEAT="$(printf '%s\n' "$MARKER_LINES" | sed -n 1p | $GREP -oE 'heartbeat=[0-9]+' | cut -d= -f2 || true)"
+HEARTBEAT="${HEARTBEAT:-0}"
+if [ "$(c6_jtag_wanted "$COLD" "$HEARTBEAT" "$C6_JTAG_FORCE" "$DRYRUN" "$C6_JTAG_ON_SILENT")" = "yes" ]; then
+    _reason=silent-cold
+    [ "$C6_JTAG_FORCE" = "1" ] && _reason=forced
+    c6_jtag_probe "$_reason"
+else
+    say "jtag: probe not run (COLD=$COLD heartbeat=$HEARTBEAT C6_JTAG_FORCE=$C6_JTAG_FORCE C6_JTAG_ON_SILENT=$C6_JTAG_ON_SILENT); it runs on a silent cold run or with C6_JTAG_FORCE=1"
+fi
 exit 0
