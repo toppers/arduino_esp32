@@ -22,10 +22,10 @@
 
 ## 改変の方針
 
-改変は次の 5 種（段1）＋ 段3 の 2 種 ＋ 段4 の 1 種 ＋ 段5 の 1 種だけで、いずれも下表に
-理由を書く（3 と 5 は段1 Task 2 の逸脱として reviewer が受理したもの。`docs/c6-port.md`
-「逸脱の受理」。6 と 7 は段3 Task 1 の逸脱で、`docs/c6-port.md` 段3 節に記録する。
-8 は段4 Task 0、9 は段5 Task 2 の R12 例外）。
+改変は次の 5 種（段1）＋ 段3 の 2 種 ＋ 段4 の 1 種 ＋ 段5 の 1 種 ＋ C5 段3 の 1 種だけで、
+いずれも下表に理由を書く（3 と 5 は段1 Task 2 の逸脱として reviewer が受理したもの。
+`docs/c6-port.md`「逸脱の受理」。6 と 7 は段3 Task 1 の逸脱で、`docs/c6-port.md` 段3 節に記録する。
+8 は段4 Task 0、9 は段5 Task 2 の R12 例外。10 は C5 計画 段3 Task 1 の 9 の C5 版）。
 
 1. **SDK パスの写像**（`target.cmake`）: dev は esp-idf submodule の
    `components/<comp>/...` を include / link するが、arduino_esp32 は「ESP-IDF を
@@ -92,6 +92,13 @@
    （OFF で呼べばリンクエラー = fail-closed）。それ以外の行は dev と同一。CMake option は
    `runtime/CMakeLists.txt` の `TOPPERS_C6_NET_DIAG`（ON で `-DTOPPERS_C6_NET_DIAG=1`）。
    段4 の実機記録（`ping gateway -> OK` の回数等）は ON 相当で採ったもの。
+10. **9 の C5 版: `TOPPERS_C5_NET_DIAG` の alias（C5 計画 段3 Task 1、2026-09-16、A11）**
+   （`runtime/wifi/net/netif_esp32s3.c`）: 9 のブロックが読む `TOPPERS_C6_NET_DIAG` に、C5 の
+   option 名 `TOPPERS_C5_NET_DIAG` を `#if defined(TOPPERS_ESP32C5) && defined(TOPPERS_C5_NET_DIAG)
+   && !defined(TOPPERS_C6_NET_DIAG)` で定義する 3 行（+ コメント）を 9 の既定値定義の前に足した。
+   9 のブロックはそのまま（C5 のためにブロックの条件を書き直さない = C6 の前処理結果が不変で
+   X-check MATCH）。CMake option は `runtime/CMakeLists.txt` の `TOPPERS_C5_NET_DIAG`（既定 OFF、
+   ON で `-DTOPPERS_C5_NET_DIAG=1`）。
 
 ## ファイル一覧
 
@@ -373,3 +380,83 @@ C6 の改変方針 1（SDK パスの写像）、2（C++ 静的初期化の表）
   `ETS_GPIO_INTR_SOURCE == 31`、USB 13/14、MSPI 15-22、GPIO 0..28。`arduino_gpio.h` は共有）。段1 では
   どの stage にも組み込まれず、stage の compile 行で `-fsyntax-only` を通しただけ
   （`stage1/logs/task3-syntax-check-arduino-c5.txt`。`esp_shim_intr_c5_lines.h` は段3 で vendoring）。
+
+## ESP32-C5 段3 Task 1（2026-09-16）: `runtime/wifi/` の C5 分岐 -- shim の dev 差分、esp-idf 原本、prebuilt `.a`
+
+dev `1d96bcba` の C5 Wi-Fi 構成（`cmake/a1_c5_stage1.cmake` の `if(A1_C5_WIFI)` ブロック）が
+`fmp` にリンクする集合を dev `build/c5-wifi/build.ninja`（32 TU）から機械列挙して写した。
+C6 の集合（段3 Task 1）との差は `esp_shim_intr_intmtx.c` -> `esp_shim_intr_c5.c`、esp-idf 原本 3 本の
+C5 版、`.a` 4 本の C5 版、`-DCONFIG_IDF_TARGET_ESP32C5=1` と include の順序（`hal/esp32c5/include` が
+`hal/include` より前）のみ。**C6 の stage は 1 バイトも動いていない**（X-check 9/9 MATCH、
+`.steering/20260916-c5-arduino-plan/stage3/logs/task1-xcheck.txt`）。
+
+- 出典: 上記と同じ dev commit **`1d96bcba32a043eb7066126550b0dbe598e4aad6`**。
+- 取込みの方法（shim）: **dev の差分 `git diff c7fef18 1d96bcba -- esp/shim`（+ `esp/bt/stub/include/
+  freertos/FreeRTOS.h` の 1 行）を、パス接頭辞を `ports/m5stack_riscv/runtime/wifi/shim/`
+  （`wifi/freertos_stub/freertos/`）に書き換えただけで `git apply` した**（hunk の失敗 0、手編集なし。
+  `stage3/logs/task1-apply-shim-diff.txt`）。適用後の shim 34 本すべてが dev `1d96bcba` の `esp/shim/` と
+  `cmp` で同一。dev 側はこの差分を「同じ行数での `#if` 条件の書換え・空行 1 本の `#include` 置換・EOF 追記」
+  の 3 形に限っており（dev `.steering/20260915-c5-plan/stage4/README.md` 0-3 節、seam-c6-wifi golden の
+  DWARF 感受性のため）、本リポジトリでも同じ差分を当てた結果 C6 の objs が不変であることを X-check で示した。
+- 照合コマンド: `git -C <dev repo> show 1d96bcba:<dev path> | cmp - <arduino path>`。
+
+### shim `runtime/wifi/shim/`（dev `esp/shim/`、変更 6 本 + 新規 7 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/shim/esp_shim.c` `esp_shim.cfg` `esp_shim.h` `esp_shim_blobglue.c` `esp_shim_libc.c` `esp_wifi_adapter.c` | 同名 | なし（dev `1d96bcba` と同一。`c7fef18` からの差分 = dev の C5 分岐） | C5 分岐の形: `#if defined(TOPPERS_ESP32C6)` -> `|| defined(TOPPERS_ESP32C5)`（同じ行数）、S3 既定の `#else` -> `#elif !defined(TOPPERS_ESP32C5)`、`esp_wifi_adapter.c:90` / `esp_shim_blobglue.c:174` の空行 1 本を `#include "*_c5.inc"` に置換、`esp_shim.h` 末尾に RNG / eFuse 番地（C6 / C5）を追記。`esp_shim.cfg` は `#ifndef TOPPERS_ESP32C6` -> `#if !defined(TOPPERS_ESP32C6) && !defined(TOPPERS_ESP32C5)`（S3/LX6 の線 0-3/23/27 を C5 でも外す） |
+| `esp/shim/esp_wifi_adapter_c5.inc` | 同名 | なし（新規） | `esp_wifi_adapter.c` の C5 分岐本体: `set_intr/clear_intr/set_isr/ints_on/ints_off`（`esp_shim_intr_c5` 経由）、`phy_enable` / `wifi_clock_enable`（modem クロック読み戻し + **APM/TEE 解除 `c5_apm_unblock`**: `A1_C5_APM_UNBLOCK` の下に `A1_C5_APM_FUNC_CTRL`（HP_APM / LP_APM0 / LP_APM / CPU_APM の FUNC_CTRL=0）と `A1_C5_APM_TEE`（TEE master 0..31 を mode 0）。`runtime/CMakeLists.txt` の option `TOPPERS_C5_APM_UNBLOCK`（既定 ON）が 3 つとも定義する = A11）、`esp_wifi_adapter_c5_apm_readback`（adapter の scan 後読み戻しが呼ぶ）、`esp_wifi_adapter_c5_diag_dump`。共通側の同名 3 関数を関数形式マクロで `c5_unused_*` へ逃がし `__attribute__((noipa, error))` で迷い呼出しをエラーにする仕掛けは dev のまま |
+| `esp/shim/esp_shim_blobglue_c5.inc` | 同名 | なし（新規） | `esp_shim_blobglue.c` の C5 分岐本体: `rtc_clk_xtal_freq_get`（48 MHz）、`esp_clk_tree_enable_src`（Low#3）、`putchar`（Low#2、-1）、`__errno`（`libm_nano.a` の `log10` 経路が要求）、`vPortEnterCritical/ExitCritical`、`esp_sleep_*`（Low#1、`ESP_ERR_NOT_SUPPORTED`） |
+| `esp/shim/esp_shim_intr_c5.c` `esp_shim_intr_c5.h` `esp_shim_intr_c5.cfg` `esp_shim_intr_c5_lines.h` | 同名 | なし（新規） | blob の `intr_num` 1..15 を CLIC 線 25..39（BASE 24）へ写像する線シム（`esp_shim_c5_wifi_route/unroute/set_isr/ints_on/ints_off`、DEF_INH 15 本 -> `esp_shim_wifi_int_dispatch(n)`）。`.cfg` は `runtime/CMakeLists.txt` が `FMP3_CFG_FILES` に足す（C6 の `esp_shim_intr_intmtx.cfg` と同じ位置）。`_lines.h` の予約線検査（16/17、18-22、40-44）を `arduino_interrupt_c5.c` も読む |
+| `esp/shim/IMPORT_PROVENANCE_c5.md` | 同名 | なし（新規） | asp3 / C6 -> dev の C5 分岐の出典と改変の記録（各ブロックの出典行、Low#1-6）。同梱 |
+| `esp/bt/stub/include/freertos/FreeRTOS.h` | `runtime/wifi/freertos_stub/freertos/FreeRTOS.h` | なし（dev `1d96bcba` と同一） | `vPortEnterCritical/ExitCritical` の extern 宣言を C5 でも見せる 1 行（同じ行数） |
+
+`esp_shim_intr_intmtx.*`（C6）と `esp_shim_intr_c5.*`（C5）は並置し、`runtime/CMakeLists.txt` の chip 表
+（`A1_CHIP_WIFI_INTR_CFG` / `A1_CHIP_WIFI_INTR_SOURCE`）が chip ごとに片方だけを組む（A2）。
+
+### hal / net / config / FreeRTOS スタブ / libc スタブヘッダ（C5 で新たに持ち込んだ物は無い）
+
+`hal_src/` 6 本、`net/` 8 本、`freertos_stub/` 14 本、`wifi/config/hal_stub_include/` 24 本は
+C6 と共有（dev でも S3 / C6 / C5 で同じファイル）。`config/esp32c5/sdkconfig.h` は段1 で vendoring 済み
+（`CONFIG_SOC_WIFI_SUPPORT_5G 1`（:120）、`CONFIG_ESP32C5_REV_MIN_FULL 100` / `REV_MAX_FULL 199`（:189-192）、
+`CONFIG_IDF_TARGET "esp32c5"`。dev `1d96bcba` と `cmp` 同一）。C6 の `config/esp32c6/hal_stub_include/`
+に当たる C5 専用スタブは無く、dev と同じく chip 共用の `wifi/config/hal_stub_include/` だけを include path に
+置く（`runtime/CMakeLists.txt` `A1_CHIP_WIFI_CONFIG_DIRS`）。
+
+`net/netif_esp32s3.c` は改変方針 9（`TOPPERS_C6_NET_DIAG`）の上に、C5 の option 名
+`TOPPERS_C5_NET_DIAG` を同じマクロへ alias する 3 行（+ コメント）を足した（**改変方針 10**、C5 計画 A11:
+「`TOPPERS_C5_NET_DIAG`（既定 OFF）を C6 と対称に」。`#if defined(TOPPERS_ESP32C5) &&
+defined(TOPPERS_C5_NET_DIAG) && !defined(TOPPERS_C6_NET_DIAG)` で `TOPPERS_C6_NET_DIAG` を
+`TOPPERS_C5_NET_DIAG` に定義する。C6 ビルドでは条件が偽で前処理結果が不変 = X-check MATCH）。
+
+### esp-idf 原本 `runtime/wifi/idf_src/`（A8 = D8 の逸脱。esp-idf v5.5.4 `735507283d`、C5 の同名原本 3 本、Apache-2.0）
+
+| esp-idf のパス（`components/`） | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp_phy/esp32c5/phy_init_data.c` | `runtime/wifi/idf_src/phy_init_data_esp32c5.c` | なし（ファイル名のみ chip 接尾辞、方針 7） | C5 の PHY 初期化データ（2.4 / 5 GHz、345 行）。dev AC-3i はこの原本の単独コンパイル 256 B と ELF の `phy_init_data` を `cmp` で同一と実測 |
+| `hal/esp32c5/modem_clock_hal.c` | `runtime/wifi/idf_src/modem_clock_hal_esp32c5.c` | なし（同上） | C5 の modem クロック hal（C6 版と byte 39 から異なる別物） |
+| `hal/esp32c5/efuse_hal.c` | `runtime/wifi/idf_src/efuse_hal_esp32c5.c` | なし（同上） | C5 の chip 別 eFuse hal（`CONFIG_ESP_REV_MIN_FULL` を読む） |
+| `esp_hw_support/periph_ctrl.c` `esp_hw_support/modem_clock.c` `hal/efuse_hal.c` | （C6 と共有、段3 Task 1 の 3 本） | なし | chip 非依存（esp-idf でも 1 本）。`periph_ctrl.c` の `wifi_module_enable()` は `PERIPH_WIFI_MODULE`（C5 も `soc/periph_defs.h` の enum）で C5 の modem を有効化する |
+
+`runtime/CMakeLists.txt` の chip 表 `A1_CHIP_WIFI_PHY_INIT_DATA` / `A1_CHIP_WIFI_MODEM_CLOCK_HAL` /
+`A1_CHIP_WIFI_EFUSE_HAL` が chip ごとに 1 本ずつ選ぶ（dev の `target_sources` と同じ位置）。
+段5 で再評価する方針（D8 / A8）は C6 と同じ。
+
+### prebuilt `runtime/wifi/prebuilt/{wpa2,lwip}/esp32c5/`（dev `esp/lib/`、`.a` 4 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/lib/wpa_esp32c5_espidf/libsupplicant.a` `libmbedtls.a` `libmbedcrypto.a` | `runtime/wifi/prebuilt/wpa2/esp32c5/` 同名 | なし（バイト同一。sha256 は `prebuilt/wpa2/README.md` の C5 表 = dev `.steering/20260915-c5-plan/stage4/README.md` Task 2 の表と一致） | dev 台本 `build_{wpa_libs,mbedtls_tls}_espidf_esp32c5.sh` の生成物。`libmbedcrypto.a` / `libmbedtls.a` は C6 版とバイト同一、`libsupplicant.a` は 3 .o が違う（`esp_wpa_main` / `esp_wps` / `ieee802_11_common`: C5 の sdkconfig / 5G / HE）ので C6 の物は流用しない |
+| `esp/lib/lwip_esp32c5_espidf/liblwip.a` | `runtime/wifi/prebuilt/lwip/esp32c5/liblwip.a` | **あり（方針 8 の C5 版 = A7）** | dev 台本 `build_lwip_lib_espidf_esp32c5.sh` を `PORT_EXTRA`=本リポジトリの `wifi/net/port/include`（`LWIP_DNS 1`）・`OUT_DIR`=scratch で走らせた生成物（sha256 `5bfbc3ef...`、473,586 B。`nm` に `dns_gethostbyname` / `lwip_getaddrinfo`）。dev golden（`LWIP_DNS 0`、`85859f70...`）は無改変（同じ台本を既定引数で scratch へ走らせると golden と同一の sha を再現することも同時に実測 = 台本の決定性の対照）。**C6 の DNS 版 `liblwip.a` とバイト同一**（lwIP 本体は chip 非依存、同じ `-march`・同じ `lwipopts.h`）。`stage3/logs/task1-build-lwip-dns.txt` |
+
+### 持ち込まなかった dev の入力（C5）
+
+- `esp/boot/build_incflags_esp32c5_espidf.txt`: C6 と同じ写像を `runtime/CMakeLists.txt` の chip 表
+  `A1_CHIP_WIFI_SDK_INCLUDE_DIRS`（esp32c5 行）に持つ。SDK に無い 2 本（`esp_hw_support/port/include`、
+  `esp_wifi/wifi_apps/roaming_app/include`）は C6 と同じ理由で落とした。`-DTOPPERS_ESP32C5` は落とし
+  （`chip_stddef.h` が定義）、`-DCONFIG_IDF_TARGET_ESP32C5=1` は残す（`A1_CHIP_WIFI_COMPILE_OPTIONS`）。
+- `cmake/a1_creds.cmake`、`esp/app/wifi_sta.{c,cfg,h}` + `wifi_sta_c5.inc`、それだけが読む `-D`
+  （`A1_C5_WIFI_SCAN`、`TOPPERS_APP_HEAP_REPORT`）: C6 と同じ理由で持ち込まない。
+- `esp/boot/seam_c5_clk.cfg`、`fmp3/target/m5stampc5_gcc/app/**`: 段1 と同じ。
+- `esp32c5.rom.eco3.ld`: dev D14（M5Stamp-C5 は rev v1.0 = 100。eco3 を入れた asp3 は ROM の PHY 関数が
+  blob の RAM 版を上書きする store fault を踏んだ）。ROM ld は dev と同じ 13 本。

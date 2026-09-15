@@ -122,8 +122,29 @@ endif()
 #                           the default, and the value at which the seam
 #                           entry raises the clock (SEAM_<TAG>_CLK_BOOST)
 #    A1_CHIP_WIFI           ON when this file can stage wifi-connect for the
-#                           chip (C5: stage 3 of the C5 plan)
+#                           chip
 #    A1_ROM_LDS_<profile>   the ROM linker scripts per profile (below)
+#  wifi-connect only (the block "wifi-connect" further down reads them; the
+#  C6 values are the strings that block used to spell inline, so the C6
+#  wifi-connect stage is byte-identical to what it was before the C5 row):
+#    A1_CHIP_WIFI_SDK_INCLUDE_DIRS
+#                           the SDK include directories, in the dev
+#                           incflags order of the chip
+#    A1_CHIP_WIFI_CONFIG_DIRS
+#                           the chip's config/<chip> directories (sdkconfig.h
+#                           and, C6 only, its hal_stub_include)
+#    A1_CHIP_WIFI_COMPILE_OPTIONS
+#                           chip-only -D of the dev Wi-Fi block
+#    A1_CHIP_WIFI_INTR_CFG / A1_CHIP_WIFI_INTR_SOURCE
+#                           the shim's interrupt-line piece (C6: interrupt
+#                           matrix, C5: CLIC)
+#    A1_CHIP_WIFI_PHY_INIT_DATA / A1_CHIP_WIFI_MODEM_CLOCK_HAL /
+#    A1_CHIP_WIFI_EFUSE_HAL  the esp-idf originals of the chip under
+#                           wifi/idf_src (D8 / A8), one file each so they
+#                           keep their dev position in the source list
+#    A1_CHIP_WIFI_ARDUINO_SOURCES
+#                           the chip's attachInterrupt / GPIO / LED files
+#                           under arduino/
 #
 if(NOT DEFINED A1_CHIP OR A1_CHIP STREQUAL "")
     set(A1_CHIP esp32c6)
@@ -145,6 +166,79 @@ if(A1_CHIP STREQUAL "esp32c6")
     set(A1_CHIP_CPU_FREQ_DEFAULT 160)
     set(A1_CHIP_CPU_FREQ_BOOST 160)
     set(A1_CHIP_WIFI ON)
+    #  The ESP-IDF headers come from the M5Stack core's esp32c6-libs SDK;
+    #  the list is the dev esp/boot/build_incflags_esp32c6_espidf.txt with
+    #  components/X mapped to include/X (same ESP-IDF v5.5.4). Three of its
+    #  directories are not in the SDK: esp_hw_support/port/include and
+    #  esp_wifi/wifi_apps/roaming_app/include are not included by any of
+    #  these TUs (checked against the dev build's dependency database), and
+    #  the lwIP contrib app headers ping.h / tcpecho_raw.h / udpecho_raw.h
+    #  that netif_esp32s3.c includes are vendored under
+    #  wifi/net/lwip_contrib_include (IMPORT_PROVENANCE.md).
+    set(A1_CHIP_WIFI_SDK_INCLUDE_DIRS
+        esp_wifi/include
+        esp_coex/include
+        esp_hw_support/include
+        esp_hw_support/port/esp32c6/include
+        esp_hw_support/port/esp32c6/private_include
+        heap/include
+        efuse/include
+        efuse/esp32c6/include
+        esp_event/include
+        log/include
+        esp_phy/include
+        esp_phy/esp32c6/include
+        esp_pm/include
+        esp_common/include
+        hal/include
+        hal/platform_port/include
+        hal/esp32c6/include
+        esp_rom/include
+        esp_rom/esp32c6/include
+        esp_rom/esp32c6/include/esp32c6
+        soc/include
+        soc/esp32c6/include
+        soc/esp32c6/register
+        esp_system/include
+        riscv/include
+        esp_timer/include
+        esp_security/include
+        mbedtls/port/include
+        esp_hw_support/include/soc
+        esp_hw_support/include/esp_private
+        esp_mm/include
+        wpa_supplicant/esp_supplicant/include
+        wpa_supplicant/include
+        mbedtls/mbedtls/include
+        lwip/lwip/src/include)
+    #  Ordered as in dev's incflags: the C6 config (sdkconfig.h and its
+    #  nuttx/config.h; target.cmake adds the same two again later) before
+    #  the chip-shared libc/nvs/gpio stubs, which also carry a
+    #  nuttx/config.h (same values, different guard). Keeping dev's order
+    #  keeps the same file winning.
+    set(A1_CHIP_WIFI_CONFIG_DIRS
+        "${RUNTIME_ROOT}/config/esp32c6"
+        "${RUNTIME_ROOT}/config/esp32c6/hal_stub_include")
+    set(A1_CHIP_WIFI_COMPILE_OPTIONS "")
+    #  CFG_INT/DEF_INH for the blob's CPU interrupt lines 1..15 through the
+    #  interrupt matrix (the S3/LX6 line block of esp_shim.cfg is outside
+    #  TOPPERS_ESP32C6).
+    set(A1_CHIP_WIFI_INTR_CFG esp_shim_intr_intmtx.cfg)
+    set(A1_CHIP_WIFI_INTR_SOURCE esp_shim_intr_intmtx.c)
+    #  The chip's esp-idf v5.5.4 originals (the chip efuse_hal.c is renamed
+    #  efuse_hal_esp32c6.c because the stage keeps every object in one
+    #  directory by basename; the C6 keeps the unsuffixed names of the
+    #  other two it was vendored with first).
+    set(A1_CHIP_WIFI_PHY_INIT_DATA phy_init_data.c)
+    set(A1_CHIP_WIFI_MODEM_CLOCK_HAL modem_clock_hal.c)
+    set(A1_CHIP_WIFI_EFUSE_HAL efuse_hal_esp32c6.c)
+    #  attachInterrupt on line 19 through the kernel's esp32c6_intmtx_route
+    #  (S3-4), pinMode/digitalWrite/digitalRead on hal/gpio_ll.h and
+    #  rgbLedWrite on RMT channel 0 (stage 6).
+    set(A1_CHIP_WIFI_ARDUINO_SOURCES
+        arduino_interrupt.c
+        arduino_gpio.c
+        arduino_rgb_led.c)
 elseif(A1_CHIP STREQUAL "esp32c5")
     set(A1_CHIP_TAG C5)
     set(A1_CHIP_TARGET_NAME m5stampc5_gcc)
@@ -164,17 +258,92 @@ elseif(A1_CHIP STREQUAL "esp32c5")
     set(A1_CHIP_CPU_FREQ_CHOICES 80 240)
     set(A1_CHIP_CPU_FREQ_DEFAULT 240)
     set(A1_CHIP_CPU_FREQ_BOOST 240)
-    #  wifi-connect for the C5 is stage 3 of the C5 plan (shim CLIC branch,
-    #  C5 blobs and prebuilt archives). Refused until then rather than
-    #  configured with the C6 lists.
-    set(A1_CHIP_WIFI OFF)
+    #  wifi-connect for the C5 (C5 plan stage 3): the dev
+    #  cmake/a1_c5_stage1.cmake A1_C5_WIFI block with the C6 mapping above.
+    set(A1_CHIP_WIFI ON)
+    #  dev esp/boot/build_incflags_esp32c5_espidf.txt, components/X mapped
+    #  to include/X of the M5Stack core's esp32c5-libs SDK (same ESP-IDF
+    #  v5.5.4; the two directories the SDK lacks are the same two as for
+    #  the C6 and are left out for the same reason). The order differs from
+    #  the C6 row in one place, as it does in dev: hal/esp32c5/include
+    #  comes before hal/include, because hal/efuse_hal.h reaches the chip's
+    #  hal/esp32c5/include/hal/efuse_hal.h with #include_next and the
+    #  chip directory has to be searched first for that to resolve (dev
+    #  stage 4 Task 3, otherwise efuse_hal_read is an implicit declaration).
+    set(A1_CHIP_WIFI_SDK_INCLUDE_DIRS
+        esp_wifi/include
+        esp_coex/include
+        esp_hw_support/include
+        esp_hw_support/port/esp32c5/include
+        esp_hw_support/port/esp32c5/private_include
+        heap/include
+        efuse/include
+        efuse/esp32c5/include
+        esp_event/include
+        log/include
+        esp_phy/include
+        esp_phy/esp32c5/include
+        esp_pm/include
+        esp_common/include
+        hal/esp32c5/include
+        hal/include
+        hal/platform_port/include
+        esp_rom/include
+        esp_rom/esp32c5/include
+        esp_rom/esp32c5/include/esp32c5
+        soc/include
+        soc/esp32c5/include
+        soc/esp32c5/register
+        esp_system/include
+        riscv/include
+        esp_timer/include
+        esp_security/include
+        mbedtls/port/include
+        esp_hw_support/include/soc
+        esp_hw_support/include/esp_private
+        esp_mm/include
+        wpa_supplicant/esp_supplicant/include
+        wpa_supplicant/include
+        mbedtls/mbedtls/include
+        lwip/lwip/src/include)
+    #  The C5 has no chip hal_stub_include (config/esp32c5/sdkconfig.h is
+    #  the asp3 stub's copy and does not read nuttx/config.h); dev puts the
+    #  chip-shared stubs (wifi/config/hal_stub_include here) alone after
+    #  it, which the wifi-connect block does for every chip.
+    set(A1_CHIP_WIFI_CONFIG_DIRS
+        "${RUNTIME_ROOT}/config/esp32c5")
+    #  dev keeps this one of the incflags -D (TOPPERS_ESP32C5 is dropped as
+    #  TOPPERS_ESP32C6 is for the C6: chip_stddef.h defines it): the
+    #  esp32c5_eco3_rom_ptr_init() strong empty implementation in
+    #  wifi/hal_src/wifi_init.c and the C5 branch of wifi_os_adapter.h read
+    #  it, and config/esp32c5/sdkconfig.h does not define it.
+    set(A1_CHIP_WIFI_COMPILE_OPTIONS -DCONFIG_IDF_TARGET_ESP32C5=1)
+    #  CFG_INT/DEF_INH for the blob's intr_num 1..15 on CLIC lines 25..39
+    #  (the S3/LX6 line block of esp_shim.cfg is outside TOPPERS_ESP32C5 too).
+    set(A1_CHIP_WIFI_INTR_CFG esp_shim_intr_c5.cfg)
+    set(A1_CHIP_WIFI_INTR_SOURCE esp_shim_intr_c5.c)
+    #  The chip's esp-idf v5.5.4 originals: esp_phy/esp32c5/phy_init_data.c
+    #  (the 2.4/5 GHz data; dev checks its bytes against the original, AC-3i
+    #  of dev stage 4), hal/esp32c5/modem_clock_hal.c, hal/esp32c5/
+    #  efuse_hal.c, each suffixed _esp32c5 beside the C6 files of the same
+    #  basename.
+    set(A1_CHIP_WIFI_PHY_INIT_DATA phy_init_data_esp32c5.c)
+    set(A1_CHIP_WIFI_MODEM_CLOCK_HAL modem_clock_hal_esp32c5.c)
+    set(A1_CHIP_WIFI_EFUSE_HAL efuse_hal_esp32c5.c)
+    #  attachInterrupt on CLIC line 23 through the kernel's
+    #  esp32c5_intmtx_route and pinMode/digitalWrite/digitalRead on the
+    #  esp32c5 hal/gpio_ll.h (C5 plan A3). No RGB LED file: the M5Stamp-C5
+    #  has a plain blue LED on G28 (BOOT), not a WS2812.
+    set(A1_CHIP_WIFI_ARDUINO_SOURCES
+        arduino_interrupt_c5.c
+        arduino_gpio_c5.c)
 else()
     message(FATAL_ERROR
         "ports/m5stack_riscv/runtime builds the esp32c6 or the esp32c5 (got A1_CHIP='${A1_CHIP}')")
 endif()
 if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND NOT A1_CHIP_WIFI)
     message(FATAL_ERROR
-        "the ${A1_CHIP} port cannot stage wifi-connect yet (C5 plan stage 3)")
+        "the ${A1_CHIP} port cannot stage wifi-connect")
 endif()
 string(TOLOWER "${A1_CHIP_TAG}" A1_CHIP_TAG_LOWER)
 
@@ -215,9 +384,14 @@ string(TOLOWER "${A1_CHIP_TAG}" A1_CHIP_TAG_LOWER)
 #
 #  The C5 minimal set is the same two by name stem (dev seam-c5-min,
 #  target/m5stampc5_gcc/target.cmake). Its wifi-connect set is the same
-#  thirteen (dev a1_c5_stage1.cmake A1_C5_ROM_LD_WIFI_LIST, no
-#  esp32c5.rom.eco3.ld: dev D14, the M5Stamp-C5 is chip rev v1.0) and is
-#  written at stage 3 with the libc-supply decision, not here.
+#  thirteen by name stem (dev a1_c5_stage1.cmake A1_C5_ROM_LD_WIFI_LIST 11
+#  + target.cmake 2, in the dev order), with the same libc-supply decision
+#  as the C6 (esp_shim_libc.c supplies heap and printf; the ROM's rand
+#  wins over it, recorded in docs/c5-port.md stage 3). No
+#  esp32c5.rom.eco3.ld: dev D14 - the M5Stamp-C5 is chip rev v1.0 (100),
+#  ESP-IDF links eco3 only for CONFIG_ESP32C5_REV_MIN_FULL >= 102, and the
+#  asp3 port that linked it hit a store fault when the ROM's PHY functions
+#  replaced the blob's RAM versions.
 #
 if(A1_CHIP STREQUAL "esp32c6")
     set(A1_ROM_LDS_minimal
@@ -241,6 +415,20 @@ elseif(A1_CHIP STREQUAL "esp32c5")
     set(A1_ROM_LDS_minimal
         esp32c5.rom.ld
         esp32c5.rom.api.ld)
+    set(A1_ROM_LDS_wifi-connect
+        esp32c5.rom.ld
+        esp32c5.rom.api.ld
+        esp32c5.rom.libc.ld
+        esp32c5.rom.libgcc.ld
+        esp32c5.rom.newlib.ld
+        esp32c5.rom.libc-suboptimal_for_misaligned_mem.ld
+        esp32c5.rom.version.ld
+        rom.api.ld
+        esp32c5.rom.net80211.ld
+        esp32c5.rom.pp.ld
+        esp32c5.rom.phy.ld
+        esp32c5.rom.systimer.ld
+        esp32c5.rom.coexist.ld)
 endif()
 if(NOT DEFINED A1_ROM_LDS_${FMP3_RUNTIME_PROFILE})
     message(FATAL_ERROR
@@ -319,62 +507,21 @@ set(FMP3_INCLUDE_DIRS
     "${RUNTIME_ROOT}/seam")
 
 #
-#  wifi-connect: what the dev repository's cmake/a1_c6_stage1.cmake adds
-#  before add_subdirectory(fmp3_core) when A1_C6_WIFI is ON. As there, the
-#  include directories, definitions and the intmtx cfg go through the fmp3
-#  target's PUBLIC properties to every object (kernel, syssvc, shim), so the
-#  stage is built the way the dev C6 Wi-Fi image was: the shim's libc stub
+#  wifi-connect: what the dev repository's cmake/a1_c6_stage1.cmake
+#  (esp32c6) / cmake/a1_c5_stage1.cmake (esp32c5) adds before
+#  add_subdirectory(fmp3_core) when A1_<TAG>_WIFI is ON. As there, the
+#  include directories, definitions and the interrupt-line cfg go through the
+#  fmp3 target's PUBLIC properties to every object (kernel, syssvc, shim), so
+#  the stage is built the way the dev Wi-Fi image was: the shim's libc stub
 #  headers (wifi/config/hal_stub_include) stand in front of newlib's for
-#  every TU, and TCNT_SYSLOG_BUFFER reaches syslog.c. The ESP-IDF headers
-#  come from the M5Stack core's esp32c6-libs SDK; the list is the dev
-#  esp/boot/build_incflags_esp32c6_espidf.txt with components/X mapped to
-#  include/X (same ESP-IDF v5.5.4). Three of its directories are not in the
-#  SDK: esp_hw_support/port/include and esp_wifi/wifi_apps/roaming_app/include
-#  are not included by any of these TUs (checked against the dev build's
-#  dependency database), and the lwIP contrib app headers ping.h /
-#  tcpecho_raw.h / udpecho_raw.h that netif_esp32s3.c includes are vendored
-#  under wifi/net/lwip_contrib_include (IMPORT_PROVENANCE.md).
+#  every TU, and TCNT_SYSLOG_BUFFER reaches syslog.c. The chip-named inputs
+#  (SDK include list and its order, config directories, chip -D, the
+#  interrupt-line cfg) are the chip table's A1_CHIP_WIFI_* rows above.
 #
 if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     set(WIFI_ROOT "${RUNTIME_ROOT}/wifi")
-    set(WIFI_SDK_INCLUDE_DIRS
-        esp_wifi/include
-        esp_coex/include
-        esp_hw_support/include
-        esp_hw_support/port/esp32c6/include
-        esp_hw_support/port/esp32c6/private_include
-        heap/include
-        efuse/include
-        efuse/esp32c6/include
-        esp_event/include
-        log/include
-        esp_phy/include
-        esp_phy/esp32c6/include
-        esp_pm/include
-        esp_common/include
-        hal/include
-        hal/platform_port/include
-        hal/esp32c6/include
-        esp_rom/include
-        esp_rom/esp32c6/include
-        esp_rom/esp32c6/include/esp32c6
-        soc/include
-        soc/esp32c6/include
-        soc/esp32c6/register
-        esp_system/include
-        riscv/include
-        esp_timer/include
-        esp_security/include
-        mbedtls/port/include
-        esp_hw_support/include/soc
-        esp_hw_support/include/esp_private
-        esp_mm/include
-        wpa_supplicant/esp_supplicant/include
-        wpa_supplicant/include
-        mbedtls/mbedtls/include
-        lwip/lwip/src/include)
     set(WIFI_INCLUDE_DIRS)
-    foreach(dir IN LISTS WIFI_SDK_INCLUDE_DIRS)
+    foreach(dir IN LISTS A1_CHIP_WIFI_SDK_INCLUDE_DIRS)
         if(NOT IS_DIRECTORY "${ARDUINO_SDK_INCLUDE_ROOT}/${dir}")
             message(FATAL_ERROR
                 "wifi-connect: SDK include directory is missing: "
@@ -383,13 +530,9 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         list(APPEND WIFI_INCLUDE_DIRS "${ARDUINO_SDK_INCLUDE_ROOT}/${dir}")
     endforeach()
     list(APPEND WIFI_INCLUDE_DIRS
-        #  Ordered as in dev's incflags: the C6 config (sdkconfig.h and its
-        #  nuttx/config.h; target.cmake adds the same two again later) before
-        #  the chip-shared libc/nvs/gpio stubs, which also carry a
-        #  nuttx/config.h (same values, different guard). Keeping dev's order
-        #  keeps the same file winning.
-        "${RUNTIME_ROOT}/config/esp32c6"
-        "${RUNTIME_ROOT}/config/esp32c6/hal_stub_include"
+        #  The chip's config (see the chip table for the order argument)
+        #  before the chip-shared libc/nvs/gpio stubs.
+        ${A1_CHIP_WIFI_CONFIG_DIRS}
         "${WIFI_ROOT}/config/hal_stub_include"
         "${WIFI_ROOT}/net"
         "${WIFI_ROOT}/net/port/include"
@@ -403,18 +546,21 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         "${WIFI_ROOT}/net/port"
         #  The Arduino-facing adapter (toppers_wifi_core.h) and the
         #  attachInterrupt cfg piece with its constants header
-        #  (arduino_interrupt.cfg / .h; cfg INCLUDE resolves here).
+        #  (arduino_interrupt.cfg / .h, C5: arduino_interrupt_c5.cfg / .h;
+        #  cfg INCLUDE resolves here).
         "${WIFI_ROOT}/adapter"
         "${RUNTIME_ROOT}/arduino")
     list(APPEND FMP3_INCLUDE_DIRS ${WIFI_INCLUDE_DIRS})
 
-    #  From build_incflags_esp32c6_espidf.txt (TOPPERS_ESP32C6 dropped: chip_stddef.h
-    #  defines it) and the additions of the dev Wi-Fi block, verbatim. The ones
-    #  only the dev demo application wifi_sta.c reads (A1_C6_WIFI_SCAN,
+    #  From build_incflags_esp32c<N>_espidf.txt (TOPPERS_ESP32C<N> dropped:
+    #  chip_stddef.h defines it) and the additions of the dev Wi-Fi block,
+    #  verbatim; the chip-only -D come from the chip table. The ones only
+    #  the dev demo application wifi_sta.c reads (A1_C<N>_WIFI_SCAN,
     #  TOPPERS_APP_HEAP_REPORT, A1_C6_WIFI_BOOT_DELAY_MS, A1_C6_USJ_REARM_PROBE)
     #  and the reset-surviving boot trace (A1_C6_BOOT_TRACE) are not passed.
     list(APPEND FMP3_COMPILE_OPTIONS
         -DESP_PLATFORM
+        ${A1_CHIP_WIFI_COMPILE_OPTIONS}
         -DCONFIG_ESP_PHY_ENABLED=1
         -Wno-error=implicit-function-declaration
         -DTOPPERS_ESP_WIFI_WPA2
@@ -434,21 +580,33 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     #  APM access-path filters. The ESP-IDF application startup disables them
     #  (bootloader_init_mem); this image links no cpu_start, so the shim's
     #  adapter does it before the modem is enabled (esp_wifi_adapter.c,
-    #  c6_apm_unblock). Without it the modem DMA cannot reach RAM and a scan
-    #  finds 0 APs (dev measured both arms). OFF is the control for stage 4.
-    option(TOPPERS_C6_APM_UNBLOCK
+    #  c6_apm_unblock; C5: esp_wifi_adapter_c5.inc, c5_apm_unblock, which
+    #  clears FUNC_CTRL of the four controllers HP_APM / LP_APM0 / LP_APM /
+    #  CPU_APM and sets the 32 TEE masters to TEE mode - dev A1_C5_APM_UNBLOCK
+    #  with A1_C5_APM_FUNC_CTRL and A1_C5_APM_TEE both ON, the ESP-IDF
+    #  equivalent; dev measured that either half alone is enough, and ships
+    #  both). Without it the modem DMA cannot reach RAM and a scan finds 0
+    #  APs (dev measured both arms on both chips). OFF is the control for
+    #  stage 4. The option keeps the chip's name (TOPPERS_C6_APM_UNBLOCK /
+    #  TOPPERS_C5_APM_UNBLOCK) so the documented --cmake-define control
+    #  builds read as written.
+    option(TOPPERS_${A1_CHIP_TAG}_APM_UNBLOCK
         "wifi-connect: disable the APM access-path filters before the modem is enabled (default ON)"
         ON)
-    if(TOPPERS_C6_APM_UNBLOCK)
-        list(APPEND FMP3_COMPILE_OPTIONS -DA1_C6_APM_UNBLOCK=1)
+    if(TOPPERS_${A1_CHIP_TAG}_APM_UNBLOCK)
+        list(APPEND FMP3_COMPILE_OPTIONS -DA1_${A1_CHIP_TAG}_APM_UNBLOCK=1)
+        if(A1_CHIP STREQUAL "esp32c5")
+            list(APPEND FMP3_COMPILE_OPTIONS -DA1_C5_APM_FUNC_CTRL=1 -DA1_C5_APM_TEE=1)
+        endif()
     endif()
     #  Verbose per-event readback / NOTICE lines of the shim (dev
-    #  A1_C6_WIFI_DIAG). The one-shot detectors stay on regardless.
-    option(TOPPERS_C6_WIFI_DIAG
+    #  A1_C6_WIFI_DIAG / A1_C5_WIFI_DIAG). The one-shot detectors stay on
+    #  regardless.
+    option(TOPPERS_${A1_CHIP_TAG}_WIFI_DIAG
         "wifi-connect: verbose shim diagnostics on the console (default OFF)"
         OFF)
-    if(TOPPERS_C6_WIFI_DIAG)
-        list(APPEND FMP3_COMPILE_OPTIONS -DA1_C6_WIFI_DIAG=1)
+    if(TOPPERS_${A1_CHIP_TAG}_WIFI_DIAG)
+        list(APPEND FMP3_COMPILE_OPTIONS -DA1_${A1_CHIP_TAG}_WIFI_DIAG=1)
     endif()
     #  The dev demo's network diagnostics in the vendored wifi/net/
     #  netif_esp32s3.c: the gateway ping chain started on DHCP bound, the
@@ -459,17 +617,18 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     #  ON; the shipped runtime must not listen or ping unasked, so OFF.
     #  OFF also leaves the ping's sys_timeout slot unused (lwipopts.h
     #  MEMP_NUM_SYS_TIMEOUT margin 1 -> 2; the pool size does not change).
-    option(TOPPERS_C6_NET_DIAG
+    #  The file reads TOPPERS_C6_NET_DIAG; for the C5 it aliases
+    #  TOPPERS_C5_NET_DIAG onto it (netif_esp32s3.c, C5 plan A11).
+    option(TOPPERS_${A1_CHIP_TAG}_NET_DIAG
         "wifi-connect: dev network diagnostics (gateway ping, port-7 echo servers, ip=/gw= line) (default OFF)"
         OFF)
-    if(TOPPERS_C6_NET_DIAG)
-        list(APPEND FMP3_COMPILE_OPTIONS -DTOPPERS_C6_NET_DIAG=1)
+    if(TOPPERS_${A1_CHIP_TAG}_NET_DIAG)
+        list(APPEND FMP3_COMPILE_OPTIONS -DTOPPERS_${A1_CHIP_TAG}_NET_DIAG=1)
     endif()
 
-    #  CFG_INT/DEF_INH for the blob's CPU interrupt lines 1..15 (the S3/LX6
-    #  line block of esp_shim.cfg is outside TOPPERS_ESP32C6). Before the
-    #  application cfg, as in dev.
-    list(APPEND FMP3_CFG_FILES "${WIFI_ROOT}/shim/esp_shim_intr_intmtx.cfg")
+    #  CFG_INT/DEF_INH for the blob's interrupt lines (chip table). Before
+    #  the application cfg, as in dev.
+    list(APPEND FMP3_CFG_FILES "${WIFI_ROOT}/shim/${A1_CHIP_WIFI_INTR_CFG}")
 
     #  The eleven ROM scripts beyond target.cmake's two, for the cfg pass-1
     #  link (the sketch link takes them from the manifest, see A1_ROM_LDS).
@@ -596,33 +755,43 @@ target_compile_options(seam_cxx PRIVATE
 add_dependencies(seam_cxx generate_cfg_gen_files)
 
 #
-#  wifi-connect: the sources the dev Wi-Fi build adds to fmp (a1_c6_stage1.cmake,
-#  target_sources(fmp ...) under A1_C6_WIFI), same set, same order. Kept in
-#  their own object library so the profile's objects are one list in this
-#  file; the compile settings are the fmp3 PUBLIC ones (see the wifi-connect
-#  block above), so nothing here differs from seam_objects in how it is built.
+#  wifi-connect: the sources the dev Wi-Fi build adds to fmp (a1_c6_stage1.cmake
+#  / a1_c5_stage1.cmake, target_sources(fmp ...) under A1_C<N>_WIFI), same
+#  set, same order. Kept in their own object library so the profile's
+#  objects are one list in this file; the compile settings are the fmp3
+#  PUBLIC ones (see the wifi-connect block above), so nothing here differs
+#  from seam_objects in how it is built. The chip-named entries (the
+#  interrupt-line shim, the chip's esp-idf originals, the attachInterrupt /
+#  GPIO / LED files) are the chip table's rows.
 #
-#    wifi/shim      the ESP-IDF OS shim with the C6 branch (second copy of
-#                   the dev esp/shim; the Xtensa port's fork under
-#                   ports/m5stack_xtensa is a different base and is not shared)
+#    wifi/shim      the ESP-IDF OS shim with the C6 and C5 branches (second
+#                   copy of the dev esp/shim; the Xtensa port's fork under
+#                   ports/m5stack_xtensa is a different base and is not
+#                   shared). The C5 branch is the dev c7fef18..1d96bcba
+#                   delta applied as is (esp_wifi_adapter_c5.inc /
+#                   esp_shim_blobglue_c5.inc / esp_shim_intr_c5.*; the
+#                   shared files carry same-line-count #if edits only, so
+#                   the C6 objects did not move: X-check of C5 stage 3)
 #    wifi/hal_src   PHY / Wi-Fi hal sources (periph_ctrl.c and
-#                   phy_init_data.c of the S3 set are not used: C6 takes the
-#                   esp-idf originals)
-#    wifi/idf_src   the six esp-idf v5.5.4 originals (D8: vendored, a
-#                   recorded deviation from BUILDING.md; the chip efuse_hal.c
-#                   is renamed efuse_hal_esp32c6.c because the stage keeps
-#                   every object in one directory by basename). Reason: the
-#                   matching members of the core's esp32c6-libs .a files
-#                   (libesp_hw_support.a / libhal.a) require
-#                   vPortEnterCritical/vPortExitCritical/xPortInIsrContext
-#                   (FreeRTOS) as undefined references, which FMP3 does not
-#                   supply, so these are compiled from source against a
-#                   FreeRTOS stub instead (dev repo INVESTIGATION.md 2-3).
-#                   Stage 5 decision S5-2: kept as vendored copies; stage 4's
-#                   hardware record is with these files. Re-evaluate when
-#                   either the "core's .a members + vPort* shim" route is
-#                   actually verified, or the pinned M5Stack core version
-#                   moves (BUILDING.md exception clause).
+#                   phy_init_data.c of the S3 set are not used: the RISC-V
+#                   chips take the esp-idf originals)
+#    wifi/idf_src   the esp-idf v5.5.4 originals (D8 / A8: vendored, a
+#                   recorded deviation from BUILDING.md; the chip files are
+#                   renamed with a chip suffix because the stage keeps
+#                   every object in one directory by basename - C6:
+#                   efuse_hal_esp32c6.c; C5: phy_init_data_esp32c5.c,
+#                   modem_clock_hal_esp32c5.c, efuse_hal_esp32c5.c).
+#                   Reason: the matching members of the core's
+#                   esp32c<N>-libs .a files (libesp_hw_support.a / libhal.a)
+#                   require vPortEnterCritical/vPortExitCritical/
+#                   xPortInIsrContext (FreeRTOS) as undefined references,
+#                   which FMP3 does not supply, so these are compiled from
+#                   source against a FreeRTOS stub instead (dev repo
+#                   INVESTIGATION.md 2-3). Stage 5 decision S5-2: kept as
+#                   vendored copies; stage 4's hardware record is with these
+#                   files. Re-evaluate when either the "core's .a members +
+#                   vPort* shim" route is actually verified, or the pinned
+#                   M5Stack core version moves (BUILDING.md exception clause).
 #    wifi/net       lwIP glue of the dev type (D7): netif_esp32s3.c and the
 #                   sys_arch port; liblwip.a itself is prebuilt. The three
 #                   lwIP contrib headers under net/lwip_contrib_include are
@@ -631,18 +800,24 @@ add_dependencies(seam_cxx generate_cfg_gen_files)
 #    target         diag_recorder.c (diag_event() the shim and the netif
 #                   call) and target_hrt64.c (target_hrt_get_current64())
 #    wifi/adapter   the Arduino-facing adapter (toppers_fmp3_wifi_* for
-#                   src/ToppersFMP3_WiFi.cpp), the C6 version of the Xtensa
-#                   port's wifi/adapter: one shared bring-up
+#                   src/ToppersFMP3_WiFi.cpp), the RISC-V version of the
+#                   Xtensa port's wifi/adapter: one shared bring-up
 #                   (toppers_wifi_core.c, dev C6 order, no WPA callback
 #                   table and no --wrap=esp_supplicant_init = D6), scan,
-#                   connect on the dev netif (D7), and the weak stubs
-#    arduino        attachInterrupt on line 19 through the kernel's
-#                   esp32c6_intmtx_route (S3-4), pinMode/digitalWrite/
-#                   digitalRead on hal/gpio_ll.h and rgbLedWrite on RMT
-#                   channel 0 (stage 6; wifi-connect only, minimal has no
-#                   SDK include path)
+#                   connect on the dev netif (D7), and the weak stubs. The
+#                   C5 differs from the C6 only in the APM readback it calls
+#                   (#if in the adapter, C5 plan stage 3)
+#    arduino        attachInterrupt through the kernel's intmtx route
+#                   (C6: line 19, C5: CLIC line 23; S3-4 / A3),
+#                   pinMode/digitalWrite/digitalRead on hal/gpio_ll.h and,
+#                   C6 only, rgbLedWrite on RMT channel 0 (stage 6;
+#                   wifi-connect only, minimal has no SDK include path)
 #
 if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
+    set(WIFI_ARDUINO_SOURCES)
+    foreach(src IN LISTS A1_CHIP_WIFI_ARDUINO_SOURCES)
+        list(APPEND WIFI_ARDUINO_SOURCES "${RUNTIME_ROOT}/arduino/${src}")
+    endforeach()
     add_library(wifi_objects OBJECT
         "${WIFI_ROOT}/shim/esp_shim_bt_crit_wifi.c"
         "${WIFI_ROOT}/shim/esp_shim.c"
@@ -658,19 +833,19 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         "${WIFI_ROOT}/shim/esp_coex_adapter.c"
         "${WIFI_ROOT}/shim/esp_shim_isr_ctx.c"
         "${WIFI_ROOT}/shim/esp_shim_ring.c"
-        "${WIFI_ROOT}/shim/esp_shim_intr_intmtx.c"
+        "${WIFI_ROOT}/shim/${A1_CHIP_WIFI_INTR_SOURCE}"
         "${WIFI_ROOT}/hal_src/phy_common.c"
         "${WIFI_ROOT}/hal_src/phy_init.c"
-        "${WIFI_ROOT}/idf_src/phy_init_data.c"
+        "${WIFI_ROOT}/idf_src/${A1_CHIP_WIFI_PHY_INIT_DATA}"
         "${WIFI_ROOT}/hal_src/esp_wifi_regulatory.c"
         "${WIFI_ROOT}/hal_src/wifi_init.c"
         "${WIFI_ROOT}/hal_src/wifi_lib_printf.c"
         "${WIFI_ROOT}/hal_src/phy_lib_printf.c"
         "${WIFI_ROOT}/idf_src/periph_ctrl.c"
         "${WIFI_ROOT}/idf_src/modem_clock.c"
-        "${WIFI_ROOT}/idf_src/modem_clock_hal.c"
+        "${WIFI_ROOT}/idf_src/${A1_CHIP_WIFI_MODEM_CLOCK_HAL}"
         "${WIFI_ROOT}/idf_src/efuse_hal.c"
-        "${WIFI_ROOT}/idf_src/efuse_hal_esp32c6.c"
+        "${WIFI_ROOT}/idf_src/${A1_CHIP_WIFI_EFUSE_HAL}"
         "${WIFI_ROOT}/net/netif_esp32s3.c"
         "${WIFI_ROOT}/net/port/sys_arch.c"
         "${FMP3_TARGET_DIR}/diag_recorder.c"
@@ -679,9 +854,7 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         "${WIFI_ROOT}/adapter/toppers_wifi_scan.c"
         "${WIFI_ROOT}/adapter/toppers_wifi_connect.c"
         "${WIFI_ROOT}/adapter/toppers_wifi_optional_stubs.c"
-        "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
-        "${RUNTIME_ROOT}/arduino/arduino_gpio.c"
-        "${RUNTIME_ROOT}/arduino/arduino_rgb_led.c")
+        ${WIFI_ARDUINO_SOURCES})
     target_link_libraries(wifi_objects PRIVATE seam_common)
     add_dependencies(wifi_objects generate_cfg_gen_files)
 endif()
@@ -759,12 +932,13 @@ set(XIP_LINK_TAIL_FLAGS "-lc@@-lgcc")
 set(PREBUILT_STAGE_LIB_DIRS "")
 
 #
-#  wifi-connect link: the dev order (a1_c6_stage1.cmake target_link_libraries)
-#  with the Xtensa manifest's shape. The six Wi-Fi blobs are the M5Stack
-#  core's (libphy.a sits in its ld/ directory, as for the Xtensa chips); the
-#  supplicant, the software-crypto mbedTLS pair and lwIP are the archives the
-#  dev repository built for FMP3 (wifi/prebuilt/{wpa2,lwip}/esp32c6, README
-#  there), copied into the stage's lib/ and referenced as @STAGE@/lib. All in
+#  wifi-connect link: the dev order (a1_c6_stage1.cmake / a1_c5_stage1.cmake
+#  target_link_libraries) with the Xtensa manifest's shape. The six Wi-Fi
+#  blobs are the M5Stack core's (libphy.a sits in its ld/ directory, as for
+#  the Xtensa chips); the supplicant, the software-crypto mbedTLS pair and
+#  lwIP are the archives the dev repository built for FMP3
+#  (wifi/prebuilt/{wpa2,lwip}/<chip>, README there), copied into the
+#  stage's lib/ and referenced as @STAGE@/lib. All in
 #  one --start-group as in dev; -lstdc++ -lm join the group and -lc -lgcc
 #  stay at the tail, as in the minimal profile. -u psa_crypto_init is the
 #  dev's (the second -u of the S3 build names a symbol no v5.5.4 archive
@@ -779,8 +953,8 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         "${ARDUINO_SDK_LIBRARY_ROOT}/libcoexist.a"
         "${ARDUINO_SDK_LIBRARY_ROOT}/libmesh.a"
         "${ARDUINO_SDK_LD_ROOT}/libphy.a")
-    set(WPA2_PREBUILT_ROOT "${RUNTIME_ROOT}/wifi/prebuilt/wpa2/esp32c6")
-    set(LWIP_PREBUILT_ROOT "${RUNTIME_ROOT}/wifi/prebuilt/lwip/esp32c6")
+    set(WPA2_PREBUILT_ROOT "${RUNTIME_ROOT}/wifi/prebuilt/wpa2/${A1_CHIP}")
+    set(LWIP_PREBUILT_ROOT "${RUNTIME_ROOT}/wifi/prebuilt/lwip/${A1_CHIP}")
     set(WIFI_PREBUILT_ARCHIVES
         "${WPA2_PREBUILT_ROOT}/libsupplicant.a"
         "${WPA2_PREBUILT_ROOT}/libmbedtls.a"

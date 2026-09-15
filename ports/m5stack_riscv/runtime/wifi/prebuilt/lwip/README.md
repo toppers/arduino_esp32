@@ -1,7 +1,8 @@
-# FMP3-built lwIP archive for the ESP32-C6 (M5NanoC6)
+# FMP3-built lwIP archive for the ESP32-C6 (M5NanoC6) and ESP32-C5 (M5Stamp-C5)
 
 `esp32c6/liblwip.a` is the lwIP TCP/IP stack the C6 `wifi-connect` runtime
-profile links. The C6 port takes the dev repository's lwIP arrangement (D7 in
+profile links; `esp32c5/liblwip.a` is the C5 profile's (the C5 section is at
+the end of this file). The C6 port takes the dev repository's lwIP arrangement (D7 in
 `docs/c6-port.md`): this archive plus the glue compiled into the stage
 (`../../net/netif_esp32s3.c`, `../../net/port/sys_arch.c`, options in
 `../../net/port/include/lwipopts.h`). The Xtensa boards use the M5Stack core's
@@ -66,3 +67,54 @@ Archive checksum (SHA-256) and size:
 lwIP is BSD-3-Clause (`LWIP_COPYING.txt`, reproduced from the lwIP tree; the
 ESP-IDF fork carries `ESP_IDF_LICENSE.txt`, Apache-2.0, for its additions).
 Update the archive only together with this file.
+
+## ESP32-C5 (M5Stamp-C5): `esp32c5/liblwip.a`
+
+The C5 `wifi-connect` profile links `esp32c5/liblwip.a`, built the same way
+(C5 plan decision A7 = the C6 D7 + stage 4 Task 0 arrangement): the dev
+script for the C5, `esp/boot/build_lwip_lib_espidf_esp32c5.sh` (the C6 script
+with the chip name changed; it has the same `OUT_DIR` / `PORT_EXTRA`
+overrides), run with `PORT_EXTRA` pointing at this repository's
+`../../net/port/include` (`LWIP_DNS 1`, `MEMP_NUM_SYS_TIMEOUT 9`, `ERANGE`)
+and `OUT_DIR` a scratch directory. The dev golden `esp/lib/lwip_esp32c5_espidf/
+liblwip.a` (`LWIP_DNS 0`, sha256 `85859F70...`, 450340 bytes) is untouched;
+on the same day the script with its defaults into another scratch `OUT_DIR`
+reproduced that golden byte for byte (the control for the script's
+determinism, dev-side log `stage3/logs/task1-build-lwip-dns.txt`).
+
+The result is byte-identical to `esp32c6/liblwip.a`: lwIP itself has no chip
+code, both chips are RV32IMAC with the same `-march`, and both builds read
+the same `lwipopts.h`. It is kept as a separate file so that each chip
+directory is complete on its own and the stage's `lib/` is copied from one
+place per chip (`runtime/CMakeLists.txt`, `LWIP_PREBUILT_ROOT`).
+
+Provenance:
+
+- Source repository: as above (the development repository; the C5 base is
+  `packaging/release-allowlist.json` `portBaseRepositoryC5` /
+  `portBaseCommitC5`)
+- Source base commit: `1d96bcba32a043eb7066126550b0dbe598e4aad6` (2026-09-16;
+  the C5 script was added at dev C5 stage 4 Task 2, and the lwIP sources
+  and port files it reads are the same as the C6 ones)
+- Build recipe (arduino DNS variant), run from the dev repository root
+  (2026-09-16, 42 sources compiled, none failed):
+  ```
+  PORT_EXTRA=<arduino_esp32>/ports/m5stack_riscv/runtime/wifi/net/port/include \
+  OUT_DIR=<scratch dir> \
+  bash esp/boot/build_lwip_lib_espidf_esp32c5.sh
+  ```
+  Toolchain `riscv32-esp-elf` esp-14.2.0_20260121
+- lwIP source and target: as above (ESP-IDF v5.5.4 `735507283d`
+  `components/lwip/lwip`, submodule `fd432e4ee2`; RV32IMAC, TOPPERS/FMP3
+  `sys_arch` port)
+
+Archive checksum (SHA-256) and size:
+
+- `esp32c5/liblwip.a` (473586 bytes, `LWIP_DNS 1`, 2026-09-16,
+  = `esp32c6/liblwip.a`):
+  `5BFBC3EF56D795A9B13C101FCB9511944596D3328ADCBDCB4CFF2BCC9EA9D5F1`
+- dev golden it deviates from (`LWIP_DNS 0`, 450340 bytes, not shipped):
+  `85859F7049A33B3F7EB889C411C84608CA605E3830B62A2AB588FE864BB01681`
+
+`python3 scripts/check_host_paths.py` passes on it. Same licenses as above.
+Update the archive only together with this file and `lwipopts.h`.

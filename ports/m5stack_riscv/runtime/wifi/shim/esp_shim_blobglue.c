@@ -59,7 +59,7 @@
  *  定義と多重定義になる（stage-4 README 0-2 節 1.）。ガードを
  *  !S3 && !C6 にする（S3 の前処理結果は不変）。
  */
-#if !defined(TOPPERS_ESP32S3) && !defined(TOPPERS_ESP32C6)   /* S3/C6はlibcore.a(misc_nvs.o)が本体を提供＝スタブ不要 */
+#if !defined(TOPPERS_ESP32S3) && !defined(TOPPERS_ESP32C6) && !defined(TOPPERS_ESP32C5)   /* S3/C6はlibcore.a(misc_nvs.o)が本体を提供、C5は g_misc_nvs=ROM ld + misc_nvs_*=blob＝スタブ不要 */
 /*  無印ESP32：g_misc_nvs を NULL にすると blob（cnx_sta_associated 等）が
  *  g_misc_nvs->field を「NULLチェック無し」で無条件デリファレンスして
  *  LoadProhibited(EXCCAUSE=28)になる（例：l32i a6,[g_misc_nvs+4] の後に beqz で
@@ -108,7 +108,7 @@ uint8_t g_espnow_user_oui[3] = { 0U, 0U, 0U };
  *  スキャン専用の通常STA遷移では「認証期限切れ猶予0」で影響しない
  *  よう0固定とする．
  */
-#if !defined(TOPPERS_ESP32S3) && !defined(TOPPERS_ESP32C6)   /* S3/C6はlibmesh.a(mesh_parent.o)が提供 */
+#if !defined(TOPPERS_ESP32S3) && !defined(TOPPERS_ESP32C6) && !defined(TOPPERS_ESP32C5)   /* S3/C6/C5はlibmesh.a(mesh_parent.o)が提供 */
 uint32_t mesh_sta_auth_expire_time = 0U;
 #endif
 
@@ -121,7 +121,7 @@ uint32_t mesh_sta_auth_expire_time = 0U;
  *  syslogは別途フィルタするため，blob側の冗長ログは最小（0=エラー
  *  のみ相当）にしておく．
  */
-#if !defined(TOPPERS_ESP32S3) && !defined(TOPPERS_ESP32C6)   /* S3/C6はlibcore.aが提供 */
+#if !defined(TOPPERS_ESP32S3) && !defined(TOPPERS_ESP32C6) && !defined(TOPPERS_ESP32C5)   /* S3/C6/C5はlibcore.aが提供 */
 int g_log_level = 0;
 #endif
 
@@ -171,7 +171,7 @@ esp_hmac_calculate(int key_id, const void *message, size_t message_len,
 	(void) key_id; (void) message; (void) message_len; (void) hmac;
 	return(-1);	/* ESP_FAIL相当．eFuse鍵未プロビジョニングのため常に失敗 */
 }
-
+#include "esp_shim_blobglue_c5.inc"	/* ESP32-C5 分岐（段4 Task 3。空行の置換 = C6 golden を動かさない形。同 .inc 冒頭参照） */
 /*
  *  ------------------------------------------------------------------
  *  7. MAC アドレス読み出し（eFuseレジスタ直読み）
@@ -200,13 +200,13 @@ esp_hmac_calculate(int key_id, const void *message, size_t message_len,
 #if defined(TOPPERS_ESP32_LX6)
 #define EFUSE_RD_MAC_SPI_SYS_0_REG	0x3ff5A004U
 #define EFUSE_RD_MAC_SPI_SYS_1_REG	0x3ff5A008U
-#elif defined(TOPPERS_ESP32C6)
+#elif defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* 番地は esp_shim.h 末尾の ESP_SHIM_RISCV_EFUSE_BASE（C6 0x600B0800 / C5 0x600B4800） */
 /*  ESP32-C6: DR_REG_EFUSE_BASE = 0x600B0800（soc/esp32c6/register/soc/reg_base.h、
  *  efuse_reg.h:621 の EFUSE_RD_MAC_SYS_0_REG = +0x44）。+0x44/+0x48 のオフセットと
  *  バイト順は S3/C3 と同じ。出典: asp3 esp/c6/wifi/esp_shim_blobglue.c:199-203。
  *  段4 Task 3（2026-09-14）。  */
-#define EFUSE_RD_MAC_SPI_SYS_0_REG	0x600B0844U
-#define EFUSE_RD_MAC_SPI_SYS_1_REG	0x600B0848U
+#define EFUSE_RD_MAC_SPI_SYS_0_REG	(ESP_SHIM_RISCV_EFUSE_BASE + 0x44U)
+#define EFUSE_RD_MAC_SPI_SYS_1_REG	(ESP_SHIM_RISCV_EFUSE_BASE + 0x48U)
 #else
 #define EFUSE_RD_MAC_SPI_SYS_0_REG	0x60007044U
 #define EFUSE_RD_MAC_SPI_SYS_1_REG	0x60007048U

@@ -163,6 +163,39 @@ echo サーバ、DHCP直後のgateway ping 1回、`ip=`/`gw=`付きログ行--�
 （元のESP-IDF由来コードの表示のまま）。詳細は
 `ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`「改変の方針」9番。
 
+### C5 段3: wifi-connect profile の C5 分岐の追加出典（2026-09-16）
+
+`ports/m5stack_riscv/runtime/wifi/shim/` の第2コピー（上記「段3」節）に、開発リポジトリ
+`1d96bcba` の C5 分岐（`git diff c7fef18 1d96bcba -- esp/shim` をそのまま適用: 変更 6 本 +
+新規 `esp_wifi_adapter_c5.inc` `esp_shim_blobglue_c5.inc` `esp_shim_intr_c5.{c,cfg,h}`
+`esp_shim_intr_c5_lines.h` `IMPORT_PROVENANCE_c5.md`）と、`freertos_stub/freertos/FreeRTOS.h`
+の同じ差分 1 行を載せた。出典・ライセンスは上記と同じ（開発リポジトリ側の Apache-2.0 /
+TOPPERS ライセンス表示のまま）。1 本ごとの記録は
+[`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md)
+「ESP32-C5 段3 Task 1」節を正本とする。
+
+esp-idf 原本の同梱（D8 = C5 計画 A8 の逸脱）は C5 の同名原本 3 本が増えた（Apache-2.0、
+ESP-IDF v5.5.4 `735507283d`、内容は無改変でファイル名に chip 接尾辞のみ）:
+`runtime/wifi/idf_src/phy_init_data_esp32c5.c`（`components/esp_phy/esp32c5/phy_init_data.c`）、
+`modem_clock_hal_esp32c5.c`（`components/hal/esp32c5/modem_clock_hal.c`）、
+`efuse_hal_esp32c5.c`（`components/hal/esp32c5/efuse_hal.c`）。chip 非依存の
+`periph_ctrl.c` `modem_clock.c` `efuse_hal.c` と lwIP contrib ヘッダ 3 本は C6 と共有する。
+逸脱の理由と段5 での再評価方針は C6 の D8 と同じ。
+
+`ports/m5stack_riscv/runtime/wifi/prebuilt/{wpa2,lwip}/esp32c5/` に C5 用のプリビルト
+アーカイブ 4 本を同梱する（ライセンスは C6 の 4 本と同じ: WPA supplicant BSD-3-Clause、
+mbedTLS 3.6.5 Apache-2.0 OR GPL-2.0-or-later、lwIP BSD-3-Clause、ESP-IDF の追加分 Apache-2.0）:
+
+- `wpa2/esp32c5/libsupplicant.a` `libmbedcrypto.a` `libmbedtls.a` -- 開発リポジトリ
+  `1d96bcba` の `esp/lib/wpa_esp32c5_espidf/` の物（`build_wpa_libs_espidf_esp32c5.sh` /
+  `build_mbedtls_tls_espidf_esp32c5.sh`、sha256 は README に記録、dev 側の記録値と一致）。
+  `libmbedcrypto.a` / `libmbedtls.a` は C6 版とバイト同一、`libsupplicant.a` は C5 の
+  sdkconfig（5 GHz / HE）で 3 .o が違う。
+- `lwip/esp32c5/liblwip.a` -- 開発リポジトリの `build_lwip_lib_espidf_esp32c5.sh` を
+  `PORT_EXTRA`=本リポジトリの vendored `lwipopts.h`（`LWIP_DNS 1`）・`OUT_DIR`=別出力で
+  建てた物（sha256 `5bfbc3ef...`、473,586 B、C6 の DNS 版とバイト同一）。dev golden
+  （`LWIP_DNS 0`）は無改変。
+
 ## BlueDroid (ESP-IDF Bluetooth host stack)
 
 `third_party/bluedroid/` — Espressif Systems, Apache License 2.0.

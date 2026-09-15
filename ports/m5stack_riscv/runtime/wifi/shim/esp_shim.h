@@ -261,4 +261,33 @@ extern int32_t esp_shim_get_core_id(void);
 }
 #endif
 
+/*
+ *  ESP32-C6 / ESP32-C5（計画 3 段4 Task 3、2026-09-16）: HW RNG の読出し番地。
+ *  esp_shim.c の SHIM_WDEV_RND_REG が参照する。**esp_shim.h の末尾に追記**するのは
+ *  seam-c6-wifi の golden（DWARF 感受性）を動かさないため（同じ理由で esp_shim.c
+ *  側は #elif の条件と #define の右辺だけを同じ行数で書き換えた。C6 の値は不変）。
+ *    C6: WDEV_RND_REG = LPPERI_RNG_DATA_REG      = 0x600B2800 + 0x8
+ *        （soc/esp32c6/register/soc/lpperi_reg.h:139、wdev_reg.h:13）
+ *    C5: WDEV_RND_REG = LPPERI_RNG_DATA_SYNC_REG = 0x600B2800 + 0x28
+ *        （soc/esp32c5/include/soc/wdev_reg.h、fmp3/arch/riscv_gcc/esp32c5/esp32c5.h の
+ *          ESP32C5_WDEV_RND_REG と同値。asp3 esp/c5/wifi_v8/esp_shim_chip_regs.h:20）
+ */
+#if defined(TOPPERS_ESP32C6)
+#define ESP_SHIM_RISCV_WDEV_RND_REG		0x600B2808U
+#elif defined(TOPPERS_ESP32C5)
+#define ESP_SHIM_RISCV_WDEV_RND_REG		0x600B2828U
+#endif
+/*
+ *  同じく eFuse の MAC レジスタのベース（esp_shim_blobglue.c の EFUSE_RD_MAC_SPI_SYS_0/1_REG
+ *  = base + 0x44 / 0x48。C6/C5 とも efuse_reg.h の EFUSE_RD_MAC_SYS_0/1_REG）。
+ *    C6: DR_REG_EFUSE_BASE = 0x600B0800（soc/esp32c6/register/soc/reg_base.h）
+ *    C5: DR_REG_EFUSE_BASE = 0x600B4800（soc/esp32c5/register/soc/reg_base.h:107、
+ *        fmp3/arch/riscv_gcc/esp32c5/esp32c5.h の ESP32C5_EFUSE_BASE、asp3 C5 blobglue）
+ */
+#if defined(TOPPERS_ESP32C6)
+#define ESP_SHIM_RISCV_EFUSE_BASE		0x600B0800U
+#elif defined(TOPPERS_ESP32C5)
+#define ESP_SHIM_RISCV_EFUSE_BASE		0x600B4800U
+#endif
+
 #endif /* ESP_SHIM_H */

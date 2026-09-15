@@ -155,7 +155,7 @@ ferror(struct __FILE *fp)
 #include <stdarg.h>
 #include <stdio.h>
 
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)
 /*
  *  ESP32-C6（段4 Task 4・2026-09-14）: esp_log()/esp_log_write() の整形バッファを
  *  静的ローテーションにする（esp_wifi_adapter.c の log_writev_wrapper と同じ理由）。
@@ -229,7 +229,7 @@ esp_log_level_set(const char *tag, int level)
 void
 esp_log_write(int level, const char *tag, const char *format, ...)
 {
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)
 	char	*buf = esp_log_ringbuf_slot();	/* 上の esp_log() と同じ理由 */
 #else /* TOPPERS_ESP32C6 */
 	char	buf[128];
@@ -238,7 +238,7 @@ esp_log_write(int level, const char *tag, const char *format, ...)
 
 	(void) level; (void) tag;
 	va_start(args, format);
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)
 	vsnprintf(buf, ESP_LOG_RINGBUF_MSGLEN, format, args);
 #else /* TOPPERS_ESP32C6 */
 	vsnprintf(buf, sizeof(buf), format, args);
@@ -932,7 +932,7 @@ _lock_release_recursive(_lock_t *lock)
 int
 coexist_printf(const char *format, ...)
 {
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)
 	/*  段4 Task 4: esp_log() と同じ理由（スタック buf のダングリング）。
 	 *  coex_init() の版数行が実機で文字化けしていた（logs/task4-160-flash3.log）。  */
 	char	*buf = esp_log_ringbuf_slot();
@@ -942,7 +942,7 @@ coexist_printf(const char *format, ...)
 	va_list	args;
 
 	va_start(args, format);
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)
 	vsnprintf(buf, ESP_LOG_RINGBUF_MSGLEN, format, args);
 #else /* TOPPERS_ESP32C6 */
 	vsnprintf(buf, sizeof(buf), format, args);

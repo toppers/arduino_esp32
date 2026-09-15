@@ -51,7 +51,15 @@
  *  #if TOPPERS_C6_NET_DIAG block below is that change; the rest of the
  *  file is the dev original. The "net: DHCP bound" prefix is kept in
  *  both arms (scripts/capture_c6_usj.sh counts it).
+ *  ESP32-C5 (C5 plan stage 3, A11): the same switch under the chip's name,
+ *  TOPPERS_C5_NET_DIAG (runtime/CMakeLists.txt option TOPPERS_C5_NET_DIAG,
+ *  default OFF), aliased onto the name the blocks below test. The C5 stage
+ *  never defines TOPPERS_C6_NET_DIAG, so the alias is the only way the C5
+ *  build reaches the ON arms.
  */
+#if defined(TOPPERS_ESP32C5) && defined(TOPPERS_C5_NET_DIAG) && !defined(TOPPERS_C6_NET_DIAG)
+#define TOPPERS_C6_NET_DIAG	TOPPERS_C5_NET_DIAG
+#endif
 #ifndef TOPPERS_C6_NET_DIAG
 #define TOPPERS_C6_NET_DIAG	0
 #endif

@@ -91,7 +91,7 @@ extern void esp_shim_bt_exit_critical(void *mux);
 #define portENTER_CRITICAL_SAFE(mux)	esp_shim_bt_enter_critical(mux)
 #define portEXIT_CRITICAL_SAFE(mux)	esp_shim_bt_exit_critical(mux)
 
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* C5 も同じ（esp/shim/esp_shim_blobglue_c5.inc） */
 /*
  *  ESP32-C6（段4 Task 3・2026-09-14）: esp-idf の esp_private/critical_section.h
  *  は OS_SPINLOCK==0（S3/P4/LX6 以外＝単一コア扱い）の分岐で

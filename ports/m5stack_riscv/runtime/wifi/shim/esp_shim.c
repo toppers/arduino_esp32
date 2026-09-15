@@ -167,7 +167,7 @@ l3ld_unlock_hook(uint32_t newps)
 /*
  *  クリティカルセクション（mstatus.MIEの退避・復元＝ネスト対応）
  */
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* C5 も RISC-V mstatus.MIE（段4 Task 3） */
 /*
  *  ESP32-C6（RISC-V）: mstatus.MIE（bit3）を落とし、旧 mstatus を返す。
  *  復元は旧値の MIE ビットだけを見て csrsi する（他のビットは触らない）。
@@ -387,12 +387,12 @@ esp_shim_random(void)
 	 * esp_shim.c は sdkconfig.h を include しないため CONFIG_IDF_TARGET_* は使えない． */
 #if defined(TOPPERS_ESP32_LX6)
 #define SHIM_WDEV_RND_REG	((void *) 0x60035144U)	/* WDEV_RND_REG (無印ESP32) */
-#elif defined(TOPPERS_ESP32C6)
+#elif defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* 番地は esp_shim.h 末尾（C6 +0x8 / C5 +0x28） */
 /*  ESP32-C6: WDEV_RND_REG = LPPERI_RNG_DATA_REG = DR_REG_LPPERI_BASE(0x600B2800)+0x8
  *  （esp-idf soc/esp32c6/register/soc/lpperi_reg.h:139、soc/esp32c6/include/soc/
  *  wdev_reg.h:13）。出典: asp3 esp/c6/wifi/esp_shim_chip_regs.h（ESP_SHIM_WDEV_RND_REG）。
  *  段4 Task 3（2026-09-14）。  */
-#define SHIM_WDEV_RND_REG	((void *) 0x600B2808U)	/* WDEV_RND_REG (ESP32-C6) */
+#define SHIM_WDEV_RND_REG	((void *) ESP_SHIM_RISCV_WDEV_RND_REG)	/* WDEV_RND_REG (ESP32-C6: 0x600B2808 / C5: 0x600B2828) */
 #else
 #define SHIM_WDEV_RND_REG	((void *) 0x6003507CU)	/* WDEV_RND_REG (ESP32-S3) */
 #endif
@@ -2607,7 +2607,7 @@ shim_int_dispatch(int intno)
 	}
 }
 
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* C5: esp_shim_intr_c5.c の DEF_INH 入口から（段4 Task 3） */
 /*
  *  ESP32-C6: blob 用の線 1..15 の DEF_INH 入口は esp/shim/esp_shim_intr_intmtx.c
  *  （esp_shim_intmtx_inthdr_n）が持ち、そこから本 TU の shim_isr_tbl[] 経由の

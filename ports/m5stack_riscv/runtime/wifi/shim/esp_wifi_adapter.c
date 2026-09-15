@@ -87,9 +87,9 @@ extern void periph_module_reset(int periph);
 extern void wifi_module_enable(void);
 extern void wifi_module_disable(void);
 extern int esp_read_mac(uint8_t *mac, int type);
-
+#include "esp_wifi_adapter_c5.inc"	/* ESP32-C5 分岐（段4 Task 3。空行の置換 = C6 golden を動かさない形。同 .inc 冒頭参照） */
 /*  PERIPH_WIFI_MODULE（esp_private/periph_ctrl.h相当．C3の値） */
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* C5 も enum（段4 Task 3） */
 /*
  *  ESP32-C6（段4 Task 4・2026-09-14）: ここで #define しない。C6 では
  *  PERIPH_WIFI_MODULE は soc/periph_defs.h の **enum**（値 33）なので
@@ -191,7 +191,7 @@ clear_intr_wrapper(uint32_t intr_source, uint32_t intr_num)
 {
 	(void) esp_shim_intmtx_unroute((int) intr_source, (int) intr_num);
 }
-#else /* defined(TOPPERS_ESP32_LX6) : ESP32-S3 既存 */
+#elif !defined(TOPPERS_ESP32C5) /* ESP32-S3 既存（C5 は esp_wifi_adapter_c5.inc） */
 #define INTMTX_BASE_ADDR   0x600C2000U
 #define INTMTX_ENABLE_REG  (INTMTX_BASE_ADDR + 0x104U)
 #define INTMTX_PRI_REG(n)  (INTMTX_BASE_ADDR + 0x114U + (n) * 4U)
@@ -257,7 +257,7 @@ set_isr_wrapper(int32_t n, void *f, void *arg)
 		syslog(LOG_NOTICE, "wifi_adapter(c6): set_isr intno=%d outside %d..%d (not enabled)",
 			   (int_t) n, (int_t) ESP_SHIM_INTMTX_LINE_MIN, (int_t) ESP_SHIM_INTMTX_LINE_MAX);
 	}
-#else /* TOPPERS_ESP32C6 */
+#elif !defined(TOPPERS_ESP32C5) /* S3/LX6（C5 は esp_wifi_adapter_c5.inc、ここは別名の未使用関数） */
 	if (f != NULL && n >= 0 && n <= ESP_SHIM_MAX_WIFI_INTNO) {
 		(void) ena_int((INTNO) n);
 	}
@@ -281,7 +281,7 @@ ints_on_wrapper(uint32_t mask)
 	sil_wrw_mem((void *)PLICMX_ENABLE_REG,
 				sil_rew_mem((void *)PLICMX_ENABLE_REG) | mask);
 	esp_shim_int_restore(lock);
-#else
+#elif !defined(TOPPERS_ESP32C5)	/* S3（C5 は esp_wifi_adapter_c5.inc） */
 	uint32_t	lock = esp_shim_int_disable();
 	sil_wrw_mem((void *)INTMTX_ENABLE_REG,
 				sil_rew_mem((void *)INTMTX_ENABLE_REG) | mask);
@@ -299,7 +299,7 @@ ints_off_wrapper(uint32_t mask)
 	sil_wrw_mem((void *)PLICMX_ENABLE_REG,
 				sil_rew_mem((void *)PLICMX_ENABLE_REG) & ~mask);
 	esp_shim_int_restore(lock);
-#else
+#elif !defined(TOPPERS_ESP32C5)	/* S3（C5 は esp_wifi_adapter_c5.inc） */
 	uint32_t	lock = esp_shim_int_disable();
 	sil_wrw_mem((void *)INTMTX_ENABLE_REG,
 				sil_rew_mem((void *)INTMTX_ENABLE_REG) & ~mask);
@@ -1184,7 +1184,7 @@ phy_enable_wrapper(void)
 	phy_wifi_enable_set(1U);
 	C6_DIAG_CLK_READBACK("phy_enable exit");
 }
-#else
+#elif !defined(TOPPERS_ESP32C5)	/* S3/LX6（C5 は esp_wifi_adapter_c5.inc） */
 static void
 phy_enable_wrapper(void)
 {
@@ -1220,7 +1220,7 @@ wifi_reset_mac_wrapper(void)
 	 *  bit2・SET→CLEARパルスは同一．無印でS3番地を叩くとMACリセット不成立→
 	 *  hal_initがMACレディ待ちでハング＝コンソール停止の直接原因．
 	 */
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* C5 も modem_clock_module_mac_reset（段4 Task 3） */
 	/*
 	 *  ESP32-C6（段4 Task 3・2026-09-14）。出典: asp3 esp/c6/wifi/esp_wifi_adapter.c
 	 *  :613-616（wifi_reset_mac_wrapper）と :42-52 の注記。純正
@@ -1301,7 +1301,7 @@ wifi_clock_enable_wrapper(void)
 		C6_DIAG_CLK_READBACK("clock_enable exit");
 	}
 }
-#else
+#elif !defined(TOPPERS_ESP32C5)	/* S3/LX6（C5 は esp_wifi_adapter_c5.inc） */
 static void
 wifi_clock_enable_wrapper(void)
 {
@@ -1335,7 +1335,7 @@ slowclk_cal_get_wrapper(void)
 	 *  RTC_CNTL_STORE1に格納された値を返す（ROM/ブート時の設定を流用）．
 	 *  未設定（0）の場合は150kHz RCの公称値を返す．
 	 */
-#if defined(TOPPERS_ESP32C6)
+#if defined(TOPPERS_ESP32C6) || defined(TOPPERS_ESP32C5)	/* C5 も LP_AON_STORE1 = 0x600B1004（reg_base.h:95 + 0x4） */
 	/*  C6: LP_AON_STORE1_REG = DR_REG_LP_AON_BASE(0x600B1000)+0x4（lp_aon_reg.h:29）。
 	 *  出典: asp3 esp/c6/wifi/esp_wifi_adapter.c:766-781。段4 Task 3。  */
 	uint32_t cal = sil_rew_mem((void *)0x600B1004U);	/* LP_AON_STORE1 */
