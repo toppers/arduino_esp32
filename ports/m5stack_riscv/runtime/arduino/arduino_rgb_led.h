@@ -14,11 +14,13 @@
  *  docs; unverified on hardware as of stage 6 task 1). This function only
  *  drives the data pin it is given; the sketch enables the power pin.
  *
- *  Task context only, one pixel per call (no chaining). pinMode(pin,
- *  OUTPUT) is applied to the data pin on the first call (and whenever the
- *  pin changes), then the pad's output is re-routed from simple GPIO to
- *  RMT_SIG_OUT0; a later digitalWrite() on that pin has no effect until
- *  pinMode() is called on it again.
+ *  Task context only, one pixel per call (no chaining). Every call applies
+ *  pinMode(pin, OUTPUT) to the data pin and then re-routes the pad's
+ *  output from simple GPIO to RMT_SIG_OUT0 (not cached, so a pinMode() on
+ *  the pin between two writes cannot leave the LED silently un-routed); a
+ *  digitalWrite() on that pin has no effect until pinMode() is called on
+ *  it again. The pin rule is pinMode's (ard_gpio_pin_ok): GPIO 12/13 and
+ *  pin >= GPIO_NUM_MAX are refused before anything is touched.
  */
 
 #ifndef TOPPERS_ARDUINO_RGB_LED_H

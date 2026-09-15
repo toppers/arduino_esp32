@@ -59,7 +59,7 @@
       "destination": "examples/WiFiConnect/WiFiConnect.ino"
     },
     {
-      "_comment": "M5NanoC6 only (stage 6): pinMode/digitalWrite/digitalRead, a self-driven attachInterrupt test and the RGB LED, all provided by the ESP32-C6 wifi-connect runtime. It ships to every board for the same reason BluetoothSPP does - one architecture-neutral library, four boards - and is guarded with ARDUINO_M5STACK_NANO_C6: on the three Xtensa boards it compiles and links to a setup() that logs one line saying which board it targets, instead of failing at the link with an undefined pinMode (the Xtensa runtime has no GPIO API yet). Its README.md beside it is not distributed, like the other examples' side files.",
+      "_comment": "M5NanoC6 only (stage 6): pinMode/digitalWrite/digitalRead, a self-driven attachInterrupt test and the RGB LED, all provided by the ESP32-C6 wifi-connect runtime. It ships to every board for the same reason BluetoothSPP does - one architecture-neutral library, four boards - and is guarded with ARDUINO_M5STACK_NANO_C6: on the three Xtensa boards it compiles and links to a setup() that logs one line saying which board it targets, instead of failing at the link with an undefined pinMode (the Xtensa runtime has no GPIO API yet). The README.md beside it is repository documentation (what the example tests and which log lines to count) and is not distributed: the platform archive carries the .ino named here only.",
       "source": "examples/NanoC6Gpio/NanoC6Gpio.ino",
       "destination": "examples/NanoC6Gpio/NanoC6Gpio.ino"
     }

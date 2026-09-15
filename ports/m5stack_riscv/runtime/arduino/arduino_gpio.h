@@ -29,6 +29,7 @@
 #define TOPPERS_ARDUINO_GPIO_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,6 +77,11 @@ extern "C" {
 void pinMode(uint8_t pin, uint8_t mode);
 void digitalWrite(uint8_t pin, uint8_t val);
 int  digitalRead(uint8_t pin);
+
+/*  The pin rule of this port, shared with arduino_rgb_led.c so that every
+ *  entry point refuses the same pins: false for GPIO 12/13 (USB
+ *  Serial/JTAG, the console) and for pin >= GPIO_NUM_MAX. */
+bool ard_gpio_pin_ok(uint8_t pin);
 
 #ifdef __cplusplus
 }

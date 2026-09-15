@@ -63,7 +63,7 @@ _Static_assert(USB_INT_PHY0_DM_GPIO_NUM == 12 && USB_INT_PHY0_DP_GPIO_NUM == 13,
 #define ARD_MODE_PULLUP_BIT		0x04U
 #define ARD_MODE_PULLDOWN_BIT	0x08U
 
-static bool
+bool
 ard_gpio_pin_ok(uint8_t pin)
 {
 	return pin < (uint8_t) GPIO_NUM_MAX

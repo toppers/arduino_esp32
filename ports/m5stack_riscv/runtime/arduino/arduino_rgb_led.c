@@ -46,7 +46,6 @@
 #include <soc/rmt_struct.h>		/* RMT */
 #include <soc/soc_caps.h>		/* SOC_RMT_MEM_WORDS_PER_CHANNEL etc. */
 #include <soc/gpio_sig_map.h>	/* RMT_SIG_OUT0_IDX */
-#include <soc/gpio_num.h>		/* GPIO_NUM_MAX */
 #include <esp_rom_gpio.h>		/* esp_rom_gpio_connect_out_signal (ROM) */
 #include <esp_rom_sys.h>		/* esp_rom_delay_us (ROM) */
 
@@ -86,14 +85,18 @@ extern ard_rmt_block_mem_t RMTMEM;
 #define ARD_RGB_POLL_LIMIT	2000U
 #define ARD_RGB_POLL_US		10U
 
+/*  Largest value of a symbol's duration0/duration1 field (15 bits,
+ *  rmt_symbol_word_t in hal/rmt_types.h). Not RMT_LL_MAX_IDLE_VALUE, which
+ *  is the RX idle threshold limit and only happens to be the same number. */
+#define ARD_RMT_DURATION_MAX	((1U << 15) - 1U)
+
 _Static_assert(350U % ARD_RMT_TICK_NS == 0 && 900U % ARD_RMT_TICK_NS == 0,
 			   "WS2812 durations are not whole ticks");
-_Static_assert(ARD_WS_RESET <= RMT_LL_MAX_IDLE_VALUE, "reset gap exceeds the 15-bit duration");
+_Static_assert(ARD_WS_RESET <= ARD_RMT_DURATION_MAX, "reset gap exceeds the 15-bit duration field");
 _Static_assert(ARD_RGB_NWORDS <= SOC_RMT_MEM_WORDS_PER_CHANNEL, "frame does not fit one RMT block");
 _Static_assert(ARD_RMT_CH < SOC_RMT_TX_CANDIDATES_PER_GROUP, "channel 0 is not a TX channel");
 
-static bool		ard_rgb_inited;
-static int		ard_rgb_routed_pin = -1;
+static bool		ard_rgb_inited;				/* RMT clock/channel set up once */
 static uint32_t	ard_rgb_tx_done;			/* completed transmissions */
 
 static void
@@ -139,10 +142,13 @@ static void
 ard_rgb_route(uint8_t pin)
 {
 	/*  Pad as a push-pull GPIO output (input buffer on too, harmless),
-	 *  then its output source = RMT channel 0 instead of simple GPIO. */
+	 *  then its output source = RMT channel 0 instead of simple GPIO.
+	 *  Done on every write, not cached: a pinMode(pin, OUTPUT) between
+	 *  two writes puts out_sel back to simple GPIO, and a cached "already
+	 *  routed" would leave the LED silently frozen. Both writes are
+	 *  idempotent and cheap. The pin was checked by the caller. */
 	pinMode(pin, OUTPUT);
 	esp_rom_gpio_connect_out_signal((uint32_t) pin, RMT_SIG_OUT0_IDX, false, false);
-	ard_rgb_routed_pin = (int) pin;
 }
 
 static inline uint32_t
@@ -167,16 +173,16 @@ rgbLedWrite(uint8_t pin, uint8_t red_val, uint8_t green_val, uint8_t blue_val)
 	rmt_symbol_word_t	reset;
 	uint32_t			i;
 
-	if (pin >= (uint8_t) GPIO_NUM_MAX) {
-		syslog(LOG_WARNING, "[C6-RGB] refused pin %u", (uint_t) pin);
+	/*  Same rule as pinMode (GPIO 12/13 = USB Serial/JTAG, >= GPIO_NUM_MAX),
+	 *  checked before anything is routed or connected on the pad. */
+	if (!ard_gpio_pin_ok(pin)) {
+		syslog(LOG_WARNING, "[C6-RGB] rgbLedWrite: refused pin %u", (uint_t) pin);
 		return;
 	}
 	if (!ard_rgb_inited) {
 		ard_rgb_init();
 	}
-	if (ard_rgb_routed_pin != (int) pin) {
-		ard_rgb_route(pin);
-	}
+	ard_rgb_route(pin);
 
 	/*  rmt_tx_do_transaction(): pointer reset, then the symbols. */
 	rmt_ll_tx_reset_pointer(hw, ARD_RMT_CH);
