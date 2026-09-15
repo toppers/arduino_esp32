@@ -25,8 +25,10 @@
  *    - Single core: ARD_CORE_ID is 0 and gpio_ll_intr_enable_on_core()
  *      asserts that.
  *
- *  Stage 3 delivers this compiled and linked only; whether an edge on a
- *  pin actually reaches the callback is measured in stage 6.
+ *  Stage 3 delivered this compiled and linked only; stage 6 measured it on
+ *  the M5NanoC6 (examples/NanoC6Gpio, self-driven G7: RISING 5 / FALLING 5 /
+ *  CHANGE 10 / detached 0). attachInterrupt() does NOT configure the pad:
+ *  the sketch calls pinMode() first (arduino_gpio.h, ruling R3).
  *
  *  Constraints for the user:
  *    - attachInterrupt() from task context only (acre_isr is a service call).

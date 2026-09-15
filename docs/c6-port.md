@@ -1251,7 +1251,7 @@ M5NanoC6 が**配布物として**成立した段。`verify_package.py` が 4 �
   `install_platform.py` に S5-1 の size override、`xcheck_baseline.py`/
   `xcheck_compare.py` に S5-6 の C6 baseline（既定は Xtensa のまま不変）、
   `capture_c6_usj.sh` に M-6（redact guard）/M-7（journal 窓 30s 拡張）。
-  Xtensa は文字列不変（`git diff --stat main -- ports/m5stack_xtensa src third_party`
+  Xtensa は無改変（バイト列不変。`git diff --stat main -- ports/m5stack_xtensa src third_party`
   空、X-check 7/7）。
 - **Task 2**（commit `8a09479`）: dev 由来の診断フック（port 7 echo、gateway ping、
   `ip=`/`gw=` ログ）を `TOPPERS_C6_NET_DIAG`（既定 OFF）で包んだ（S5-3、R12 例外 9）。
@@ -1359,7 +1359,7 @@ reset 無しで JTAG から生存を読む」後処理を足して positive cont
 `.superpowers/sdd/PLAN-stage6-impl/{task-1,task-2,task-3}-report.md`/
 `task-{1,2,3}-review.md`/`progress.md`（ruling R1-R8）と、開発リポジトリ
 `.steering/20260915-c6-arduino-plan/stage6/{AC.md,logs/}`（57 本、いずれも dev 側で
-未 commit）。Xtensa 側は文字列不変（`git diff --stat main -- ports/m5stack_xtensa src
+未 commit）。Xtensa 側は無改変（バイト列不変。`git diff --stat main -- ports/m5stack_xtensa src
 third_party` 空、X-check 7/7 が Task 1/2/4 で成立）。
 
 - **Task 1**（commit `801c68c`（feat）/ `4c5bb0f`（レビュー是正 fix））:
@@ -1401,7 +1401,7 @@ third_party` 空、X-check 7/7 が Task 1/2/4 で成立）。
 | 6b | `NanoC6Gpio` が 4 板 x wificonnect でリンク。板ガードを外すと Xtensa でリンクが落ちる負対照 1 回 | **PASS** | Task 1 report 4 節（20/20 PASSED、NanoC6 5/5）/5 節（負対照 rc=1、未定義参照 5 種 16 件） |
 | 6c | 実機 warm: `[C6-INTR] VERDICT` RISING=5 FALLING=5 CHANGE=10 detached=0 dispatch=call=20 orphan=0、`acre_isr` erid>0、`on intno 19 (src 30)` | **PASS** | b1, b2, b3, c, d の各 `.log` に一字一句同じ 1 行 `[C6-INTR] VERDICT PASS rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2`（warm 4 + 真cold 1 = 5/5、`VERDICT FAIL` 0）。`arduino_interrupt: dispatch isr id=2 on intno 19 (src 30)` が例題 run ごとに 1 行 |
 | 6d | RGB: `nm -u` に RMT 未定義 0、実機 `[C6-RGB] tx_done>=3`。色の目視は「ユーザー確認待ち」。G19 Low/High の 1 軸実測 | **PASS（tx_done のみ。色は目視待ち、成立とは書かない）** | `[C6-RGB] tx_done` = 8（赤/緑/青/消灯 x2 の 8 書込みぶん）in b1, b2, b3, c, d、c2 は 5（5 秒窓）。`tx timeout` 0（57 本の合計）。G19 軸: b1/b3/c/d（HIGH）と b2（触らない）で全カウント同一。**LED の色/点灯の差は agent には観測できず、ユーザーの目視待ち** |
-| 6e | 台本 JTAG 後処理: positive control（正常 warm、Wi-Fi 非使用像）で `loop_calls` が 2 回読みで増加、`EP1_CONF` bit1=1 を `.jtag.txt` に記録。selftest の変異対照 PASS。無音 cold が出なければ「本番未発火」と正直に記録 | **PASS（ruling R7 による修正後）**: `loop_calls` の半分は clean な positive control で PASS。**元の `EP1_CONF bit1=1` 副基準は 2 回の probe とも 0 と実測され、前提が誤りだったので基準から外した**（下記「正直な観察」）。本番経路は未発火 | `c-jtag-positive-control.jtag.txt`: `reason=forced serial=9C:13:9E:D3:62:18`、`# openocd rc=0`、生ログ 7 行目 `Info : esp_usb_jtag: serial (9C:13:9E:D3:62:18)`（REFUSED 0）、`pc1=0x42001718 pc2=0x42001718`、`ep1_conf=0x00000000 int_raw=0x0000b00b (data_free=0)`、`loop_calls: 40528 -> 42283 delta=1755`、`verdict: alive`。`c2-jtag-probe-only.jtag.txt`: `pc1=0x42001718 pc2=0x42001714`、`int_raw=0x0000b003 (data_free=0)`、`loop_calls: 6053 -> 7877 delta=1824`、`verdict: alive`。生ログ `.jtag.log` は各 30 行、`Target halted` 4 行（halt / resume の single-step / halt / single-step）、`reset` 0。`mdw` の番地 `0x40800844` = `nm` の `toppers_arduino_loop_calls`。selftest (18) の変異対照 7 本 FAIL（Task 2 report/review）。`d-gpio-cold.stdout.txt`: `probe not run (COLD=1 heartbeat=39 ...)` |
+| 6e | 台本 JTAG 後処理: positive control（正常 warm、Wi-Fi 非使用像）で `loop_calls` が 2 回読みで増加、`EP1_CONF` bit1=1 を `.jtag.txt` に記録。selftest の変異対照 PASS。無音 cold が出なければ「本番未発火」と正直に記録 | **PASS（ruling R7 による修正後）**: `loop_calls` の半分は clean な positive control で PASS。**元の `EP1_CONF bit1=1` 副基準は 2 回の probe とも 0 と実測され、前提が誤りだったので基準から外した**（下記「正直な観察」）。本番経路は未発火 | `c-jtag-positive-control.jtag.txt`: `reason=forced serial=9C:13:9E:D3:62:18`、`# openocd rc=0`、生ログ 7 行目 `Info : esp_usb_jtag: serial (9C:13:9E:D3:62:18)`（REFUSED 0）、`pc1=0x42001718 pc2=0x42001718`、`ep1_conf=0x00000000 int_raw=0x0000b00b (data_free=0)`、`loop_calls: 40528 -> 42283 delta=1755`、`verdict: alive`。`c2-jtag-probe-only.jtag.txt`: `pc1=0x42001718 pc2=0x42001714`、`int_raw=0x0000b003 (data_free=0)`、`loop_calls: 6053 -> 7877 delta=1824`、`verdict: alive`。生ログ `.jtag.log` は各 30 行、`Target halted` 4 行（halt / resume の single-step / halt / single-step）、`reset` 0。`mdw` の番地 `0x40800844` = `nm` の `toppers_arduino_loop_calls`。selftest (16)/(17)/(18) の変異対照 7 本（うち (18) は 4 本）が FAIL（Task 2 report/review）。Task 4 の台本 fix でさらに 3 本追加。`d-gpio-cold.stdout.txt`: `probe not run (COLD=1 heartbeat=39 ...)` |
 | 6f | journal: 出荷既定像の真cold 1 回で `.journal.txt` に disconnect 行（窓内）/列挙 1/再列挙 0、同 run の heartbeat 成立 | **PASS** | `a-journal-cold.journal.txt`: `USB disconnect, device number 88` 17:12:11.697（窓は `--since` 17:11:52 から）、`new full-speed USB device number 89` 17:12:25.464 の 1 回、`cdc_acm ... ttyACM0` 1 回、以後 USB 行なし。`a-journal-cold.cold.txt`: `absent at start` 17:12:22.038 -> `appeared` 17:12:25.640。同 run の `markers:` heartbeat=43、`wifi:` connected=1 dhcp=1 dnsok=2 tcp=1 ping=0（NET_DIAG=OFF 像）。`d-gpio-cold.journal.txt` も同型（disconnect device 89 17:21:32.186、列挙 device 90 17:21:45.945 の 1 回） |
 | 6g | NET_DIAG=ON: 別 stage/別 sketchbook で WiFiConnect リンク（`nm -u` 空）、実機 warm 1 回で `ping gateway -> OK`>=1、`ip=`/`gw=` 行あり（マスク済み）。既定 stage/platform の sha 不変。板は既定像へ回復 | **PASS** | `e-netdiag-warm.log`（503 行）: `net: ping gateway -> OK` 33、`-> timeout` 0、`net: DHCP bound ip=<IPv4> gw=<IPv4>` 1 行（57 本中この 1 行だけが `<IPv4>` トークン）、connected=1 dhcp=1 dnsok=2 tcp=1、unexpected 0。`e-elf-checks.txt`: `nm -u` 0、`net_ping_result`/`ping_init`/`tcpecho_raw_init`/`udpecho_raw_init` あり、`strings` `ping gateway` 1/`DHCP bound ip=` 1。`e-separation-before.txt` == `e-separation-after.txt`（4 行すべて同値。下記「正直な観察」の注記あり）。`f-restore-warm.log`（471 行）: `ping gateway` 0、`ip=` 0、`net: DHCP bound` のみ。`f-elf-checks.txt`: 診断記号 0/文字列 0 |
 | 6h | 非退行: minimal stage sha 不変、wificonnect の 4 例題 + 新例題リンク、X-check 7/7、`git diff --stat main -- ports/m5stack_xtensa src third_party` 空 | **PASS** | Task 1 report 6-7 節（minimal 49/50 同一/`banner.o` のみ、X-check `expected=7 compared=7 match=7 diff=0`、diff 空）、Task 2/4 でも X-check 7/7。**射程の注記**: Task 1/2/4 の X-check は Xtensa stage を再ビルドせずに走らせたもの（「ディスク上の Xtensa stage が baseline と同じ」の主張。変更したファイルは Xtensa stage のビルド入力ではない、は推論） |
@@ -1514,7 +1514,7 @@ live creds が残っている**（段4/5 と同じ標準運用ルール）。`bu
   placeholder 行 1 -> 0/0 を行数で確認）。
 - 57 本のログ + report に対する針 grep（SSID / PASS）は **0 / 0**（レビューが独立に再実行、
   作業コピーで 1 / 1 の positive control）。`.UNREDACTED` 0、`REDACTED_` 0（スケッチは creds
-  を印字しない）、`<IPv4>` 1（(e) の `ip=`/`gw=` 行）、`<PEER-MAC>` 15、`<HEX32>` 9。
+  を印字しない）、`<IPv4>` 1（(e) の `ip=`/`gw=` 行）、`<PEER-MAC>` 15 行（トークン 24）、`<HEX32>` 9。
   DUT 以外の生 MAC 0、未マスク IPv4 0。
 - `git diff --exit-code examples/` rc=0、`git status --porcelain` 0 行（Task 3 終了時、
   レビューでも再確認）。`examples/WiFiConnect/WiFiConnect.ino` の placeholder は無改変。

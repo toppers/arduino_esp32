@@ -686,7 +686,7 @@ c6_jtag_probe() {   # <reason: silent-cold|forced>
     } > "$JTAG_TXT"
     C6_FILES+=("$JTAG_LOG")
     timeout 30 "${cmd[@]}" > "$JTAG_LOG" 2>&1 || rc=$?
-    echo "# openocd rc=$rc$([ "$rc" -eq 124 ] && echo ' (killed by the 30 s timeout; the chip may be left halted -- reset or power-cycle it)')$([ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && echo ' (non-zero: if the -c chain stopped between halt and resume the chip may be left halted -- reset or power-cycle it)')" >> "$JTAG_TXT"
+    echo "# openocd rc=$rc$([ "$rc" -eq 124 ] && echo ' (killed by the 30 s timeout; the chip may be left halted -- reset or power-cycle it)')$([ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && { if $GREP -q 'serial (' "$JTAG_LOG" 2>/dev/null; then echo ' (non-zero: if the -c chain stopped between halt and resume the chip may be left halted -- reset or power-cycle it)'; else echo ' (non-zero before any adapter was opened: nothing was halted)'; fi; })" >> "$JTAG_TXT"
     c6_jtag_parse "$JTAG_LOG" "$addr" "$why" "$rc" >> "$JTAG_TXT"
     {
         echo "# jtag: reason=$reason serial=$dut_uc openocd rc=$rc"
