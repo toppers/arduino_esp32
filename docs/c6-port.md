@@ -44,8 +44,8 @@ wpa2 の `.a`（`ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2/README.md`）�
 | D5 | C6 の CPU クロック | **確定（160 MHz）**。段2 で条件 A を 160 MHz のまま warm 5/5・真cold 9/10 を実機実測し成立、80 MHz へのフォールバックは不要（**S1-6 の watch item は解消**） | -- | -- |
 | D6 | OPEN AP の私的 ABI（`g_ic+0x1b4`） | **C6 では表を差し込まない。** 開発側と同じく `esp_wifi_init` に supplicant を任せる（開発側で STA/DHCP/ping 実測済み）。`--wrap=esp_supplicant_init` の経路は Xtensa 側を触らない。C6 の Open AP は**段4 で実測するまで対応を主張しない**。**段3 で実装どおり確定**: `toppers_wifi_core.c`（C6）はコールバック表・`__real_esp_supplicant_init`・`wpa_crypto_funcs` ゼロ化のいずれも持たない（ソース 0 件を実測）。空パスワード要求は NOTICE を出して driver へそのまま渡す。Open AP の可否は段4 の実機まで未確定のまま。**段4 で実測範囲が確定**: 実測できたのは **WPA2-PSK のみ**（ユーザーの実 AP、真cold 3/3 含む）。Open AP / WPA3-SAE は AP を用意できず**未実測のまま**（下記「段4 の記録」）。D6 の判断（表を差し込まない）自体は変更なし | `ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.c:30`（offset）、`BUILDING.md:288-294`（OPEN/WPA 分離） | Open AP が要るなら C6 blob の offset を求め直す（別作業） |
 | D7 | lwIP | **開発側の型（自前 `liblwip.a` + `netif_esp32s3.c` / `port/sys_arch.c`）**で通し、core の `liblwip.a` へ寄せるのは後。**段3 で確定・リンク成立**: 「段3 でリンクが通らなければ Xtensa 型へ」の分岐は発生しなかった（AC-3d PASS）。gateway/netmask は `netif_esp32s3.h` が公開しないため、adapter 側で lwIP の `netif_default` を読んで吸収（vendored ファイルは無改変のまま） | Xtensa 側は core の `liblwip.a` + `ports/m5stack_xtensa/runtime/wifi/net/` の別系統 | 段3 でリンクが通らなければ Xtensa 型へ（**不要になった**） |
-| D8 | esp-idf 原本 6 本 | **開発側と同じく vendored**（provenance と改変境界を記録）。`BUILDING.md:278`「ESP-IDF を複製しない」からの**逸脱として明記**し、段5 で core の `.a` メンバ + `vPort*` シム案を再評価。**段3 で対象が 3 本増えた**: `netif_esp32s3.c` が要求する lwIP contrib ヘッダ 3 本（BSD-3、入れ子 submodule `fd432e4ee2`）を同じ逸脱の枠で受理（Task 1 レビュー承認）。D8 の逸脱は計 9 本（esp-idf 原本 6・lwIP contrib ヘッダ 3）に確定 | `BUILDING.md:278` | 段5 の再評価で置換 |
-| D9 | C3 / C5 | 板は足さない。`BOARDS` / `--chip` / `PROFILES` を表駆動にするだけ | `scripts/install_platform.py:66`（`BOARDS`）・`:311`（`--chip`）、`scripts/verify_package.py:77`（`PROFILES`）・`:91`・`:97` | -- |
+| D8 | esp-idf 原本 6 本 | **開発側と同じく vendored**（provenance と改変境界を記録）。`BUILDING.md`「ESP-IDF を複製しない」からの**逸脱として明記**（判断 S5-2 で例外条項の段落を追加）。**段3 で対象が 3 本増えた**: `netif_esp32s3.c` が要求する lwIP contrib ヘッダ 3 本（BSD-3、入れ子 submodule `fd432e4ee2`）を同じ逸脱の枠で受理（Task 1 レビュー承認）。D8 の逸脱は計 9 本（esp-idf 原本 6・lwIP contrib ヘッダ 3）に確定。**段5 の判断 S5-2（2026-09-15）: 維持（再評価の結果、置換しない）**。core の `.a` メンバ + `vPort*` シム案は未検証のままで、段4 の実機実績は vendored 版のもの | `BUILDING.md`「依存の固定」の例外条項 | 再評価は M5Stack core がこの 9 本を `.a` として公開する（または `vPort*` シムを実装する）まで持ち越し |
+| D9 | C3 / C5 | 板は足さない。`BOARD_PROFILES` / `--chip` / `PROFILES` を表駆動にするだけ。**段5 で表駆動化を完了**（`verify_package.py` の `BOARDS`/`BOARD_ONLY_PROFILES` は `BOARD_PROFILES` へ一般化済み。追加は行を足すだけで済む設計になったことを実装で確認、`BUILDING.md`「変更するときに守ること」に表の一覧を記載） | `scripts/install_platform.py`（`BOARDS`）・`--chip`、`scripts/verify_package.py`（`BOARD_PROFILES`/`PROFILES`）、`packaging/release-allowlist.json`（`prebuiltStages`/`chipToolDependencies`）、`.github/workflows/verify-package.yml`（chip ループ） | -- |
 | D10 | 板 id / 表示名 | `m5nanoc6_fmp3` / `M5NanoC6 (TOPPERS/FMP3)` | 既存 `m5cores3_fmp3` の型（`scripts/install_platform.py:66-73`） | -- |
 | D11 | C6 の profile | `minimal` + `wifi-connect`（m5-unified / bt-classic 無し。C6 target は `TNUM_PRCID` 1 以外を `#error` にする） | `scripts/install_platform.py:123`（`EXPECTED_PROFILES`）、`ports/m5stack_xtensa/runtime/CMakeLists.txt:287-289`（`FMP3_PRC_NUM`） | -- |
 
@@ -1229,6 +1229,122 @@ ptable/`boot_app0` は不変。
   キャッシュ経由で成功することがありうる。段4 では実機で発生しなかった（`dnsfail=0`
   9/9）が、段5 で DNS を使う例題・スケッチを増やすときに再現条件を確かめること。
 
+## 段5 の記録（2026-09-15、commit `8e556b5`/`b157f76`（Task 1）、`8a09479`（Task 2）、
+Task 3 はコード変更なし、`aa62fde`（fix wave、S5-8）/`9e83508`（fix wave、レビュー是正）、
+Task 4（本節・利用者向け文書、本 commit）。`aa62fde`/`9e83508` は本 Task 4 と並行する
+別の fix wave が実装したもので、本節（Task 4）は `scripts/` を触っていない）
+
+M5NanoC6 が**配布物として**成立した段。`verify_package.py` が 4 板（Xtensa 3 +
+`m5nanoc6_fmp3`）で通り、`check_release_artifacts.py`/`check_host_paths.py`
+（release 形）が通り、CI が C6 を回すようになり、利用者向け文書
+（`README.md`/`BUILDING.md`/`packaging/README.release.md`/
+`THIRD_PARTY_NOTICES.md`/`library.properties`）が C6 を記述するようになった。
+詳細な証跡は本リポジトリ `.superpowers/sdd/PLAN-stage5-impl/{task-1,task-2,task-3}-report.md`・
+`progress.md` と、開発リポジトリ `.steering/20260915-c6-arduino-plan/stage5/{AC.md,logs/}`
+（`task1-*`/`task2-*`/`task3-*`、いずれも dev 側で未 commit）。
+
+- **Task 1**（commit `8e556b5`（fix、S5-1/S5-6/M-6/M-7）/ `b157f76`（feat、
+  `verify_package.py`/CI/allowlist/`check_release_artifacts.py` の C6 対応・表駆動化））:
+  `BOARD_PROFILES`（板 -> 選べる構成の集合）で `verify_package.py` を一般化し
+  `m5nanoc6_fmp3` を追加、CI の chip ループと板名検査に `esp32c6`、
+  `release-allowlist.json` に C6 の `prebuiltStages`/`chipToolDependencies`、
+  `install_platform.py` に S5-1 の size override、`xcheck_baseline.py`/
+  `xcheck_compare.py` に S5-6 の C6 baseline（既定は Xtensa のまま不変）、
+  `capture_c6_usj.sh` に M-6（redact guard）/M-7（journal 窓 30s 拡張）。
+  Xtensa は文字列不変（`git diff --stat main -- ports/m5stack_xtensa src third_party`
+  空、X-check 7/7）。
+- **Task 2**（commit `8a09479`）: dev 由来の診断フック（port 7 echo、gateway ping、
+  `ip=`/`gw=` ログ）を `TOPPERS_C6_NET_DIAG`（既定 OFF）で包んだ（S5-3、R12 例外 9）。
+  vendored `netif_esp32s3.c` に呼出し口の switch が無かったため、該当ブロックを
+  `#if TOPPERS_C6_NET_DIAG` で囲む最小改変（+38/-1 行）。実機 warm 1 回で
+  OFF ビルドの非退行を確認（AC-5f）。
+- **Task 3**（コード変更なし、commit なし、DONE_WITH_CONCERNS）: ローカル
+  package index を作り Boards Manager 経由で 4 板を入れ直し、`verify_package.py`
+  47/47・`check_release_artifacts.py`・`check_host_paths.py` を実測。懸念として
+  M5NanoC6 の成果物がビルドパスに依存すること（S5-8 の起点）と、
+  `verify_package.py` が開発機の公開 index キャッシュを一時的に上書きすることを
+  報告した。
+- **fix wave**（commit `aa62fde`（S5-8）/`9e83508`（レビュー是正）、本 Task 4 と
+  並行して実施、本節は `scripts/` を触っていない）: `fmp3_link.py` の fixed-vma
+  経路を `elf2image` 前の `--strip-debug` に変更し（`DRIVER_VERSION` 3 -> 4）、
+  C6 Blink minimal を 2 つの異なる build path で建てて `.bin` の sha256 が
+  一致することを実測（positive control。strip を外すと 65 バイトが再び
+  異なることも確認）。あわせて Task 1 review の Important（CI 負対照ログ未整備）
+  と Task 2 review の Minor 数件（selftest fixture、`lwipopts.h` コメント、
+  docstring）を解消。
+
+### 判断 S5-1..S5-8 の結果
+
+| # | 判断 | 決定 | 根拠 | 費用 |
+| --- | --- | --- | --- | --- |
+| S5-1 | IDE の size 表示の分母 | **実装**: `install_platform.py` の `UPLOAD_SIZE_OVERRIDES`（C6 板行のみ）で `upload.maximum_data_size` を ld の実際の RAM 上限 `452112` に上書き（`upload.maximum_size=1310720` は継承値のまま）。Xtensa 3 板は無変更 | 段3/段4 の注記（継承値 327,680 は FreeRTOS 前提で実際の上限と合わず、誤解を招く使用率表示になる） | `--show-properties` で 4 板とも確認済み（AC-5e）。他板への影響なし |
+| S5-2 | D8（esp-idf 原本 6 本 + lwIP contrib 3 本の vendoring、計 9 本） | **維持**。`BUILDING.md`「ESP-IDF を複製しない」に例外条項を追加（対象・理由・出自・再評価の条件） | core の `.a` メンバ + `vPort*` シム案は未検証で、段4 の実機実績は vendored 版のもの | 再評価は M5Stack core がこの 9 本を `.a` として公開する（または FMP3 側に `vPort*` シムを実装する）まで持ち越し |
+| S5-3 | dev 診断フック（port 7 echo、gateway ping 1 回、`ip=`/`gw=` 行） | **出荷物では既定 OFF**。`netif_esp32s3.c` の呼出し口が無かったため、vendored ファイル自体を `#if TOPPERS_C6_NET_DIAG`（既定 0）で囲む最小改変（R12 例外 9） | `docs/c6-port.md` 段3 の記載（出荷可否は段5 で決める、と持ち越されていた） | 実機 1 回（warm、AC-5f）で非退行を確認。ON 側は stage レベルでのみ検証（object が段4 と byte 同一）、リンク・実機は未実施 |
+| S5-4 | W-5（初回 `DISCONNECTED` 後の再接続） | **段5 では変えない**（Xtensa と同じ製品挙動。adapter コードは共通） | Task 2 review（段4）| 有界の再試行を入れる場合は両 port 同時の別計画 |
+| S5-5 | `MEMP_NUM_SYS_TIMEOUT` 余裕 1 と `ERANGE` の置き場 | **注記のみ**（`lwipopts.h` にコメント追加、非コメント変更なし）。`ERANGE` の恒久先は dev の `hal_stub_include/errno.h`（dev 側 backlog、未実施） | Task 0 review（段4）| コメントのみであることを `gcc -fpreprocessed -dD -E -P` の byte 一致で実証済み。`liblwip.a` は無改変（prebuilt のまま） |
+| S5-6 | X-check の C6 baseline | **実装**: `CHIPS` に `esp32c6` を追加し、`xcheck_baseline.py --chips esp32c6 --baseline-directory <別の場所>` で C6 専用の baseline を別立てで取れるようにした。**既定の比較対象は Xtensa のまま不変** | Task 3 review（段4）M-3 | C6 の golden を既定に含めるかどうかは段5 では決めていない（今後の判断）。実測は 2/2 MATCH（scratch dir・dirty tree からのデモンストレーションで、正式な C6 baseline ではない） |
+| S5-7 | C3/C5 | **板は足さない**（D9）。表駆動化で追加が「行を足すだけ」になっていることを文書に明記 | PLAN D9 | -- |
+| S5-8 | M5NanoC6 イメージのビルドパス非依存化 | **実装（fix wave commit `aa62fde`）**: `fmp3-link` の fixed-vma 経路で、`elf2image` の前に ELF のコピーを `--strip-debug`（読み込む内容＝ロード可能なバイト列は不変）し、`app_elf_sha256` を DWARF（`.debug_str` のビルドパス）非依存にする。`DRIVER_VERSION` を 3 から 4 へ | Task 3 の懸念: 同一ソース・同一ステージから建てた C6 の 7 成果物が、ビルドパスの綴りだけで 64 バイト（`app_elf_sha256` + イメージ末尾ハッシュ）異なっていた（`.debug_str` にビルドパスが残るため） | schema-1（Xtensa／runtime-mmu 経路）は無改変（driver 3 と 4 で同一 stage を再リンクし app bin が byte 同一なことを確認）。**実測（positive control）**: C6 Blink minimal を 2 つの異なる build path で建てて `.bin` sha256 が一致（strip を外すと 65 バイトが再び異なる）。この実測は 1 ホスト内の build path 差のみで、**Xtensa と同じ意味でのホスト間（Windows/Linux/macOS）バイト一致はまだ確認していない** |
+
+### AC 5a-5h（判定・根拠は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage5/AC.md` を正本とし、ここには要約のみ）
+
+| # | 基準 | 判定 |
+| --- | --- | --- |
+| 5a | `verify_package.py` 既定 4 板、本数一致 | **PASS**（47 = CoreS3 12 + StickS3 12 + M5Core 16 + M5NanoC6 7。`python3 scripts/verify_package.py --list-builds` で導出、Boards Manager 経由の実走行でも 47/47） |
+| 5b | `check_release_artifacts.py`/`check_host_paths.py`/`test_check_release_artifacts.py` | **PASS**（C6 tool 名検査を含め rc=0、負対照は FAILED、947 file(s) で host path 0 件、テスト 12 OK） |
+| 5c | CI yml（chip ループ・板名検査に C6、構文検査） | **PASS**（構文・ローカル再現に加え、負対照 2 本の証跡も fix wave `9e83508` で `task1-ci-check-step.txt` に追記済み。下記「レビューの Important 指摘」） |
+| 5d | X-check 7/7（`--clean` 再ビルド後） | **PASS**（Task 1・Task 3 とも 7/7 MATCH、Xtensa の対象パス差分 0） |
+| 5e | S5-1: `upload.maximum_data_size`=452112 | **PASS**（M5NanoC6 のみ 327680 -> 452112、他 3 板不変） |
+| 5f | S5-3: 診断フック OFF の実機 1 回 | **PASS**（connected/dhcp/dnsok/tcp>=1、ping/port7 行 0、unexpected 0） |
+| 5g | 利用者向け文書 | **PASS**（本 commit。固定総数は `--list-builds` 由来の実測値として記述） |
+| 5h | `docs/c6-port.md` 段5 節・到達点表 | **PASS**（本 commit） |
+
+### レビューの Important 指摘と解決状況
+
+- **Task 1 review**（Approved）: 引用ログ `task1-ci-check-step.txt` に CI ステップの
+  負対照（stray `esp32c6/m5-unified` ディレクトリ、`esp32c6/wifi-connect` の欠落）の
+  出力が無い（挙動自体は真だが証跡が無い）という指摘。**解決済み**（fix wave
+  commit `9e83508`、本 Task 4 と並行して実施。負対照 2 本の出力を
+  `task1-ci-check-step.txt` に追記: `esp32c6/m5-unified` の迷子 stage ->
+  `unexpected stage packaged`・rc=1、`esp32c6/wifi-connect` 除去 ->
+  `missing stage`・rc=1、いずれも復元後 rc=0）。
+- **Task 2 review**（Approved）: `.journal.txt` サイドカーの真cold 確認が Task 2 では
+  実施されていない（warm 1 回のみ）という指摘。**未解決のまま段6 へ持ち越し**
+  （下記「段6（任意）」）。
+
+### 段4 最終レビューからの持ち越し一覧（`.superpowers/sdd/PLAN-stage5-impl/task-4-brief.md` の (a)-(g)）の処理結果
+
+- **(a) ROM `rand()`/`syscall_table_ptr` ハザード**: `README.md`「M5NanoC6 の既知の制限」
+  に記載（本 commit）。
+- **(b) port-7 echo / gateway ping の出荷可否**: S5-3 で決定・実装済み（既定 OFF）。
+- **(c) W-5 の再接続**: S5-4（変えない）で確定。`README.md` に「自分からは再接続しない」
+  旨を記載（本 commit）。
+- **(e) 無音 cold の liveness 検査（reset 無し）**: 担当を**段6**として明記（下記）。
+- **(f) 「C6 の基準 commit」の表記ゆれ**: 本文書冒頭「出自」節の `portBaseCommitC6`
+  （`c7fef18`）と `wifi/prebuilt/lwip/README.md` の `5bdac26e` は同じ出典（後者は
+  「`c7fef18` 以後の dev 側の無関係な進行」を指すだけ）--この整理は既に該当 README
+  に注記済み（段4）、本段で追加の変更なし。
+- **(g) `hostByName` の 5 秒上限**: `docs/c6-port.md`「DNS 実装の要約」に既に記載済み
+  （段4）、段5 で DNS を使う例題を増やしていないため再現条件の確認は持ち越し。
+- **台本 `capture_c6_usj.sh` の M-6/M-7**: Task 1 で実装済み（上記）。
+
+### 段6（任意）
+
+- `attachInterrupt` と RGB LED の例題（未着手。リンクのみの状態は段3 のまま不変）。
+- C3/C5 を板として追加する場合は、D9 のとおり表（`BOARD_PROFILES`・
+  `build_prebuilt_stages.py` の chip 表・`release-allowlist.json` の
+  `prebuiltStages`/`chipToolDependencies`・CI の chip ループ）へ行を足すだけで
+  拡張できる設計になっている（新しい列や分岐ロジックの追加は不要）。
+- **無音の真cold を区別するリブネスチェック**（reset 無しで「アプリは生きているが
+  USJ だけ無音」と「アプリがハング」を区別する手段）の担当をここに割り当てる
+  （段2 (1/10)・段4 (1/6) と 2 段連続で観測、担当未定のまま持ち越されていた）。
+- **`.journal.txt` サイドカーの真cold での実証**（Task 2 review の Important、上記）:
+  段5 でも真cold run を回していないため未実証のまま。段6 で真cold run を 1 回でも
+  回すときに合わせて確認する。
+- **`TOPPERS_C6_NET_DIAG` の ON 経路のリンク・実機検証**: S5-3 で実装した ON 側は
+  stage レベル（object が段4 と byte 同一）でしか確認していない。実際にリンク・
+  実機で動かす（echo サーバへの接続、ping 応答の確認）のは段6 の候補。
+
 ## 段ごとの到達点
 
 | 段 | ゴール | 実機 | 状態 |
@@ -1238,5 +1354,5 @@ ptable/`boot_app0` は不変。
 | 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | **完了（2026-09-15、`639331a`）。** 条件 A（stock bootloader）で warm 5/5・真cold 9/10（成立（条件付き）、cold5 無音 1 回・再試行後 5 連続）、D1/D5 確定。B/C/80 MHz は未実施（A が成立したため不要）。記録は「段2 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage2/AC.md` |
 | 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | **完了（2026-09-15、`760fce9`/`4448a8d`/`a4c346a`/`45122a5`/`8912a35`）。** AC 3a-3j 全 PASS（`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` の 4 例題、`8912a35` の最終レビュー是正後の値で確定）、記録は「段3 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage3/AC.md` |
 | 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | **完了（2026-09-15、`6602cd7`/`211a067`/`f7da79e`、Task 2 はコード変更なし、記録 `265bfd2` + 最終レビュー是正 fix wave `a251202`/`fafe685`）。** AC 4a-4h 全 PASS（4e は「真cold 3/3（出力のあった run。cold2 は無音 1/6）」、4f の hex アドレス未マスクは fix wave `a251202` で是正済み）。WPA3-SAE/Open は AP が用意できず未実測のまま（D6）。記録は「段4 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/AC.md` |
-| 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 次に着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ。**段4 から持ち越し**: 「段4 の記録」節「段5 の入口条件」（利用者向け文書の更新、D8 再評価、IDE size 分母上書き、`capture_c6_usj.sh` の Minor 是正 2 件、`MEMP_NUM_SYS_TIMEOUT`/`ERANGE` の恒久化） |
+| 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | Task 2 のみ要（実機 warm 1 回、AC-5f） | **完了（2026-09-15、`8e556b5`/`b157f76`（Task 1）/`8a09479`（Task 2）、Task 3 はコード変更なし・DONE_WITH_CONCERNS、`aa62fde`/`9e83508`（fix wave）、Task 4 本 commit）。** AC 5a-5h 全 PASS、記録は「段5 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage5/AC.md`。M5NanoC6 は `verify_package.py`（47/47）・`check_release_artifacts.py`・CI・利用者向け文書に収録された。D8 は再評価の結果**維持**（S5-2）。S5-8（イメージのビルドパス非依存化）は並行する fix wave が実装・実測済み（`aa62fde`） |
 | 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |

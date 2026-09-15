@@ -49,6 +49,31 @@ Arduino のデータディレクトリは OS ごとに解決します
 （`%LOCALAPPDATA%\Arduino15` / `~/Library/Arduino15` / `~/.arduino15`）。
 別の場所にある場合は `--arduino-data` で渡してください。
 
+### M5NanoC6（ESP32-C6）のステージ
+
+```bash
+python scripts/build_prebuilt_stages.py --chip esp32c6
+```
+
+`--chip esp32c6` の既定 profile は `minimal` / `wifi-connect` の 2 つだけです
+（`m5-unified` / `bt-classic` は選べません。D11）。トゥールチェーンは
+M5Stack Arduino core 3.3.8 が同梱する `esp-rv32` 2601 と `esp32c6-libs`
+3.3.8 で、他の 3 ボードと同じ core から取れます（別途取得は不要）。
+
+診断・対照用の CMake オプションは `--cmake-define` でそのままステージの
+CMake 呼び出しへ渡せます。
+
+| オプション | 既定 | 用途 |
+| --- | --- | --- |
+| `TOPPERS_C6_APM_UNBLOCK` | ON | LP/HP APM のロック解除。OFF にすると Wi-Fi scan/接続が意図的に 0 件になる対照ステージが作れます（`docs/c6-port.md` 段4「APM 対照」） |
+| `TOPPERS_C6_WIFI_DIAG` | OFF | Wi-Fi 初期化の段階マーカー |
+| `TOPPERS_C6_NET_DIAG` | OFF | port 7 の TCP/UDP echo サーバ、DHCP 直後の gateway ping、`ip=`/`gw=` 付きログ行。配布する stage では既定 OFF（段5 判断 S5-3。下記「変更するときに守ること」参照） |
+
+対照ステージを既定の `build/prebuilt/esp32c6/<profile>/` に**上書きしない**
+ように、`--output-directory <別の場所>` を必ず付けてください。既定のまま
+`ON`/`OFF` を切り替えて作り直すと、直前に作った配布用ステージが対照用の
+ものに置き換わります。
+
 ## 2. platform ディレクトリを組み立てる
 
 ```bash
@@ -63,6 +88,31 @@ sketchbook の `hardware/toppers/esp32` へ置きます。Arduino IDE を再起�
 ボードが 1 つの platform に入ります**（CoreS3 と M5Stack Basic が同居する）。
 チップ 1 つ分のディレクトリを渡せばそのボードだけになり、`--chip` で
 親から一部だけ選ぶこともできます。
+
+### M5NanoC6（`m5nanoc6_fmp3`）のイメージ形式
+
+Xtensa 3 ボードは`paddrMode="runtime-mmu"`（ブート時に自分で MMU を
+設定する形式）ですが、M5NanoC6 は RISC-V の `paddrMode="fixed-vma"`
+（ELF が最初から仮想アドレスへリンクされ、bootloader が flash から
+そのまま mmap する形式）です。manifest schema は 2 に上がっており
+（`DRIVER_VERSION` は現在 4。段5 で 3 から上げた経緯は下記「M5NanoC6
+イメージのビルドパス非依存化（S5-8）」）、`fmp3-link` は fixed-vma の
+イメージを bootloader が受理する条件 C-1..C-8（`scripts/fmp3_link.py`
+の `check_fixed_vma_image`）で検査してからリンクします。
+
+| # | 検査内容 |
+| --- | --- |
+| C-1 | flash から map するセグメントがちょうど 2 本 |
+| C-2 | セグメント #0 の先頭が `ESP_APP_DESC_MAGIC_WORD`（`0xABCD5432`） |
+| C-3 | 各セグメントの `file_offset % page == vaddr % page` |
+| C-4 | エントリポイントがイメージに含まれるセグメント内にある |
+| C-5 | RAM セグメントが bootloader 自身の `iram_loader_seg` に重ならない |
+| C-6 | 各 RAM セグメントのバイト列が ELF の `.data` と一致する |
+| C-7 | 2 本の flash map セグメントの MMU ページ範囲が重ならない |
+| C-8 | イメージが書込み先の app パーティションに収まる |
+
+C-1..C-8 はすべて `fmp3-link` 実行時に検査され、満たさなければリンクは
+失敗します（Xtensa の runtime-mmu 側にこの検査はありません）。
 
 ### この platform はライブラリを同梱しません
 
@@ -136,9 +186,38 @@ python scripts/check_release_artifacts.py --release-dir <出力>
 python scripts/check_host_paths.py <platform または zip>
 ```
 
-- `verify_package.py` … Boards Manager 経由で入れ直し、3 構成 × 例題を建てる
-- `check_release_artifacts.py` … index の checksum、ホストの網羅、ドライバの版
+- `verify_package.py` … Boards Manager 経由で入れ直し、**既定で全ボードx
+  対応する構成x例題を建てる**（下記「`verify_package.py` の板と構成」）
+- `check_release_artifacts.py` … index の checksum、ホストの網羅、ドライバの版、
+  各チップの stage・ツール依存（C6 なら `esp-rv32`/`esp32c6-libs`）
 - `check_host_paths.py` … 配布物にビルド機の絶対パスが混入していないか
+
+### `verify_package.py` の板と構成
+
+対象は `scripts/verify_package.py` の `BOARD_PROFILES`（板 -> 選べる構成の集合）
+と `PROFILES`（構成 -> 例題）から機械的に決まります。固定の本数をこの文書に
+書き写さないでください（ドリフトします）。導出は次のコマンドで確認できます。
+
+```bash
+python3 scripts/verify_package.py --list-builds   # 実行せず、計画だけを表示
+```
+
+`--list-builds` はパッケージも Boards Manager への出入れもせず、板x構成x例題の
+表と合計だけを表示します（2026-09-15 実測: CoreS3 12・M5StickS3 12・M5Core 16・
+M5NanoC6 7 = 計 47。導出の正本はコマンドそのもので、この数字は実測の一例です）。
+
+- **既定は 4 板すべて**です。`--boards`/`--profiles` で絞り込めます。
+- **`verify_package.py` はローカルの package index を作って Boards Manager の
+  設定を一時的に書き換えます。** これは開発機の `~/.arduino15/` にキャッシュ
+  されている**公開 index（`package_toppers_index.json`）を同じファイル名で
+  上書きします**（`cache clean` で `staging/packages/` も空にします）。
+  実行後、そのまま Boards Manager で通常の導入作業をすると `0.4.2 @
+  127.0.0.1` のようなローカル URL しか見えません。**検証が終わったら
+  `arduino-cli core update-index` を実行して公開 index を復旧してください。**
+- **Windows／Apple Silicon macOS 向けのリンクドライバ zip は、Linux 機では
+  凍結できません。** `verify_package.py` はこの 2 つを stub zip として扱い、
+  実行できるのはビルド機自身のホスト分だけです。3 ホストぶんの本物のドライバは
+  CI（`.github/workflows/build-link-driver.yml`）が `v*` タグで生成します。
 
 ## 5. リリースする — 実際に踏んだ落とし穴
 
@@ -157,6 +236,22 @@ python scripts/check_host_paths.py <platform または zip>
   （サイズは固定長なので変わりません）。同じソース・同じタグの別 run で
   7 件とも別の値になった実測があります。配布物の同定は index の checksum で
   行ってください（Boards Manager が強制します）。
+- **M5NanoC6 イメージのビルドパス非依存化（S5-8）。** 段5 の 4 板 verify で、
+  同じソース・同じステージから建てた M5NanoC6 の 7 成果物が、ビルドパスの
+  綴りが違うだけで 64 バイト（esptool が書く app descriptor の ELF sha256と
+  イメージ末尾ハッシュ）だけ異なることが分かりました。原因は arduino-cli が
+  コンパイルするスケッチ／コアのオブジェクトの `.debug_str` にビルドパスが
+  残ること（stage 側は `-ffile-prefix-map` で対策済みだが、スケッチ側の
+  コンパイルはその外）です。**stage-5 の fix wave（driver 4、commit `aa62fde`）**で
+  `fmp3-link` の fixed-vma 経路に、`elf2image` の前に ELF のコピーを
+  `--strip-debug` する処理を追加し（読み込む内容は不変）、`app_elf_sha256`
+  が DWARF に依存しないようにしました。実測（positive control）: 同じスケッチを
+  2 つの異なる build path で建てて `.bin` の sha256 が一致することを確認済みです
+  （strip を外すと 65 バイトが再び異なります）。Xtensa（schema 1／runtime-mmu
+  経路）はこの変更の対象外（driver 3/4 の再リンクで app bin が byte 同一なことを
+  確認済み）。**ただしこの実測は 1 ホスト内の build path 差のみで、3 ホストの
+  バイト一致は Xtensa 側についての記述です。** M5NanoC6 の成果物についてホスト間
+  バイト一致まで主張できるかどうかは、まだ確認していません。
 - **GitHub のアーティファクトをブラウザから取得すると二重 zip になります。**
   外側は GitHub の包装で、index に載せるのは内側です。外側のまま登録すると
   Boards Manager が展開に失敗します。
@@ -248,10 +343,21 @@ PY
   `scripts/audit_duplicate_symbols.py` がステージ生成の最後に検査します。
 - **リンク順序は ordinal**（バイト単位・大文字小文字を区別）です。ロケール依存や
   大文字小文字を無視するソートでは別のイメージになります。
-- 構成を追加・変更するときは、`build_prebuilt_stages.py` の対応表、
-  `ports/m5stack_xtensa/runtime/CMakeLists.txt` の分岐、
-  `install_platform.py` のメニュー定義、`packaging/release-allowlist.json`、
-  `scripts/verify_package.py` の `PROFILES` を揃えてください。
+- **板や構成を追加・変更するときは、表駆動の各テーブルを揃えてください**
+  （段5 で「3 構成 x 例題」「両ボード」という書き方から、板ごとに選べる
+  構成が違う 4 板の表駆動へ変わりました）。触る箇所は次の名前で引けます。
+  - `scripts/verify_package.py` の `BOARD_PROFILES`（板 -> 選べる構成の集合）
+    と `PROFILES`（構成 -> 例題）。本数の導出はこの 2 つの直積です。
+  - `scripts/build_prebuilt_stages.py` の chip -> profile の対応表。
+  - `ports/<xtensa|riscv>/runtime/CMakeLists.txt` の構成分岐。
+  - `scripts/install_platform.py` の `UPLOAD_SIZE_OVERRIDES`（size 表示の
+    分母を上書きする板だけの表）を含むメニュー定義。
+  - `packaging/release-allowlist.json` の `releaseArtifacts.platformArchive`
+    配下、`prebuiltStages`（チップ -> 必須 profile）と
+    `chipToolDependencies`（チップ -> 必須ツール）の 2 つの表。
+  - `.github/workflows/verify-package.yml` の chip ループと stage 存在検査。
+  どれか 1 つだけ更新すると、`scripts/test_check_release_artifacts.py` の
+  ドリフト検査（上の表どうしが一致することを確認する）が落ちます。
 
 ### どこに何を置くか
 
@@ -278,6 +384,30 @@ PY
 - **ESP-IDF を複製しないでください。** Wi-Fi blob、PHY、lwIP、ツールチェーン、
   ヘッダはすべて M5Stack core から検出して使います。ツリーへ持ち込むと、
   利用者が入れた core との二重管理になります。
+
+  > **例外（M5NanoC6、D8、段5 判断 S5-2 で維持）。** `ports/m5stack_riscv/
+  > runtime/wifi/` は、この原則から逸脱する ESP-IDF 原本ファイルを計 9 本
+  > vendoring しています。
+  >
+  > - **esp-idf 原本 6 本**（Apache-2.0）: `periph_ctrl.c` `modem_clock.c`
+  >   `modem_clock_hal.c` `efuse_hal.c` `efuse_hal_esp32c6.c`
+  >   `phy_init_data.c`。M5Stack core の SDK には `.a` としてしか入っておらず、
+  >   C6 の Wi-Fi 初期化シーケンスがこれらを個別にコンパイル・リンクする
+  >   構成を要求するため。
+  > - **lwIP contrib ヘッダ 3 本**（BSD-3-Clause）: `ping.h` `tcpecho_raw.h`
+  >   `udpecho_raw.h`。`netif_esp32s3.c` が include するが、M5Stack core の
+  >   SDK は lwIP contrib apps のヘッダを含まない（実体は `liblwip.a` の
+  >   中にある）ため、ヘッダだけを補っている。
+  >
+  > **出自**は開発リポジトリ（`https://github.com/exshonda/
+  > fmp3_esp_idf_dev.git`）で、内容は無改変・原ライセンスヘッダ保持。
+  > 1 本ごとの正確な出自と改変境界は
+  > [`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md)
+  > （このファイルでは再掲しない）。**再評価の条件**は、M5Stack core が
+  > この 9 本を `.a` のメンバとして公開する（または FMP3 側に `vPort*`
+  > シムを実装してこれらへの依存自体を無くす）ようになったときで、
+  > いずれも段5 時点では未検証。それまではこの例外のまま維持します
+  > （段5 判断 S5-2）。
 - **M5Unified 構成は大量の `-Wl,--wrap=` で mangled C++ シンボルを差し替えて
   います**（`ports/m5stack_xtensa/runtime/CMakeLists.txt`）。M5Unified／M5GFX の
   version を上げると mangled 名が変わり得るので、`--wrap` が空振りします。
@@ -319,13 +449,48 @@ PY
 - **資格情報を残さないでください。** Wi-Fi の SSID／パスワードを commit せず、
   実機ログを文書化するときは SSID、BSSID、割当 IP を書かないでください。
   `examples/WiFiConnect/WiFiConnect.ino` は公開前に空であることを確認します。
+- **`scripts/capture_c6_usj.sh` は開発者向けの採取台本で、配布しません。**
+  M5NanoC6 の実機 USB Serial/JTAG からログを採り、`C6_REDACT_ONLY` モードで
+  SSID／パスワード／割当 IP などを機械的に伏字化するためのものです
+  （`git ls-files` で追跡ファイルを拒否し、`LOG_DIR` の外のファイルも
+  `C6_REDACT_ANYWHERE=1` を明示しない限り拒否する guard 付き）。
+  `packaging/release-allowlist.json` にはこの台本のエントリを置いていません。
 - **ライセンスはリポジトリ単一ではありません。** 各ファイルのヘッダと
   `THIRD_PARTY_NOTICES.md` が正で、`LICENSE` はこのリポジトリ向けに書かれた
   部分に適用されます。取り込んだファイルはヘッダを保持してください。
 
+## X-check -- 共有スクリプトが Xtensa 3 板の配布物を変えていないことの機械判定
+
+M5NanoC6 の追加は `build_prebuilt_stages.py` / `install_platform.py` /
+`fmp3_link.py` など、Xtensa 3 板も使う共有スクリプトを触ります。「Xtensa は
+変えていない」をバイト列で示すのが X-check です。
+
+```bash
+# 作業前（作業ツリーが clean な段の起点で 1 回）
+python scripts/xcheck_baseline.py            # 既定は Xtensa 7 stage を退避
+# 作業後、対象 chip を建て直してから
+python scripts/xcheck_compare.py             # 7/7 MATCH で rc=0
+python scripts/xcheck_compare.py --strict    # banner.o（__DATE__/__TIME__）も比べる
+python scripts/test_xcheck.py                # 判定器自身の自己テスト
+```
+
+- **既定の比較対象は Xtensa（`esp32s3`／`esp32`）の 7 stage のままです。**
+  `xcheck_baseline.py --chips esp32c6` は C6 の baseline を別途採れますが、
+  既定の baseline ディレクトリを上書きしてしまうので、C6 用には
+  `--baseline-directory` で別の場所を指定してください。C6 の golden を
+  比較対象にするかどうかは今後の判断です（段5 時点では未定）。
+- 比較するのは `link-manifest.json`（バイト一致。時刻系キーだけの差は注記つき
+  MATCH）、`objects.rsp`、`objs/*.o` の sha256（`banner.o` は `--strict`
+  無しでは除外）、`lib/*.a`、その他のファイル。stage が片側にしか無ければ
+  差分です。
+- **baseline は段の起点・作業ツリーが clean な状態で採り、編集後に採り直さない
+  でください。** 編集後の生成物どうしを比べても、編集が Xtensa の配布物を
+  変えたかどうかは分かりません。
+
 ## リリース経路の検証（`scripts/verify_package.py`）
 
-パッケージを組み、Boards Manager 経由で入れ直し、両ボード×全構成を建て直す。
+パッケージを組み、Boards Manager 経由で入れ直し、対応するボードx構成を
+建て直す（既定は 4 板すべて、上記「`verify_package.py` の板と構成」参照）。
 
 ```sh
 python3 -m venv ~/.venvs/toppers-verify

@@ -1,6 +1,6 @@
 # ToppersFMP3-M5Stack
 
-M5Stack の 3 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
+M5Stack の 4 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
 Arduinoボードパッケージです。
 
 | ボード | チップ | `Tools > Board` |
@@ -8,8 +8,11 @@ Arduinoボードパッケージです。
 | M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 | `M5CoreS3 (TOPPERS/FMP3)` |
 | M5StickS3 | ESP32-S3 / Xtensa LX7 | `M5StickS3 (TOPPERS/FMP3)` |
 | M5Stack Basic | ESP32 / Xtensa LX6 | `M5Core (TOPPERS/FMP3)` |
+| M5NanoC6 | ESP32-C6 / RISC-V | `M5NanoC6 (TOPPERS/FMP3)` |
 
-1つのパッケージに3つとも入っています。
+1つのパッケージに4つとも入っています。M5NanoC6だけは`Tools > FMP3 Runtime`に
+`Minimal`と`WiFi`の2つしかありません（`M5Unified + Dual Core`と
+`Bluetooth Classic (SPP)`は他の3機種のみ）。
 
 Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカーネルの
 タスクとして動きます。ブート、割込み、スケジューラはFMP3が所有します。
@@ -66,6 +69,11 @@ https://github.com/toppers/arduino_esp32/releases/latest/download/package_topper
 
 必要なツールチェーン（`esp-x32`、`esptool_py`、SDK、FMP3リンクドライバ）は
 ボードマネージャが自動で取得します。ZIPの手動追加やスクリプトの実行は不要です。
+
+**M5NanoC6を使う場合も追加のツールは不要です。** RISC-Vツールチェーン
+（`esp-rv32`）とSDK（`esp32c6-libs`）は、前章で入れたM5Stack Arduino core
+3.3.8に既に同梱されています。M5NanoC6用に別のインデックスやツールを
+追加する必要はありません。
 
 削除も`Boards Manager`の`Remove`で行えます。
 
@@ -156,6 +164,7 @@ Linux    ~/.arduino15/packages/toppers
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5CoreS3 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StickS3 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5Core (TOPPERS/FMP3)
+Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5NanoC6 (TOPPERS/FMP3)
 ```
 
 **M5Stack Basicにはtouch・IMU・RTCがありません。** `M5Unified` profileの
@@ -165,6 +174,10 @@ PWM（GPIO32）で点きます。
 **M5StickS3にはtouchがありません**（LCDは240x135で、IMUとPMICは使えます）。
 `Bluetooth Classic (SPP)`はM5Coreだけの構成です。ESP32-S3にBR/EDR無線が
 無いため、他の2機種では選択肢に出ません。
+
+**M5NanoC6で選べるFMP3 Runtimeは`Minimal`と`WiFi`だけです。** LCDが無いため
+`M5Unified + Dual Core`は無く、BR/EDR無線が無いため`Bluetooth Classic (SPP)`
+もありません。
 
 `Tools > FMP3 Runtime`でランタイム構成を選びます。一度に選べるのは1つで、
 選んだ構成がスケッチと一緒にリンクされます。**どの構成でも普通のスケッチが
@@ -220,6 +233,12 @@ Verify後に表示されるFlash／RAM使用量は、FMP3のセクション構�
 | `WiFi`（`WiFiConnect`） | 513,900 | 242,880 |
 | `WiFi`（`WiFiScan`） | 518,724 | 244,624 |
 | `Bluetooth Classic (SPP)` | 571,056 | 230,300 |
+
+**M5NanoC6ではRAM使用量の分母（IDEのVerify後に出る「N%」の計算に使う値）を
+上書きしています。** 継承元のFreeRTOS前提の値（327,680）は実際のRAM上限より
+大きく、実際より小さい使用率に見えていたため、ld の実際の上限
+`upload.maximum_data_size=452112`に上書きしました（他の3機種は変えていません）。
+表示されるバイト数そのものは変わりません、100%に対する意味が変わります。
 
 ## Blink（Minimal）
 
@@ -366,8 +385,16 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
 - Wi-Fi connectはAndroidテザリングでオープンAP、WPA2-PSK、WPA3-SAEに接続し、
   DHCP、DNS、TCP受信まで
 
-- **LinuxからのUpload**（Ubuntu → `/dev/ttyACM0`、`M5Unified + Dual Core`）。
+- **LinuxからのUpload**（Ubuntu -> `/dev/ttyACM0`、`M5Unified + Dual Core`）。
   ユーザが`dialout`グループに属している必要があります
+- **M5NanoC6実機**で、stock M5Stack bootloaderのままMinimal（`Blink`）の起動
+  （warm 5/5、真cold 9/10）と、Wi-Fi STA（**WPA2-PSKのみ**）-> DHCP -> DNS ->
+  TCPの実機確認（真cold 3/4、1回は無音採取で成否判定不能）。Open AP・
+  WPA3-SAEはAPが用意できず未実測、BLEは未着手です。ホスト間のバイト単位一致
+  （上記「7件の成果物」）は**M5NanoC6の成果物には拡張していません**
+  （ELFの`.debug_str`にビルドパスが残るため）。判断と到達点は
+  ソースリポジトリの`docs/c6-port.md`（`docs/`はリリースパッケージには
+  同梱しません）
 
 未確認: **macOS**でのVerifyとUpload、OTA書き込み、
 WPA2-PSK／WPA3-SAEの追加アクセスポイントでの互換性。

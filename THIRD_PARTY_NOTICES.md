@@ -130,6 +130,21 @@ BSD-3-Clause。M5Stack Arduino core 3.3.8 の SDK は lwIP contrib apps のヘ�
 sha256・生成台本・上流ライセンス本文は `wifi/prebuilt/{wpa2,lwip}/README.md` に記録済み
 （`BUILDING.md` の要求どおり、アーカイブと README は同じコミットで更新する）。
 
+### 段5: `netif_esp32s3.c` の in-file 改変（R12 例外 9、2026-09-15）
+
+段3 で vendoring した `runtime/wifi/net/netif_esp32s3.c`（上記「段3」節の
+第2コピー）は、段5 の判断 S5-3（dev 由来の診断フック--port 7 の TCP/UDP
+echo サーバ、DHCP直後のgateway ping 1回、`ip=`/`gw=`付きログ行--を出荷物では
+既定OFFにする）に伴い、初めて内容を改変した。呼出し元
+（`toppers_wifi_connect.c`）側に切替口が無く、`tcpip_init_done`／
+`netif_status_cb` の内部で無条件に呼ばれていたため、該当する各ブロックを
+`#if TOPPERS_C6_NET_DIAG`（既定 0）で囲む最小改変とした（+38/-1行、リンク
+される記号・文字列そのものはOFFビルドで一切残らないことを`nm`/`strings`で
+確認済み）。`netif_esp32s3.h`は無改変（宣言は残るため、ONを意図せず呼ぶと
+リンクエラーで気づける）。ライセンス・著作権表示・出自は変更していない
+（元のESP-IDF由来コードの表示のまま）。詳細は
+`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`「改変の方針」9番。
+
 ## BlueDroid (ESP-IDF Bluetooth host stack)
 
 `third_party/bluedroid/` — Espressif Systems, Apache License 2.0.
