@@ -30,6 +30,10 @@
 #define TOPPERS_WIFI_SCAN_WAIT_US 50000U
 #define TOPPERS_WIFI_SCAN_TIMEOUT_LOOPS 300U
 
+/* wifi/shim/esp_wifi_adapter.c (no header; the development demo uses the
+ * same extern). Prints the APM/TEE filter registers and exception latches. */
+extern void esp_wifi_adapter_c6_apm_readback(const char *tag);
+
 static volatile bool scan_done;
 static uint16_t record_count;
 static wifi_ap_record_t records[TOPPERS_WIFI_MAX_RECORDS];
@@ -120,13 +124,32 @@ int16_t toppers_fmp3_wifi_scan_networks(void)
     }
     record_count = wanted;
 
+    /*
+     * The runtime's own log never prints a neighbour's SSID: the column is
+     * the placeholder "<SSID-N>" (N = record index), the same form the
+     * development repository's C6 demo prints (esp/app/wifi_sta.c). A
+     * capture of this console can then be kept as evidence without
+     * redacting third-party network names. RSSI, channel and authmode are
+     * kept. This affects the log line only: the sketch API
+     * (toppers_fmp3_wifi_ssid(index) -> WiFi.SSID(index)) still returns the
+     * real SSID to the sketch, as WiFiScan's contract requires.
+     */
     syslog(LOG_NOTICE, "[WiFiScan] found %d APs", (int_t)record_count);
     for (index = 0; index < record_count; ++index) {
-        syslog(LOG_NOTICE, "[WiFiScan] AP[%d] rssi=%d ch=%d SSID=%s",
+        syslog(LOG_NOTICE,
+               "[WiFiScan] AP[%d] rssi=%d ch=%d authmode=%d SSID=<SSID-%d>",
                (int_t)index, (int_t)records[index].rssi,
                (int_t)records[index].primary,
-               (const char *)records[index].ssid);
+               (int_t)records[index].authmode, (int_t)index);
     }
+    /*
+     * APM exception-latch readback after the scan (register values only),
+     * as the development demo does after its scan. With
+     * TOPPERS_C6_APM_UNBLOCK=OFF (the stage 4 0-AP control) this is the
+     * only readback the image prints, so the control's log still shows the
+     * filter state that explains its 0 APs.
+     */
+    esp_wifi_adapter_c6_apm_readback("after-scan");
     syslog(LOG_NOTICE, "[WiFiScan] done");
     return (int16_t)record_count;
 }
