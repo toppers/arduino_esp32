@@ -624,7 +624,7 @@ marker の正規表現に掛からず heartbeat=38（blink 行は 39 のまま�
   複製しない」からの逸脱として明記済み）は上記 D0-D11 表のとおり。段3 ではこれらの決定を
   実装へ落とし込む。
 
-## 段3 の記録（2026-09-15、commit `760fce9` / `4448a8d` / `a4c346a`）
+## 段3 の記録（2026-09-15、commit `760fce9` / `4448a8d` / `a4c346a` / `45122a5` / `8912a35`）
 
 `wifi-connect` stage が建ち、`m5nanoc6_fmp3:FMP3Runtime=wificonnect` で `WiFiScan` /
 `WiFiConnect` / `Blink` / `LibraryInfo` の 4 例題がリンクを通った段。実機は使っていない（登記のみ、
@@ -648,7 +648,7 @@ ROM ld 勝者一覧。いずれも dev 側で未 commit）。
 | 3a | `build_prebuilt_stages.py --chip esp32c6 --profiles wifi-connect --clean` rc=0、stage（objs/ld/lib/manifest/rsp）、重複定義監査 PASS、`check_host_paths.py` rc=0 | PASS | `task2-build-wifi-connect-1.txt`（83 objects / 833 strong definitions / 0 duplicated / 0 allowed）、`task2-check-host-paths.txt`（90 files PASS）。commit 後の `--clean` 再ビルドは 90 本中 89 本 sha 同一（差は `objs/banner.o` の `__DATE__`/`__TIME__` のみ、`task2-build-wifi-connect-2-committed.txt`） |
 | 3b | X-check 7/7（scripts/共有 cmake を触った Task ごと）。`git diff --stat main -- ports/m5stack_xtensa src examples third_party` 空 | PASS | `task1-xcheck.txt`（Task 1、`--clean` 再ビルド後）、`task2-xcheck.txt`（Task 2、plain compare。Task 2 が触った共有ファイルは `install_platform.py` の `EXPECTED_PROFILES` だけで stage 生成に無関係） |
 | 3c | platform 再生成で `m5nanoc6_fmp3` の FMP3Runtime に `wificonnect` が出る。Xtensa の boards/platform.txt は不変（cmp） | PASS | `task2-boards-platform-diff.txt`（`boards.txt` の差は `m5nanoc6_fmp3.menu.FMP3Runtime.wificonnect` 3 行の追加のみ、`platform.txt` は cmp 同一）、`task2-install-platform.txt` |
-| 3d | `arduino-cli compile -b toppers:esp32:m5nanoc6_fmp3:FMP3Runtime=wificonnect` で 4 例題 rc=0、C-1..C-8 PASS（C-8 の使用量）、`nm -u` 空 | PASS | `task2-compile-c6-{WiFiScan,WiFiConnect,Blink,LibraryInfo}-wificonnect.txt`。C-8: WiFiScan 520832、WiFiConnect 592416、Blink 111232、LibraryInfo 111280（分母 1310720）。最終 ELF の `nm -u` は 4 本とも 0（`task2-nm-u-elf.txt`） |
+| 3d | `arduino-cli compile -b toppers:esp32:m5nanoc6_fmp3:FMP3Runtime=wificonnect` で 4 例題 rc=0、C-1..C-8 PASS（C-8 の使用量）、`nm -u` 空 | PASS | `task2-compile-c6-{WiFiScan,WiFiConnect,Blink,LibraryInfo}-wificonnect.txt`。C-8（Task 2 時点）: WiFiScan 520832、WiFiConnect 592416、Blink 111232、LibraryInfo 111280（分母 1310720）。最終 ELF の `nm -u` は 4 本とも 0（`task2-nm-u-elf.txt`）。**fix wave（`8912a35`、`notify_link_if_started` gate 追加分）で再計測: WiFiConnect 592,560 B、WiFiScan 520,688 B**（RAM は不変、下記「size と RAM 余裕」参照）、C-1..C-8 とも再度 PASS、`nm -u` 引き続き 0（`task2-fw-compile-c6-{WiFiScan,WiFiConnect}-wificonnect.txt`） |
 | 3e | 移し漏れ表: dev 供給表の 261 記号それぞれについて arduino 側の供給元を 1 行ずつ。UNRESOLVED 0 | PASS | `task2-supply-table.md`、`task2-nm-u-stage.txt`。内訳は下記「供給表の要約」 |
 | 3f | ROM ld 勝者一覧と、kernel/shim の関数が置換されていないことの確認（stage obj の定義 vs ROM ld 代入の交差） | PASS | `task2-rom-winners.txt`。内訳は下記「ROM ld 勝者」 |
 | 3g | `size`・RAM 余裕（LENGTH 0x6E610）。`.iram1` 群が RAM セグメントに載る（C-6） | PASS | `task2-size.txt`。内訳は下記「size と RAM」 |
@@ -667,7 +667,7 @@ ROM ld 勝者一覧。いずれも dev 側で未 commit）。
 | S3-5 | esp-idf 原本 6 本 | D8 = vendored（`periph_ctrl.c` `modem_clock.c` `modem_clock_hal.c` `efuse_hal.c` x2（うち1本は `efuse_hal_esp32c6.c` に改名） `phy_init_data.c`）。段5 で再評価する方針は不変 |
 | S3-6 | APM 解除 | dev と同じ adapter 内（vendored `esp_wifi_adapter.c` の `c6_apm_unblock`、`esp_wifi_init()` 中の osi コールバックから呼ばれる）。adapter 自身は何も足していない。CMake option `TOPPERS_C6_APM_UNBLOCK`（既定 ON）を段4 の対照用に残した |
 
-### vendored inventory の要約（`runtime/wifi/`、計 98 本）
+### vendored inventory の要約（`runtime/wifi/`、計 99 本）
 
 | 出自 | 本数 | 内訳 |
 | --- | --- | --- |
@@ -675,12 +675,12 @@ ROM ld 勝者一覧。いずれも dev 側で未 commit）。
 | esp-idf v5.5.4 `735507283d` 原本（D8 の逸脱） | 6 | `idf_src/{periph_ctrl,modem_clock,modem_clock_hal,efuse_hal,efuse_hal_esp32c6,phy_init_data}.c`。Apache-2.0 ヘッダ保持。`efuse_hal_esp32c6.c` は basename 衝突のためファイル名のみ改名（中身はバイト同一） |
 | lwIP contrib ヘッダ（D8 の逸脱の追加分、入れ子 submodule `fd432e4ee2`） | 3 | `net/lwip_contrib_include/{ping,tcpecho_raw,udpecho_raw}.h`。BSD-3-Clause。M5Stack core の SDK が contrib apps を含まないため、`netif_esp32s3.c` の `#include` を満たすヘッダだけを同梱（実体は `liblwip.a` の中） |
 | prebuilt `.a`（sha256・生成台本つき） | 4 | 下記「prebuilt `.a`」表 |
-| README・上流ライセンス本文（新規） | 7 | `prebuilt/{wpa2,lwip}/README.md` 2 本 + ライセンス本文 5 本 |
+| README・上流ライセンス本文（新規） | 8 | `prebuilt/{wpa2,lwip}/README.md` 2 本 + `net/lwip_contrib_include/README.md` 1 本（段3 Task 3 で追加、lwIP contrib ヘッダの出典 commit とライセンスを記す）+ ライセンス本文 5 本 |
 
-**合計 82+6+3+4+7 = 98 本。** dev 由来 82 本は `git show c7fef18:<path> | cmp` でバイト同一を
+**合計 82+6+3+4+8 = 99 本。** dev 由来 82 本は `git show c7fef18:<path> | cmp` でバイト同一を
 確認済み（Task 1 実測、集合の導出は dev `build/c6-wifi/build.ninja` の 31 TU と `ninja -t deps`
 のヘッダ閉包から機械列挙）。Task 2 が新規に足した adapter / `attachInterrupt` / app の 11 本
-（vendoring ではなく Xtensa port からの派生）はこの 98 本に含まない。
+（vendoring ではなく Xtensa port からの派生）はこの 99 本に含まない。
 
 #### prebuilt `.a`（`runtime/wifi/prebuilt/{wpa2,lwip}/esp32c6/`）
 
@@ -742,18 +742,23 @@ coexist 23 / systimer 13 / libc-suboptimal 7 / version 2。うち 66 は `esp32c
 
 ### size と RAM 余裕（AC-3g）
 
-| 例題 | image bytes（flash、C-8） | RAM（LOAD MemSiz） | 余裕（LENGTH 0x6E610=452112 に対し） |
-| --- | --- | --- | --- |
-| WiFiConnect | 592416 / 1310720 | 301,264 B | 150,848 B |
-| WiFiScan | 520832 / 1310720 | 264,976 B | 187,136 B |
-| Blink（wificonnect） | 111232 / 1310720 | 43,536 B | 408,576 B |
-| LibraryInfo（wificonnect） | 111280 / 1310720 | 43,536 B | 408,576 B |
+| 例題 | image bytes（flash、C-8、Task 2 時点） | image bytes（flash、fix wave `8912a35`） | RAM（LOAD MemSiz） | 余裕（LENGTH 0x6E610=452112 に対し） |
+| --- | --- | --- | --- | --- |
+| WiFiConnect | 592416 / 1310720 | **592,560 / 1310720**（`task2-fw-*` ログ） | 301,264 B（不変） | 150,848 B |
+| WiFiScan | 520832 / 1310720 | **520,688 / 1310720**（`task2-fw-*` ログ） | 264,976 B（不変） | 187,136 B |
+| Blink（wificonnect） | 111232 / 1310720 | 111232（未再計測、`notify_link_if_started` の分岐を通らない） | 43,536 B | 408,576 B |
+| LibraryInfo（wificonnect） | 111280 / 1310720 | 111280（同上） | 43,536 B | 408,576 B |
+
+fix wave（`8912a35`）は `toppers_wifi_connect.c` に `notify_link_if_started()` のゲートと
+Open AP NOTICE の移動を足しただけの `.text` 差分で、**RAM（`.data`+`.bss`）は不変**（コード側の
+数バイトのみ増減、WiFiScan は接続イベントハンドラを持たないため一部減少）。固定値として恒久
+扱いしないこと（段1 と同じ注意）。
 
 dev の `wifi_sta` 像（302,856 B）・Task 1 smoke リンク（300,496 B）と同程度。`.iram1` 群
 （245 input section）はすべて RAM LOAD セグメント（`.data` 出力セクション）に載り、flash 側へは
 落ちない（C-6 PASS）。Blink / LibraryInfo が minimal（83 KB台）より約 28 KB 大きいのは、
 `--gc-sections` が Wi-Fi 本体を落としても cfg が静的に作る shim のタスク・セマフォ・`NET_TSK` と
-kernel 表は残るため。固定値として恒久扱いしないこと（段1 と同じ注意）。
+kernel 表は残るため。
 
 ### R5: define が cfg 経路に届いている（AC-3h）
 
@@ -795,20 +800,58 @@ kernel 表は残るため。固定値として恒久扱いしないこと（段1
 
 - **creds はスケッチに書く**（`examples/WiFiConnect/WiFiConnect.ino` の `WIFI_SSID` /
   `WIFI_PASSWORD`。stage は creds を持たない、Task 1 の決定どおり）。手順:
-  1. 採取直前にスケッチをローカルで編集し実値を入れる。
-  2. **実値を commit しない**（差分レビューしてから `git add`。`CLAUDE.md`「出してはいけないもの」・
-     本リポジトリ `BUILDING.md` と同じ規律）。
+  1. 採取直前にスケッチをローカルで編集し実値を入れる。**入れる値は開発リポジトリの
+     `esp/boot/wifi_credentials.sh` の `WIFI_STA_SSID` / `WIFI_STA_PASS` と一字一句同じで
+     なければならない**: `scripts/capture_c6_usj.sh` の EXIT トラップは redact の針
+     （マスク対象として探す文字列）をそのファイルの値からしか作らない。別の AP の値や
+     手で変えた値を入れると、ログに混入してもマスクされず**そのまま残る**。
+  2. 採取時は `LOG_DIR` を段4 のログ保存先（`.steering/20260915-c6-arduino-plan/stage4/logs/`
+     等、開発リポジトリ側）に設定してから台本を起動する。既定のままだと redact 済みログが
+     どこに置かれたか分からなくなる。
   3. 採取は `scripts/capture_c6_usj.sh`（段2 の台本）だけで行う。その EXIT トラップの redact は、
      開発リポジトリの creds ファイル（`esp/boot/wifi_credentials.sh`）が存在すればそれを針として
      読み、ログに混入した実値を伏字化する。
   4. 採取後、commit 前にスケッチの値をダミーへ戻す。
+  5. **本リポジトリには commit 時点の secret guard が無い**（`scripts/check_no_secrets.sh` +
+     `.githooks/pre-commit` は開発リポジトリ側の仕組みで、本リポジトリには存在しない）。
+     戻し忘れをフックが止めてはくれないので、**`git add` の前に必ず
+     `git diff --exit-code examples/WiFiConnect/WiFiConnect.ino` を打ち、終了コード 0
+     （差分なし = ダミーへ戻っている）を確認してから add する**。差分が出たら add せず、
+     まず値を戻す。
 - **APM 制御オプションを 0-AP 対照に使う**: `runtime/CMakeLists.txt` の `TOPPERS_C6_APM_UNBLOCK`
   （既定 ON）を `OFF` にした build を段4 の 0-AP 対照とする（開発側は OFF で scan が 0 AP に
-  なることを実測済みだが、本リポジトリ側の build ではまだ回していない -- 段4 で行う）。
-- **DNS**: 段4 Task 0 で、開発リポジトリの `build_lwip_lib_espidf_esp32c6.sh` を使い
-  `LWIP_DNS=1` の arduino 専用 `liblwip.a` を**別の出力先**で建て直す（dev の `seam-c6-wifi`
-  golden の `liblwip.a` には触れない、dev 側の小変更で golden は不変）。新しいアーカイブの
-  sha256 を `wifi/prebuilt/lwip/esp32c6/README.md` に記録すること（段3 のレビュー ruling、未実施）。
+  なることを実測済みだが、本リポジトリ側の build ではまだ回していない -- 段4 で行う）。**必ず
+  既定の `build/prebuilt` とは別のディレクトリへ出す**:
+  ```bash
+  python3 scripts/build_prebuilt_stages.py --chip esp32c6 --profiles wifi-connect \
+      --cmake-define TOPPERS_C6_APM_UNBLOCK=OFF --output-directory <separate dir>
+  ```
+  **既定の `build/prebuilt` へ建てると、`install_platform.py --prebuilt-stage-root build/prebuilt`
+  が次に組む platform はこの対照（APM OFF = 常に 0 AP）を本番の腕として据えてしまう**（気付く
+  手掛かりが無いまま、以後 wifi-connect で建てるどのスケッチも scan で 0 件になる）。段4 の実機
+  試験がこの対照から本番へ戻すのを忘れないよう、`--output-directory` を必ず分けること。
+  診断用の `TOPPERS_C6_WIFI_DIAG=ON`（既定 OFF、Task 1 で追加済みの option）を試すときも
+  同じ経路（`--cmake-define TOPPERS_C6_WIFI_DIAG=ON --output-directory <別の dir>`）を使う
+  こと -- 既定の出力先を上書きしない。
+- **DNS**: `liblwip.a` を単独で `LWIP_DNS=1` へ建て直すだけでは足りない。
+  vendored `wifi/net/port/include/lwipopts.h`（`LWIP_DNS 0`）は 2 箇所から同時に読まれている:
+  (1) 開発リポジトリの `build_lwip_lib_espidf_esp32c6.sh` が `liblwip.a` をコンパイルすると
+  きの `lwipopts.h`、(2) `runtime/CMakeLists.txt` の `WIFI_SDK_INCLUDE_DIRS`（`net/port/include`
+  が include path に載る）経由で、本 stage の TU（`netif_esp32s3.c` / `port/sys_arch.c` /
+  adapter の `toppers_wifi_connect.c`）が `#include "lwip/dns.h"` 等をコンパイルするときの
+  `lwipopts.h`。**アーカイブだけを `LWIP_DNS=1` で建て直し、この vendored `lwipopts.h` を
+  `LWIP_DNS 0` のまま残すと、`lwip_getaddrinfo()` はアーカイブの中に実体があっても
+  ヘッダ側で宣言されず**（`LWIP_DNS` ガードの `#if` でプロトタイプごと消える）、
+  adapter がそれを呼ぶコードを書いた瞬間に暗黙宣言または未定義参照になる。
+  ⇒ **段4 Task 0 では、1 つの `lwipopts.h`（`LWIP_DNS 1`）を、(1) 開発リポジトリの
+  `build_lwip_lib_espidf_esp32c6.sh` が読む側と (2) 本リポジトリの
+  `wifi/net/port/include/lwipopts.h`（vendored、stage の include path）の両方へ同時に
+  適用すること**。vendored ファイルの内容変更は「dev 由来ファイルはバイト同一で持ち込む」
+  という通常方針（R12）からの**逸脱として明記**し、`IMPORT_PROVENANCE.md` に記録する。
+  `liblwip.a` の再生成・`lwipopts.h` の変更・`wifi/prebuilt/lwip/esp32c6/README.md` の
+  sha256 更新は**同じコミットで**行うこと（sha と中身がずれた状態を commit 間に残さない）。
+  dev の `seam-c6-wifi` golden の `liblwip.a`（`LWIP_DNS 0` のまま）には触れない
+  （dev 側は別出力先で建て直すので golden は不変）。
 
 ### adapter が出すマーカー文字列（実ソース確認、2026-09-15）
 
@@ -850,7 +893,7 @@ RAM 余裕」節、ドライバの C-1..C-8 が検査する側）。**91% を「
 `install_platform.py` の板行に `upload.maximum_data_size=452112` を上書きするか（`recipe.size.regex` は既に C6 用に
 上書きしている）、値の意味を `README.release.md` に書くかを決める。
 
-### 段4 の watch item: dev のデモ経路との未計測の差 3 点
+### 段4 の watch item: dev のデモ経路との未計測の差、および fix wave が足した経路
 
 Task 2 のレビュー（stage-4 readiness）が挙げた、**dev `esp/app/wifi_sta.c` の C6 経路と adapter の経路の差で、
 まだ実機で測っていないもの**。どれもリンクでは分からない。
@@ -860,6 +903,31 @@ Task 2 のレビュー（stage-4 readiness）が挙げた、**dev `esp/app/wifi_
 | W-1 | dev は `esp_wifi_start` の直後・`esp_wifi_connect` の前に scan を 1 回打つ（`wifi_sta_c6_scan_run`）。adapter の `begin()` は scan を打たずに connect する | scan 無しの connect で `NO_AP_FOUND` が出る可能性（dev がその条件を測っていない） | 最初の connect が失敗したら、**WiFiScan を先に建てて scan が AP を見つけることを確かめ**、次に scan -> `begin()` の順のスケッチで再試行する。それで通るなら差は W-1 |
 | W-2 | scan の後に `begin()` すると adapter は driver を `esp_wifi_stop` -> `set_config` -> `esp_wifi_start` と 1 回サイクルする（Xtensa で `AUTH_EXPIRE` 回避のために実測して入れた順序）。dev の C6 経路にはこのサイクルが無い | C6 の blob / shim で stop -> start が dev と同じ状態に戻るかは未計測（osi の `_wifi_clock_enable` の 2 回目の呼出し等） | scan-then-begin と begin-only の両方を焼き、`esp_wifi_stop=%d` / `esp_wifi_start=%d` の行と接続の成否を比べる |
 | W-3 | `attachInterrupt` は線 19 へ配線するコードがリンクされているだけで、一度も発火させていない | GPIO 割込みが線 19 で kernel の dispatcher に届くか、`acre_isr` が通るか、未計測 | 段6（LED / ボタンの例題）。段4 では `attachInterrupt` を呼ぶスケッチを焼かない |
+| W-4 | `wifi_event_handler`（STA_CONNECTED/DISCONNECTED）の `stage_log()` は `logtask_flush(0)` を呼ぶ。esp_event_shim は同期呼出しなので、この flush は **Wi-Fi blob の内部タスクの文脈**でそのまま実行される（コメントの是正、上記のコード注記参照）。flush がログタスクを待つ・止めるいずれかの経路を持つなら、blob のタイムアウト系（4-way handshake 等）を遅らせうる | 未計測。段4 で `4WAY_HANDSHAKE_TIMEOUT` が頻発したら、`stage_log()` の呼び先を `syslog()` のみに変えて（`logtask_flush` を落として）同じ AP へ再試行し、頻度が変わるか比べる |
+
+fix wave（`8912a35`）が足した `notify_link_if_started()` のゲート自体は、上記コードコメントの
+是正で説明したとおり STA_DISCONNECTED（scan-first の driver サイクル由来）だけを通す設計だが、
+**gate の分岐そのものは段4 で未計測**（W-3 と同種、リンクでは分からない）。
+
+### 段4 採取のマーカーと注意
+
+- `scripts/capture_c6_usj.sh` の `MARKERS`（早期終了用の ERE）に、接続成功・DNS 失敗・TCP 応答・
+  `begin()` 拒否・lwIP assert の 5 つを渡すと、成功でも失敗でも採取が早く終わる:
+  ```bash
+  MARKERS='DHCP completed|DNS failed|TCP received|begin: rejected|LWIP-ASSERT' \
+      bash scripts/capture_c6_usj.sh ...
+  ```
+  （`"DHCP completed"` / `"begin: rejected or initialization failed"` / `"TCP received=%d"` は
+  `toppers_wifi_connect.c` の実文字列の部分一致。`LWIP-ASSERT` は vendored
+  `wifi/net/port/sys_arch.c` の `lwip_port_assert_fail()` が出す `"[LWIP-ASSERT] ..."` の部分一致）。
+- **台本の `n_unexp` 集計（既定の異常判定パターン）には `[LWIP-ASSERT]` が入っていない**
+  （現行パターンは `## Unexpected|## Assertion|## Internal|Unregistered (exception|interrupt)|
+  mcause ?=`、`sys_arch.c` の実際の出力は `## Assertion` ではなく `[LWIP-ASSERT]` なので
+  一致しない）。段4 で `scripts/capture_c6_usj.sh` を改修するときは `n_unexp` の正規表現へ
+  `\[LWIP-ASSERT\]` を足すこと（本 Task では script は無改変、記録のみ）。
+- **WiFiScan は見えた近隣 AP の SSID を全部 printf する。採取ログの scan 行をそのまま文書へ
+  貼らないこと**（`CLAUDE.md`「出してはいけないもの」・本リポジトリ `BUILDING.md` と同じ規律。
+  自分の AP の SSID だけでなく、近隣の第三者の AP の SSID も写り込む）。
 
 ### Xtensa の切り分け順を C6 にも適用する
 
@@ -877,7 +945,7 @@ supplicant が Xtensa と C6 で共通（同じ ESP-IDF v5.5.4 系列）なの�
 | 0 | X-check の道具と baseline、本文書、C6 の出自宣言 | 不要 | **完了（2026-09-15）。** AC 0a-0h の記録は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage0/logs/` |
 | 1 | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` が stage を出し、`m5nanoc6_fmp3:FMP3Runtime=minimal` で `Blink` / `LibraryInfo` / `TwoFileSketch` がリンクを通る。X-check で Xtensa 不変 | 不要 | **完了（2026-09-15、`07b239b`/`709b36a`/`ffefc52`/`5dbb8d1`/`f40490e` + 最終レビュー是正 fix wave 1）。** AC 1a-1h 全 PASS、記録は「段1 の記録」節 |
 | 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | **完了（2026-09-15、`639331a`）。** 条件 A（stock bootloader）で warm 5/5・真cold 9/10（成立（条件付き）、cold5 無音 1 回・再試行後 5 連続）、D1/D5 確定。B/C/80 MHz は未実施（A が成立したため不要）。記録は「段2 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage2/AC.md` |
-| 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | **完了（2026-09-15、`760fce9`/`4448a8d`/`a4c346a`）。** AC 3a-3j 全 PASS（`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` の 4 例題）、記録は「段3 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage3/AC.md` |
+| 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | **完了（2026-09-15、`760fce9`/`4448a8d`/`a4c346a`/`45122a5`/`8912a35`）。** AC 3a-3j 全 PASS（`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` の 4 例題、`8912a35` の最終レビュー是正後の値で確定）、記録は「段3 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage3/AC.md` |
 | 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | 次に着手。入口条件は「段3 の記録」節「段4 の入口条件」（creds はスケッチに書く、APM OFF 対照、DNS は `LWIP_DNS=1` の再生成が Task 0） |
 | 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 未着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ |
 | 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |

@@ -56,11 +56,19 @@ static void stage_log(const char *message)
  * Link notifications must not reach lwIP before tcpip_init() has run.
  * The vendored netif_esp32s3_notify_link() goes straight to
  * tcpip_callback(), whose LWIP_ASSERT("Invalid mbox") on the not yet
- * created tcpip mailbox ends in the port's assert handler (an endless loop
- * in the calling task - here the event task). A STA_CONNECTED/DISCONNECTED
- * event can arrive before or without netif_esp32s3_start() (a scan-first
- * boot, a failed begin() after a driver cycle), so the gate lives here, in
- * the adapter, and the vendored netif stays untouched.
+ * created tcpip mailbox ends in the port's assert handler (an endless
+ * loop). That loop parks the POSTER's context, not a separate "event
+ * task": esp_event_shim's esp_event_post() calls registered handlers
+ * synchronously, in the caller's own context, and the caller here is the
+ * Wi-Fi blob's internal task. The only event that can actually arrive
+ * before netif_esp32s3_start() is STA_DISCONNECTED, from the driver
+ * cycle a scan-first begin() runs (esp_wifi_disconnect() ahead of the
+ * restart, see toppers_fmp3_wifi_begin()); STA_CONNECTED cannot precede
+ * it, because begin() only calls esp_wifi_connect() after
+ * netif_esp32s3_start() (the start -> netif -> connect order there).
+ * The gate below still covers both events - defensive, not just for the
+ * one that is currently reachable - and the vendored netif stays
+ * untouched.
  */
 static void notify_link_if_started(bool up)
 {

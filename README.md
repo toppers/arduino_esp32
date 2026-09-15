@@ -74,8 +74,9 @@ prebuilt archive、include 配置に依存しています）。
   [`docs/m5sticks3-m5unified.md`](docs/m5sticks3-m5unified.md)
 - **ESP32-C6（M5NanoC6）は統合作業中で配布物には未収録です。** 2026-09-15 実機で、
   stock M5Stack bootloader のまま minimal（`Blink`）が起動することを確認しました
-  （warm 5/5、真cold 9/10）。Wi-Fi 側（Arduino の `ToppersFMP3_WiFi`）は未着手です。
-  判断と到達点は [`docs/c6-port.md`](docs/c6-port.md)
+  （warm 5/5、真cold 9/10）。Wi-Fi 側（Arduino の `ToppersFMP3_WiFi`）は
+  **wificonnect でリンク済み、実機は段4** です。判断と到達点は
+  [`docs/c6-port.md`](docs/c6-port.md)
 
 ## M5Unified をスケッチから使うとき
 

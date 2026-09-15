@@ -66,3 +66,5 @@ Apache-2.0). Those notices remain authoritative; this README does not assert a
 single license for every object in the archives. Update the archives only
 together with this file (source commit, recipe, checksums, licenses), as
 `BUILDING.md` requires for `wifi/prebuilt`.
+
+C6 は WPA2-PSK を段4 で実測予定（Open/WPA3 は未検証）。
