@@ -40,7 +40,7 @@ wpa2 の `.a`（`ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2/README.md`）�
 | D1 | bootloader | **stock M5Stack bootloader（同梱なし）を第一候補。** 段2 で stock / 開発側 seam bootloader / +開発側 ptable の 3 通りを 1 軸ずつ実測して確定 | 本リポジトリは bootloader を出荷していない（`BUILDING.md`・`README.md`・`packaging/README.release.md`・`scripts/install_platform.py` に bootloader の記述なし）。M5Stack platform.txt の prebuild hook を継承 | 同梱経路 = 板別の prebuild hook 上書き |
 | D2 | port ディレクトリ | `ports/m5stack_riscv`。**段1 で確定・実装済み**（`ports/m5stack_xtensa/` は完全に不変。X-check 7/7 で実測） | `ports/m5stack_xtensa/` と並ぶ。`scripts/build_prebuilt_stages.py:161`（runtime）・`:195-198`（app）の固定パスを chip -> port の表にする | 改名は機械的 |
 | D3 | 共有 cmake | `prebuilt_stage.cmake` は共有して chip 分岐、chip 固有（seam 画像検査等）は `prebuilt_stage_c6.cmake` へ分離。**段1 で確定・実装済み、ただし実際には `prebuilt_stage.cmake` 自体は無改変**（chip -> port の表（Task 1）だけで C6 の runtime CMakeLists が自分の `prebuilt_stage_c6.cmake` を呼ぶため、Xtensa 側への白リスト追加も委譲コードも不要だった。委譲は「行を足す」形ではなく「表の port 列」で実現） | `ports/m5stack_xtensa/runtime/cmake/prebuilt_stage.cmake:57-62`（`A1_CHIP` 白リスト）ほか | 二重保守 vs 波及。どちらも X-check が検出 |
-| D4 | manifest / driver 版 | **上げる**（`DRIVER_VERSION` 3、schema に `paddrMode` の新値と `linkBaseFlags` を加法で追加）。**段1 で確定・実装済み**（`DRIVER_VERSION="3"`、`MANIFEST_SCHEMA=2`、`SUPPORTED_MANIFEST_SCHEMAS=(1,2)`。schema 1 は literal のまま不変、schema 2 は `linkTailFlags`（任意キー、ledger に無かったが Task 1 が追加）も持つ） | `scripts/fmp3_link.py:51`（`DRIVER_VERSION`）・`:53`（`MANIFEST_SCHEMA`）・`:161`（`paddrMode == "runtime-mmu"` 必須）・`:317`（`-mlongcalls`）・`:334`（`-lgcc -lc`） | 旧 manifest を読む経路が無いことを確かめて戻せる |
+| D4 | manifest / driver 版 | **上げる**（`DRIVER_VERSION` 3、schema に `paddrMode` の新値と `linkBaseFlags` を加法で追加）。**段1 で確定・実装済み**（`DRIVER_VERSION="3"`、`MANIFEST_SCHEMA=2`、`SUPPORTED_MANIFEST_SCHEMAS=(1,2)`。schema 1 は literal のまま不変、schema 2 は `linkTailFlags`（任意キー、ledger に無かったが Task 1 が追加）も持つ） | 段1 完了時点（fix wave 1）の `scripts/fmp3_link.py`: `:87`（`DRIVER_VERSION`）・`:92-93`（`MANIFEST_SCHEMA` / `SUPPORTED_MANIFEST_SCHEMAS`）・`:98-99`（`PADDR_MODES`、schema 1 は `runtime-mmu` のみ）・`:105`（`SCHEMA1_LINK_BASE_FLAGS` = `-nostdlib -mlongcalls`）・`:106`（`SCHEMA1_LINK_TAIL_FLAGS` = `-lgcc -lc`）。以後は名前で引くこと | 旧 manifest を読む経路が無いことを確かめて戻せる |
 | D5 | C6 の CPU クロック | **minimal も wifi-connect も 160 MHz**（開発側は wifi=160 で較正済み、Arduino 利用者の期待に合わせる）。**段1 で既定値として実装済み**（`CORE_CLK_MHZ` 既定 160、`SEAM_C6_CLK_BOOST=1`）だが**実機での hello 起動は未検証**（S1-6 も参照）。段2 の真cold が 160 で落ちたら minimal を 80 に戻す（1 軸、`-DA1_C6_CPU_FREQ_MHZ=80`） | -- | 段2 で判明する |
 | D6 | OPEN AP の私的 ABI（`g_ic+0x1b4`） | **C6 では表を差し込まない。** 開発側と同じく `esp_wifi_init` に supplicant を任せる（開発側で STA/DHCP/ping 実測済み）。`--wrap=esp_supplicant_init` の経路は Xtensa 側を触らない。C6 の Open AP は**段4 で実測するまで対応を主張しない** | `ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.c:30`（offset）、`BUILDING.md:288-294`（OPEN/WPA 分離） | Open AP が要るなら C6 blob の offset を求め直す（別作業） |
 | D7 | lwIP | **開発側の型（自前 `liblwip.a` + `netif_esp32s3.c` / `port/sys_arch.c`）**で通し、core の `liblwip.a` へ寄せるのは後 | Xtensa 側は core の `liblwip.a` + `ports/m5stack_xtensa/runtime/wifi/net/` の別系統 | 段3 でリンクが通らなければ Xtensa 型へ |
@@ -134,23 +134,25 @@ python scripts/test_xcheck.py                # 判定器の自己テスト
 - 実機ログを文書化するときは、上記の不変条件（SSID / BSSID / IP / AP MAC を書かない）に従う。
   Wi-Fi の単発失敗の切り分けは `CLAUDE.md`「実機の単発失敗を実装のせいにしない」。
 
-## 段1 の記録（2026-09-15、commit `07b239b` / `709b36a` / `ffefc52` / `5dbb8d1`）
+## 段1 の記録（2026-09-15、commit `07b239b` / `709b36a` / `ffefc52` / `5dbb8d1` / `f40490e` + 最終レビュー是正 fix wave 1）
 
 C6 の `minimal` stage が建ち、`m5nanoc6_fmp3:FMP3Runtime=minimal` で 3 例題スケッチが
 リンクを通った段。実機は使っていない（登記のみ）。詳細な証跡は開発リポジトリ
-`.steering/20260915-c6-arduino-plan/stage1/{task-1,task-2,task-3}-report.md` と
-同 `stage1/logs/`（本節の丸括弧はそこのログファイル名）。
+`.steering/20260915-c6-arduino-plan/stage1/reports/task-N-report.md`（N = 1..4、Task ごとの
+実装報告）と同 `stage1/logs/`（本節の丸括弧はそこのログファイル名。`task<N>-*.txt` が
+Task N の採取、`fw1-*.txt` が最終レビュー後の fix wave 1 の再採取。**同じ項目が両方に
+あるときは `fw1-*` が現状**）。判定の表は同 `stage1/AC.md`。
 
 ### AC 1a-1h
 
 | # | 基準 | 判定 | 根拠 |
 | --- | --- | --- | --- |
-| 1a | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` rc=0、stage 一式あり、重複定義監査 PASS | PASS | `task3-build-c6-minimal.txt`（最終: 47 objects / 410 strong definitions / 0 duplicated。段中に `newlib_syscalls.c` が増えたため Task 2 時点の 46 objects から 1 増） |
+| 1a | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` rc=0、stage 一式あり、重複定義監査 PASS | PASS | `fw1-build-c6-minimal.txt`（最終: 47 objects / 410 strong definitions / 0 duplicated、manifest の `romLinkerScripts` は 2 本。段中に `newlib_syscalls.c` が増えたため Task 2 時点の 46 objects から 1 増、fix wave 1 で ROM ld が 13 本から 2 本に減った。Task 3 時点は `task3-build-c6-minimal.txt`） |
 | 1b | X-check 7/7 MATCH、Xtensa 側 `git diff --stat` が空 | PASS | `task3-xcheck.txt`（`expected=7 compared=7 match=7 diff=0`、`ignored (not in baseline): esp32c6`）。Task 1 の初回計測は stage を建て直さない再計測（ninja `no work to do`）だったため、**実質的な証跡は Task 2 の `--clean` 再ビルド後の 7/7 MATCH**（`task2-rebuild-esp32{s3,}.txt`、`task2-xcheck.txt`） |
-| 1c | `install_platform.py` で 4 板が組め、`arduino-cli board listall` に `m5nanoc6_fmp3` が出る | PASS | `task3-install-platform.txt`、`task3-board-listall.txt` |
-| 1d | 3 例題（Blink/LibraryInfo/TwoFileSketch）が compile rc=0、C-1..C-8 PASS | PASS | `task3-compile-c6-{Blink,LibraryInfo,TwoFileSketch}.txt` |
-| 1e | `check_host_paths.py` rc=0、`test_fmp3_link_objects.py` PASS（schema 2 ケース込み）、旧 schema 1（Xtensa 板）も同じドライバで compile rc=0 | PASS | `task3-check-host-paths.txt`、`task3-tests.txt`、`task3-xtensa-blink-compile.txt` |
-| 1f | リンク前 `nm -u` の一覧と勝者一覧の記録 | PASS | `task2-nm-u-stage.txt`（stage 単体）、`task3-link-analysis-{Blink,LibraryInfo,TwoFileSketch,SspProbe}.txt`（実リンク）。詳細は後述「ROM linker script の勝者」節 |
+| 1c | `install_platform.py` で 4 板が組め、`arduino-cli board listall` に `m5nanoc6_fmp3` が出る | PASS | `fw1-install-platform.txt`、`task3-board-listall.txt`。platform.txt / boards.txt の不変性の再現手順は後述「platform.txt / boards.txt の再現」 |
+| 1d | 3 例題（Blink/LibraryInfo/TwoFileSketch）が compile rc=0、C-1..C-8 PASS | PASS | `fw1-compile-c6-{Blink,LibraryInfo,TwoFileSketch}.txt`（ROM ld 2 本の stage。Task 3 時点の 13 本は `task3-compile-c6-*.txt`） |
+| 1e | `check_host_paths.py` rc=0、`test_fmp3_link_objects.py` PASS（schema 2 ケース込み）、旧 schema 1（Xtensa 板）も同じドライバで compile rc=0 | PASS | `task3-check-host-paths.txt`、`fw1-tests.txt`、`fw1-xtensa-blink-driver2-vs-3.txt`（driver 2 と 3 で ELF/BIN とも sha256 同一） |
+| 1f | リンク前 `nm -u` の一覧と勝者一覧の記録 | PASS | `task2-nm-u-stage.txt`（stage 単体）、`fw1-link-winners-2ld.txt`（3 例題 + SspProbe、ROM ld 2 本）、`fw1-romprobe-winners.txt`（newlib 系を呼ぶ probe、2 本 vs 13 本の対照）。Task 3 時点（13 本）は `task3-link-analysis-*.txt`。詳細は後述「ROM linker script の勝者」節 |
 | 1g | `IMPORT_PROVENANCE.md` に dev 由来ファイル全件、本文書に段1 の記録 | PASS | `ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`、本節 |
 | 1h | `--show-properties` の `recipe.size.regex` が C6 のセクション名を含む | PASS | `task3-size-regex.txt`（板別 override が効き、platform.txt 側 regex の拡張は不要だった） |
 
@@ -166,26 +168,63 @@ C6 の `minimal` stage が建ち、`m5nanoc6_fmp3:FMP3Runtime=minimal` で 3 例
 | S1-6 | CPU クロック 160 MHz を既定 | 実装どおり（`CORE_CLK_MHZ` 既定 160、`SEAM_C6_CLK_BOOST=1`）。**実機の hello で 160 MHz は未検証**（開発側は wifi=160 のみ実測、min=80 は実測済み）。段2 の watch item |
 | S1-7 | `recipe.size.regex` の板別 override | 実装どおり、かつ**有効に動くことを実測**（AC-1h）。platform.txt 側 regex を C6 名で拡張する代替案は不要だった |
 
-### ROM linker script の勝者（AC-1f）
+### ROM linker script の勝者（AC-1f）-- minimal は 2 本、newlib 系の ROM 代入は持ち込まない
 
-C6 の minimal stage は ROM linker script 13 本をリンクする（dev の `seam-c6-min` は 2 本のみ、
-段3 で Wi-Fi が増えると効いてくる想定で先取りしている）。3 例題の実リンクで **ROM の代入に
-落ちた参照記号は次の 2 つだけ**（`--allow-multiple-definition` 下で stage 側の定義を
-置き換えたケースは 0 件）。
+C6 の `minimal` stage がリンクする ROM linker script は **`esp32c6.rom.ld` / `esp32c6.rom.api.ld`
+の 2 本**（開発側の `seam-c6-min`、`fmp3/target/m5nanoc6_gcc/target.cmake` と同じ）。
+`runtime/CMakeLists.txt` の `A1_ROM_LDS_<profile>` が profile ごとの表で、manifest の
+`romLinkerScripts` にそのまま入る。
 
-| 記号 | 番地 | 出典 ld | 出るスケッチ |
-| --- | --- | --- | --- |
-| `esp_rom_set_cpu_ticks_per_us` | `0x40000048` | `esp32c6.rom.api.ld` | Blink / LibraryInfo / TwoFileSketch 全部 |
-| `memcpy` | `0x400004ac` | `esp32c6.rom.libc-suboptimal_for_misaligned_mem.ld` | LibraryInfo のみ（`ToppersFMP3_M5CoreS3.cpp.o` が要求。名前どおり非整列アクセスで遅い実装） |
+**経緯（最終レビュー I-A、ruling (a)）**: Task 2/3 の stage は開発側の Wi-Fi 構成
+（`cmake/a1_c6_stage1.cmake`）が足す 11 本（`rom.libc` / `rom.libgcc` / `rom.newlib` /
+`rom.libc-suboptimal_for_misaligned_mem` / `rom.version` / riscv `rom.api` / `rom.net80211` /
+`rom.pp` / `rom.phy` / `rom.systimer` / `rom.coexist`）も含めた 13 本を「段3 の先取り」として
+リンクしていた。これは危険だった。理由:
 
-リンク前の stage 単体の未定義記号（20 個）は ld 定義（`__bss_*`/`__ctors_*`/`__init_array_*`/
-`__idata_*`/`__data_start`/`__global_pointer$`/`__sbss_*`/`_thread_local_*`、17 個）、
-`esp32c6.peripherals.ld`（`SYSTIMER`/`USB_SERIAL_JTAG`）、ROM api ld（上表）、
-スケッチ側供給の `toppers_arduino_task` で全部説明がつく。libc/libgcc の要求は無い。
+- これらの ld は `PROVIDE` ではなく**素の代入**（`rand = 0x40000590;` 等）で、ドライバが常に
+  付ける `-Wl,--allow-multiple-definition` の下では、toolchain の `libc_nano.a` の実体より
+  **黙って勝つ**（リンクは通る。BUILDING.md「多重定義もリンクでは捕まらない」の型）。
+- ROM の newlib（`atoi` / `rand` / `strtol` / `printf` / `malloc` ...）は、errno・malloc・
+  ロック・reent を **`syscall_table_ptr`（`0x4087ffd4`）と `_global_impure_ptr`（`0x4087ffd0`、
+  どちらも `esp32c6.rom.libc.ld` の代入で ROM のデータ領域）** 経由で外の世界へ出す。
+  ESP-IDF なら `esp_libc_init` がこの表を張るが、C6 minimal にはそれに当たるものが無い
+  （ヒープも `_sbrk` も ROM 向けの reent も無い）。**この表を張らないまま ROM の `rand()` を
+  呼ぶと NULL テーブルを辿って落ちる**のは、開発側が S3/LX6 で実際に踏んだ障害
+  （`esp/shim/wifi_stubs.c` の記録: 「ROM rand() -> ROM __getreent stub ->
+  syscall_table_ptr(NULL) -> LoadProhibited」、`chip_rom_libc.c` の stub table で解消）。
+- 3 例題では効いていない（下表）が、`atoi()` や `rand()` の呼び出し 1 つでこの経路に入る。「3 例題が通る」
+  を「任意のスケッチが安全」と読めない典型。
 
-**watch item（段2/3 で採り直すこと）**: minimal では ROM ld 13 本のうち実際に効くのは
-上の 2 記号だけだが、段3 で Wi-Fi（lwip 等）が入ると printf/malloc 系がもっと ROM newlib の
-代入へ落ちる可能性がある。勝者一覧はそのとき再計測する。
+**probe による実測（`fw1-romprobe-winners.txt`）**: `atoi` / `rand` / `strtol` / `abs` /
+`strlen` を呼ぶ試作スケッチ（値は volatile 経由で畳めない）を同じ build で 2 通りにリンク。
+
+| ROM ld | リンク | `atoi` / `rand` / `strtol` / `strlen` の解決先 | `abs` | 未定義 |
+| --- | --- | --- | --- | --- |
+| **2 本（現状）** | **rc=1（正直な失敗）** | `libc_nano.a` の実体（像内 `0x4200477a` 等、`atoi.o` / `rand.o` / `strtol.o` / `strlen.o`） | 出ない（gcc 組込みで inline） | `_sbrk`（`rand` -> `malloc` -> `_sbrk_r`）と `_close` / `_lseek` / `_read` / `_fstat`（`rand` の `__assert_func` -> `fiprintf` -> stdio） |
+| 13 本（Task 2/3 時点、対照） | rc=0（**黙って通る**） | ROM の絶対番地（`0x400005a0` / `0x40000590` / `0x400005a8` / `0x400004c8`、`nm` type `A`） | `0x40000578`（ROM） | 無し。`_global_impure_ptr` = `0x4087ffd0`、`syscall_table_ptr` = `0x4087ffd4` が絶対記号として載るが、**像内のどのオブジェクトも参照しない**（`nm -u` 0 件）= 誰も初期化しない |
+
+つまり 2 本では「newlib の実体が要るもの（`_sbrk` 等）を要求して失敗する」か「`libc_nano.a` の
+オブジェクトが像に入る」のどちらかで、**ROM の newlib が黙って勝つ経路は無い**。
+
+**3 例題 + SspProbe の勝者（ROM ld 2 本、`fw1-link-winners-2ld.txt`）**: リンク前のオブジェクト群で
+未定義かつ絶対番地に解決した記号のうち、ROM ld 由来は **`esp_rom_set_cpu_ticks_per_us`
+（`0x40000048`、`esp32c6.rom.api.ld` の PROVIDE）だけ**（4 本とも）。他の絶対記号は
+`esp32c6_xip.ld`（`__init_array_*` / `__ctors_*` / `__idata_*`）と `esp32c6.peripherals.ld`
+（`SYSTIMER` / `USB_SERIAL_JTAG`）。stage の定義を ROM 代入が置き換えたものは 0 件。
+`libc_nano.a` から引かれるのは `impure.o` / `errno.o`（`newlib_syscalls.o` が参照、
+保護フレームの無いスケッチでは `--gc-sections` で全部落ちる）と、LibraryInfo の **`memcpy.o`**
+（Task 3 時点では 13 本中の `rom.libc-suboptimal_for_misaligned_mem.ld` が `0x400004ac` に
+落としていたもの。2 本では newlib の実体になり、LibraryInfo の像が 83408 -> 83632 bytes に
+増えた。Blink / TwoFileSketch はバイト数不変）。
+
+**M-6 parity gap（Xtensa minimal との差、段3 へ持ち越し）**: Xtensa port の minimal は
+`arch/xtensa_gcc/esp32s3/chip_rom_libc.c`（タスク毎 `_reent`・ROM syscall stub table・
+`software_init_hook` での初期化）を持ち、ROM newlib を安全に使える。**C6 minimal にはそれが無く、
+ヒープ（`_sbrk`）も無い。** 帰結として、NanoC6 では `String` / `printf` / `rand` 等
+newlib の malloc・stdio に届くスケッチは**リンク時に `undefined reference to _sbrk`（等）で
+明確に失敗する**（実行時に静かに壊れるのではなく）。C6 に `chip_rom_libc.c` 相当（ROM newlib を
+使うなら stub table、使わないなら `_sbrk` + ロック + reent の供給）を置くかどうかは、残り 11 本の
+ROM ld をどう扱うかと一緒に**段3 の計画（owner: 段3）で決める**。段1 では決めない。
 
 ### `newlib_syscalls.c`（新設）の意味論
 
@@ -195,14 +234,20 @@ M5Stack core は全スケッチを `-fstack-protector` で建てる。ローカ�
 _getpid_r -> _getpid` / `_kill_r -> _kill` / `_exit` という鎖を引く。C6 の stage にも
 ROM ld にもこの 5 本の実体が無く（ROM は memcpy/strlen 等のみ）、保護フレームを持つ
 スケッチはリンクできなかった（3 例題自体は保護フレームを持たないため、この鎖なしでも通る。
-実測は試作スケッチ 1 本で確認、`task3-compile-c6-SspProbe-before.txt`）。
+実測は試作スケッチ 1 本で確認: `fw1-compile-c6-SspProbe-before.txt`、`newlib_syscalls.o` を
+外した stage に対して rc=1、`_exit` / `__getreent`（2 箇所）/ `_kill` / `_getpid` / `_write` の
+5 記号が未定義。Task 3 の `task3-compile-c6-SspProbe-before.txt` は `cmd | ...` の `$?` を
+記録したため rc=0 と書かれており、fix wave 1 で採り直した）。
 
 実装した意味論は次のとおり（誠実に書く。本番の堅牢化ではなく最小の link 成立）:
 
 - **`_write(fd, buffer, length)`**: `fd == 1 || fd == 2` のときだけ 1 バイトずつ
   `target_fput_log()`（カーネルのログポート）へ送り `length` を返す。それ以外の `fd` は
-  `-1` を返すのみ（errno は設定しない）。ファイルディスクリプタ表もプロセスも無いので、
-  これで「スタック破壊検出」のメッセージがコンソールへ出るという 1 目的だけを満たす。
+  **`errno = EBADF` を立てて `-1`**（fix wave 1。newlib の `_write_r` は `errno` を呼び出し側の
+  reent へ写すので、見る側には「無い記述子」として見える。`errno` の参照で `libc_nano.a` の
+  `errno.o` が引かれるが葉で、保護フレームの無いスケッチでは gc で落ちる）。
+  ファイルディスクリプタ表もプロセスも無いので、これで「スタック破壊検出」のメッセージが
+  コンソールへ出るという 1 目的だけを満たす。
 - **`_exit(status)`** / **`_kill(pid, sig)`**: `syslog(LOG_EMERG, ...)` で状況を記録した後、
   無限ループで停止する（プロセスが無いので戻る先が無い）。
 - **`_getpid(void)`**: 常に `1` を返す固定値（`raise()` 経由でのみ呼ばれる）。
@@ -214,9 +259,10 @@ ROM ld にもこの 5 本の実体が無く（ROM は memcpy/strlen 等のみ）
   ESP-IDF は `esp_system` がハードウェア RNG から seed するが、それは段2 以降の
   hardening 項目であって本段のリンク要件ではない（watch item）。
 
-いずれも葉（何も新しく引き込まない）で、`--gc-sections` により保護フレームを持たない
-スケッチの image には残らない（3 例題のバイナリはこのファイル追加の前後でサイズ不変、
-差分は `app_elf_sha256`・banner の時刻・末尾 checksum の 65 bytes のみ）。
+いずれも葉（`errno.o` / `impure.o` 以外は何も引き込まない）で、`--gc-sections` により
+保護フレームを持たないスケッチの image には残らない（3 例題のバイナリはこのファイル追加の
+前後でサイズ不変、差分は `app_elf_sha256`・banner の時刻・末尾 checksum の 65 bytes のみ。
+Task 3 時点の実測）。
 
 ### 像サイズと RAM 余裕（AC-1d、2026-09-15 実測）
 
@@ -225,15 +271,15 @@ C6 xip ld の `RAM` は `ORIGIN=0x40800000, LENGTH=0x4086E610-0x40800000` = 4521
 partition table の app0 = `0x140000` = 1310720 bytes（stock ptable、開発側の
 `/1048576` とは異なる）。
 
-| スケッチ | image bytes（flash、C-8 判定値） | RAM（`.data`+`.bss`） | RAM 余裕 |
+| スケッチ | image bytes（flash、C-8 判定値） | RAM（`.data`+`.bss`、LOAD の MemSiz） | RAM 余裕 |
 | --- | --- | --- | --- |
 | Blink | 83360 / 1310720（6.4%） | 17792 | 434320 bytes（96.1%） |
-| LibraryInfo | 83408 / 1310720 | 17792 | 434320 bytes |
+| LibraryInfo | 83632 / 1310720（Task 3 の 13 本時点は 83408。差は ROM の `memcpy` が `libc_nano.a` の実体になった分） | 17792 | 434320 bytes |
 | TwoFileSketch | 83376 / 1310720 | 17792 | 434320 bytes |
-| SspProbe（`newlib_syscalls.c` の動作確認用試作） | 84096 / 1310720 | 18048 | 434064 bytes |
+| SspProbe（`newlib_syscalls.c` の動作確認用試作） | 84448 / 1310720（Task 3 時点 84096） | 18048 | 434064 bytes |
 
-**注意**: この数字はビルド時点（2026-09-15、C6 stage 47 objects）のもの。段2/3 で
-オブジェクトが増減すれば動く。固定値として恒久扱いしないこと。
+**注意**: この数字はビルド時点（2026-09-15 fix wave 1、C6 stage 47 objects、ROM ld 2 本）の
+もの（`fw1-compile-c6-*.txt`）。段2/3 でオブジェクトが増減すれば動く。固定値として恒久扱いしないこと。
 
 ### 逸脱の受理（レビュー ruling、`progress.md`）
 
@@ -264,15 +310,27 @@ Task 2 が加えた逸脱のうち次の 3 件は reviewer が受理済み（`IM
 ### 段2 への watch item
 
 - **160 MHz は hello で実機実測されていない**（S1-6）。段2 の最初の書込みで確認し、
-  もし 160 MHz で起動しなければ `-DA1_C6_CPU_FREQ_MHZ=80` で dev と同じ条件（min=80）に
-  戻す 1 軸切替えができる。
+  もし 160 MHz で起動しなければ dev と同じ条件（min=80）に戻す 1 軸切替えができる。
+  手順（fix wave 1 で `build_prebuilt_stages.py` に `--cmake-define` を足した。
+  実測 `fw1-cmake-define-80mhz.txt`: CMakeCache が `A1_C6_CPU_FREQ_MHZ=80`、全 47 objs の
+  compile 行が `-DCORE_CLK_MHZ=80` で `SEAM_C6_CLK_BOOST` 無し、160 と比べて
+  `seam_c6_clk.o` / `seam_c6_entry.o` / `core_support.o` / `target_kernel_impl.o` / `banner.o`
+  だけが変わる）:
+  ```bash
+  python3 scripts/build_prebuilt_stages.py --chip esp32c6 --profiles minimal --clean \
+      --cmake-define A1_C6_CPU_FREQ_MHZ=80
+  python3 scripts/install_platform.py --prebuilt-stage-root build/prebuilt
+  ```
+  `--cmake-define KEY=VALUE` は chip 非依存の素通し（repeatable、未指定なら configure 行は
+  不変。Xtensa は `--clean` 再ビルド後の X-check 7/7 で不変を確認）。
 - **stock M5Stack bootloader は未検証**（D1）。段2 で stock / 開発側 seam bootloader /
   +開発側 ptable の 3 通りを 1 軸ずつ実測して確定する。
 - **C-8 の上限は stock OTA partition table の app0 = `0x140000`** に基づく（上記「像サイズ」節）。
   ptable を変えれば分母が変わるので、段2 で実際に焼く ptable と揃っているか確認すること。
-- **ROM ld 13 本のうち printf/malloc 系がどこまで ROM newlib に落ちるかは minimal では
-  未確認**（上記「ROM linker script の勝者」節の watch item と同じ）。段2/3 で Wi-Fi や
-  文字列整形が増えたら勝者一覧を採り直す。
+- **ROM ld は minimal で 2 本に絞った**（上記「ROM linker script の勝者」節）。段3 で
+  wifi-connect に残り 11 本（の一部）を戻すときは、`syscall_table_ptr` / `_global_impure_ptr`
+  を誰が張るか（libc 供給の決定、M-6）を先に決め、勝者一覧を `nm` で採り直すこと。
+  「minimal ではどれも効いていない」は 2 本の集合についての言明で、11 本を戻せば成立しない。
 - `__stack_chk_guard` がゼロ初期化のまま（RNG seed 無し）。段2 以降の hardening 項目。
 
 ### 段2 の入口条件
@@ -280,18 +338,84 @@ Task 2 が加えた逸脱のうち次の 3 件は reviewer が受理済み（`IM
 - **焼く物**: 本リポジトリの成果物（driver が出す `fmp_xip.bin` 相当）+ stock M5Stack
   bootloader + stock（`default`）partition table + `boot_app0`。焼き方は
   `arduino-cli upload` 経由（`D1` の第一候補どおり。開発側の直接書込み手順は前提が異なるため
-  流用しない）。
+  流用しない）。`arduino-cli compile` が出す `merged.bin` の構成（`fw1-compile-c6-Blink.txt`）:
+  `0x0 bootloader.bin` / `0x8000 partitions.bin` / `0xe000 boot_app0.bin` / `0x10000 app`。
 - **採取**: USB Serial/JTAG（USJ）。書込みと採取が同一ポート。
 - **真cold**: `uhubctl -l 2-3.3 -p 3 -a cycle`（本機のハブ構成、電源を実際に切って入れ直す）。
+
+### stock bootloader と開発側 seam bootloader の差（段2 で見るべきもの）
+
+開発側の C6 は自前の seam bootloader（`esp/boot/seam_c6/`、WDT 無効・USJ コンソール・DIO・
+factory ptable）でしか実機実測していない。段2 の第一候補は stock なので、差を先に書いておく
+（出典: M5Stack core 3.3.8 `esp32c6-libs/sdkconfig`、`bin/bootloader_*.elf`、platform.txt。
+証跡 `fw1-stock-bootloader-readelf.txt`）。
+
+- **どの bootloader か**: platform.txt の prebuild hook 4 が
+  `bin/bootloader_{build.boot}_{build.boot_freq}.elf` から作る。`m5nanoc6_fmp3` は
+  `build.boot=qio`・`build.flash_freq=80m` なので **`bootloader_qio_80m.elf`**。
+- **`.iram_loader.text` は `0x4086e610`**（4 変種とも同じ。`readelf -S` / `-l` の LOAD
+  `0x4086e610`、長さ `0x305c`〜`0x3154`）。ドライバの C-5 `loader_seg = 0x4086E610`
+  （esp-idf v5.5.4 `bootloader.ld` の `bootloader_iram_loader_seg_start`）と一致し、
+  FMP3 の xip ld の `RAM` 上限（`0x4086E610`）もこれに合わせてある。stock でも app の RAM 域が
+  loader を踏まない。
+- **コンソール**: stock は `CONFIG_ESP_CONSOLE_UART_DEFAULT=y`（UART0 主）+
+  `SECONDARY_USB_SERIAL_JTAG=y`、`BOOTLOADER_LOG_LEVEL=ERROR`。**正常系では bootloader は
+  USJ に何も出さない**。期待する USJ の系列は: ROM の起動バナー -> seam entry の生 `'S'`
+  1 文字（`SEAM_C6_ENTRY_MARK=0x53`）-> FMP3 の banner。`'S'` が出て banner が出なければ
+  「bootloader は飛んだが FMP3 が黙っている」、`'S'` すら出なければ「bootloader が app を
+  受理していない」（後者は UART0 に ERROR が出ているかもしれない。段2 では UART0 も見ること）。
+- **RTC WDT**: stock は `CONFIG_BOOTLOADER_WDT_ENABLE=y`、`WDT_TIME_MS=9000`（9 秒）で
+  **armed のまま app へ飛ぶ**。開発側の seam bootloader は `WDT_ENABLE=n` だったので、
+  FMP3 の `hardware_init_hook`（`target/m5nanoc6_gcc/target_kernel_impl.c`、MWDT0/1・RTC WDT・
+  SWD を全部止める）が**この WDT を実際に止めた実績は無い**。9 秒後にリブートループするなら
+  ここが第一容疑。
+- **flash mode**: stock bootloader は QIO 構成（`CONFIG_ESPTOOLPY_FLASHMODE_QIO=y`）で、
+  bootloader.bin / app の**ヘッダはどちらも dio**（`CONFIG_ESPTOOLPY_FLASHMODE="dio"`、
+  実測 flash_mode=2）。bootloader が実行時に QIO を有効にする（`bootloader_flash_qio_mode`）。
+  開発側は DIO のまま。
+- **partition table**: stock は OTA 型（`default.csv`: `nvs 0x9000` / `otadata 0xe000` /
+  `app0 0x10000 +0x140000` / `app1` / `spiffs` / `coredump`）。app は **app0 = `0x10000`**、
+  `otadata` と `boot_app0`（`0xe000` に焼く 8 KB、全 `0xFF` = UNDEFINED）で app0 を選ぶ。
+  `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` だが OTA を使わない限り不活性
+  （`esp_ota_mark_app_valid` を呼ぶ相手が無く、otadata が UNDEFINED のままなら
+  bootloader は app0 を factory 扱いで起動する）。C-8 の分母 1310720 はこの app0。
+  **「+開発側 ptable」の腕を使うとき**: 開発側の ptable は `boot_app0` が焼かれる `0xe000` に
+  `nvs` を置いているので、stock の焼き方（`0xe000 boot_app0.bin`）と混ぜると nvs を上書きする。
+  その腕では `boot_app0` を焼かない書込み列にすること。
+- **R1（stock で動かなかったとき）の対照**: 「開発側 bootloader で動いたら、開発側 bootloader の
+  設定で **WDT だけ有効**にした bootloader」を建てて焼く（1 軸）。それでも切り分かないなら
+  **QIO だけ有効**にした変種を追加する（もう 1 軸）。同時に 2 つ変えない。
+
+### platform.txt / boards.txt の再現（Xtensa 板の配布物不変の確かめ方）
+
+X-check は stage（`objs/` 等）を見るが、platform.txt / boards.txt は見ない。段1 で
+`install_platform.py` に C6 の行を足したので、Xtensa 側の生成物が変わっていないことは
+次で確かめる（`fw1-install-platform-cmp.txt`）:
+
+```bash
+# 段0 の installer を scratch へ取り出し、同じ build/prebuilt から scratch sketchbook へ組む
+git show 0f40140:scripts/install_platform.py > <scratch>/old/scripts/install_platform.py
+git show 0f40140:scripts/arduino_sdk.py     > <scratch>/old/scripts/arduino_sdk.py
+git show 0f40140:scripts/fmp3_link.py       > <scratch>/old/scripts/fmp3_link.py
+python3 <scratch>/old/scripts/install_platform.py --library-root . --sketchbook <scratch>/sb-old --prebuilt-stage-root build/prebuilt
+python3 scripts/install_platform.py --sketchbook <scratch>/sb-new --prebuilt-stage-root build/prebuilt
+cmp  <scratch>/sb-old/hardware/toppers/esp32/platform.txt <scratch>/sb-new/hardware/toppers/esp32/platform.txt   # 同一
+diff <scratch>/sb-old/hardware/toppers/esp32/boards.txt <(grep -v '^m5nanoc6_fmp3\.' <scratch>/sb-new/hardware/toppers/esp32/boards.txt)  # 同一
+```
+
+実測: `platform.txt` はバイト同一、`boards.txt` の差は `m5nanoc6_fmp3.*` の **191 行の追加
+だけ**（削除 0、他の追加 0）、`tools/` と `programmers.txt` も同一。link driver 2（`0f40140`）と
+3（HEAD）で Xtensa Blink を同じ build から再リンクすると ELF / BIN とも sha256 同一
+（`fw1-xtensa-blink-driver2-vs-3.txt`）。
 
 ## 段ごとの到達点
 
 | 段 | ゴール | 実機 | 状態 |
 | --- | --- | --- | --- |
 | 0 | X-check の道具と baseline、本文書、C6 の出自宣言 | 不要 | **完了（2026-09-15）。** AC 0a-0h の記録は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage0/logs/` |
-| 1 | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` が stage を出し、`m5nanoc6_fmp3:FMP3Runtime=minimal` で `Blink` / `LibraryInfo` / `TwoFileSketch` がリンクを通る。X-check で Xtensa 不変 | 不要 | **完了（2026-09-15、`07b239b`/`709b36a`/`ffefc52`/`5dbb8d1`）。** AC 1a-1h 全 PASS、記録は本節 |
+| 1 | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` が stage を出し、`m5nanoc6_fmp3:FMP3Runtime=minimal` で `Blink` / `LibraryInfo` / `TwoFileSketch` がリンクを通る。X-check で Xtensa 不変 | 不要 | **完了（2026-09-15、`07b239b`/`709b36a`/`ffefc52`/`5dbb8d1`/`f40490e` + 最終レビュー是正 fix wave 1）。** AC 1a-1h 全 PASS、記録は「段1 の記録」節 |
 | 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | 未着手 |
 | 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | 未着手 |
 | 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | 未着手 |
-| 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 未着手 |
+| 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 未着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ |
 | 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |

@@ -22,7 +22,8 @@
 
 ## 改変の方針
 
-改変は次の 3 種だけで、いずれも下表に理由を書く。
+改変は次の 5 種だけで、いずれも下表に理由を書く（3 と 5 は Task 2 の逸脱として
+reviewer が受理したもの。`docs/c6-port.md`「逸脱の受理」）。
 
 1. **SDK パスの写像**（`target.cmake`）: dev は esp-idf submodule の
    `components/<comp>/...` を include / link するが、arduino_esp32 は「ESP-IDF を
@@ -32,8 +33,15 @@
    （`src/bridge/ArduinoSketchBridge.cpp`）が `esp_run_init_array()` を呼ぶため、
    dev の ld に無い `__init_array_*` / `__ctors_*`（と `__fini_array_*` / `__dtors_*`）を
    足す（計画 S1-5）。
-3. **`TA_FPU` の除去**（`app/phase3/*.cfg`、Xtensa 側アプリからの派生）: riscv の
+3. **unwind 表の入力規則**（`esp32c6_xip.ld`）: スケッチ側 .o は M5Stack core の
+   `cpp_flags`（`-fexceptions`）で建つため `.eh_frame` / `.eh_frame_hdr` /
+   `.gcc_except_table` を持ち込む。入力規則が無いと orphan 出力セクションになるので
+   `.flash.rodata` 内に置く（Xtensa の `esp32s3_xip_m5.ld` と同型）。
+4. **`TA_FPU` の除去**（`app/phase3/*.cfg`、Xtensa 側アプリからの派生）: riscv の
    fmp3_core に `TA_FPU` の定義が無い（計画 S1-4）。
+5. **`TOPPERS_XIP_PADDR_PROBE` ブロックの削除**（`app/phase3/phase3_arduino_app.c`、
+   Xtensa 側アプリからの派生）: Xtensa の `flash_cache_init.c` の診断で、固定 VMA の
+   C6 には対象が無い（死コード）。
 
 ## ファイル一覧
 
@@ -63,7 +71,7 @@
 | `esp/boot/seam_c6_clk.c` | `runtime/seam/seam_c6_clk.c` | なし | 80 -> 160 MHz 昇圧 |
 | `esp/boot/seam_c6_clk.h` | `runtime/seam/seam_c6_clk.h` | なし | 同上のヘッダ |
 | （arduino_esp32 `ports/m5stack_xtensa/runtime/seam/init_array.cpp`） | `runtime/seam/init_array.cpp` | なし（複製） | dev 由来ではない。`esp_run_init_array()` の実体でチップ非依存。Xtensa port のファイルを参照せず複製したのは、Xtensa 側の変更が C6 の stage を黙って変えないようにするため |
-| （新規） | `runtime/seam/newlib_syscalls.c` | -（新規） | dev 由来ではない。newlib-nano の `__stack_chk_fail` 経路が要求する `_exit` / `_kill` / `_getpid` / `_write` / `__getreent` の実体。M5Stack core はスケッチを `-fstack-protector` で建てるため、ローカル配列を持つスケッチはこの 5 本が無いとリンクできない（段1 Task 3 で実測、Blink / LibraryInfo / TwoFileSketch は保護フレームを持たず無くてもリンクする）。型は Xtensa port の `arch/xtensa_gcc/esp32s3/chip_rom_libc.c` の `_exit` / `_kill` / `_getpid`（2026-08-22 に同じ経路で追加）。ファイルを共有しないのは `init_array.cpp` と同じ理由 |
+| （新規） | `runtime/seam/newlib_syscalls.c` | -（新規） | dev 由来ではない。newlib-nano の `__stack_chk_fail` 経路が要求する `_exit` / `_kill` / `_getpid` / `_write` / `__getreent` の実体。M5Stack core はスケッチを `-fstack-protector` で建てるため、ローカル配列を持つスケッチはこの 5 本が無いとリンクできない（段1 Task 3 で実測、Blink / LibraryInfo / TwoFileSketch は保護フレームを持たず無くてもリンクする）。型は Xtensa port の `arch/xtensa_gcc/esp32s3/chip_rom_libc.c` の `_exit` / `_kill` / `_getpid`（2026-08-22 に同じ経路で追加）。ファイルを共有しないのは `init_array.cpp` と同じ理由。fix wave 1: `_write` は fd 1/2 以外で `errno = EBADF` を立てて `-1` |
 
 ### config `runtime/config/esp32c6/`（dev `esp/config/esp32c6/`、2 本）
 
@@ -87,7 +95,12 @@
   `seam_objects` / `seam_start` / `seam_cxx`、`fmp3_prebuilt`）で書き直したもの。
   dev から持ち込んだ build 事実: `CORE_CLK_MHZ`（既定 160 = S1-6）、`SEAM_C6_CLK_BOOST`、
   `SEAM_C6_ENTRY_MARK=0x53`、`FMP3_PRC_NUM=1`、cfg1_out に xip ld を使う（`A1_C6_LDSCRIPT`）、
-  ROM ld 13 本（target.cmake の 2 本 + `a1_c6_stage1.cmake` の Wi-Fi 構成の 11 本）。
+  ROM ld は profile 別の表 `A1_ROM_LDS_<profile>` で、minimal は target.cmake と同じ 2 本
+  （`esp32c6.rom.ld` / `esp32c6.rom.api.ld`）。Task 2/3 では `a1_c6_stage1.cmake` の Wi-Fi 構成の
+  11 本も足した 13 本だったが、`rom.libc` / `rom.newlib` 等の素の代入が `libc_nano.a` に黙って
+  勝ち、ROM の newlib が未初期化の `syscall_table_ptr` / `_global_impure_ptr` を辿る経路を
+  作るため fix wave 1 で 2 本に戻した（`docs/c6-port.md`「ROM linker script の勝者」）。
+  wifi-connect の表は段3 で libc 供給の決定と一緒に書く。
 - `runtime/cmake/toolchain-riscv-esp32c6.cmake` -- dev `cmake/toolchain-riscv-esp32c6.cmake` と
   同じ形（`riscv32-esp-elf-` 接頭辞、`esp-14.2.0_20260121` の版固定）だが、
   ツールチェーンの場所は書かない（`build_prebuilt_stages.py` が M5Stack core の

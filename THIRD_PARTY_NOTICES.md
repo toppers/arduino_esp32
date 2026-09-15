@@ -77,16 +77,19 @@ original TOPPERS / project license headers; the vendored `sdkconfig.h` header ca
 Espressif's Apache License 2.0 header, which is retained unchanged.
 
 The full file-by-file provenance, the exact source path for every file, and the
-boundary and rationale of every modification (SDK path remapping, `.init_array`/
-`.ctors` linker input, and the `TA_FPU` removal) are recorded in
+boundary and rationale of every modification (five kinds: SDK path remapping,
+`.init_array`/`.ctors` linker input, `.eh_frame`/`.gcc_except_table` linker input,
+the `TA_FPU` removal, and the removal of the `TOPPERS_XIP_PADDR_PROBE` block) are
+recorded in
 [`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md);
 this notice does not restate that list. `ports/m5stack_riscv/app/phase3` and
 `ports/m5stack_riscv/runtime/seam/newlib_syscalls.c` were newly written for this
 repository (the former derived from `ports/m5stack_xtensa/app/phase3`), not taken from
 the development repository; see the same provenance file for details. At build time
-the port links Wi-Fi/RISC-V toolchain and SDK headers/libraries supplied by M5Stack
-Arduino core 3.3.8 (`esp32c6-libs`, `esp-rv32`); those archives are not copied into
-the Release ZIP.
+the port compiles and links against the RISC-V toolchain (`esp-rv32`) and the ESP32-C6
+SDK headers, linker scripts and libraries (`esp32c6-libs`) that the M5Stack Arduino
+core 3.3.8 installs; none of those files are copied into this repository or into the
+Release ZIP.
 
 ## BlueDroid (ESP-IDF Bluetooth host stack)
 
