@@ -487,6 +487,9 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     #  --- (10)-(12): marker counting on a fixture ---
     #  (10) a Wi-Fi capture with placeholders only: every counter non-zero
     #  where the fixture has the line, ssidraw 0, unexpected 0, scan = LAST N.
+    #  The DHCP line appears in both spellings, the DIAG-ON one with
+    #  " ip=.. gw=.." and the shipped stage's bare one (S5-3), so dhcp = 2:
+    #  the counter is a prefix match and must take both.
     _mk="$_sd/markers.log"
     printf '%s\n' \
         'S' 'TOPPERS/FMP3 Kernel Release 3.2.1' '[Arduino] setup complete' \
@@ -498,7 +501,8 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
         '[WiFiScan] AP[2] rssi=-70 ch=11 SSID=<SSID-2>' \
         '[WiFiScan] found 12 APs' \
         '[WiFiConnect] connected authmode=3 channel=6' \
-        'net: DHCP bound ip=<IPv4> gw=<IPv4>' '[WiFiConnect] DHCP completed' \
+        'net: DHCP bound ip=<IPv4> gw=<IPv4>' 'net: DHCP bound' \
+        '[WiFiConnect] DHCP completed' \
         'net: ping gateway -> OK' 'net: ping gateway -> timeout' \
         '[WiFiConnect] DNS resolved host=example.com address=0x12345678' \
         '[WiFiConnect] DNS failed host=example.invalid error=-1 (unresolved)' \
@@ -508,7 +512,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
         '[Arduino] loop heartbeat 1000' '[Blink] ON' '[Blink] OFF' > "$_mk"
     _ml="$(c6_count_markers "$_mk")" || _fail "(10) c6_count_markers returned non-zero"
     _exp1='markers: banner=1 setup=1 heartbeat=1 unexpected=0 smark=1 blink=2'
-    _exp2='wifi: scan=12 scanap=3 ssidraw=0 connected=1 dhcp=1 dhcpdone=1 ping=1 dnsok=1 dnsfail=1 tcp=1 disc=1 beginrej=1 apm=2'
+    _exp2='wifi: scan=12 scanap=3 ssidraw=0 connected=1 dhcp=2 dhcpdone=1 ping=1 dnsok=1 dnsfail=1 tcp=1 disc=1 beginrej=1 apm=2'
     [ "$(printf '%s\n' "$_ml" | sed -n 1p)" = "$_exp1" ] || _fail "(10) markers line: $(printf '%s\n' "$_ml" | sed -n 1p)"
     [ "$(printf '%s\n' "$_ml" | sed -n 2p)" = "$_exp2" ] || _fail "(10) wifi line: $(printf '%s\n' "$_ml" | sed -n 2p)"
     [ "$(c6_apm_lines "$_mk" | wc -l)" -eq 2 ] || _fail "(10) c6_apm_lines did not return 2 lines"
@@ -557,7 +561,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     ( C6_MASK_SELFTEST=0 C6_REDACT_ONLY=1 LOG_DIR="$_sd/logs" WIFI_CREDS="$_sd/no-such-creds.sh" bash "$_self" "$_sd/logs/y.log" >/dev/null 2>&1 ) || _fail "(15b) a file inside LOG_DIR was refused"
     [ "$(cat "$_sd/logs/y.log")" = 'got ip <IPv4>' ] || _fail "(15b) the file inside LOG_DIR was not masked: $(cat "$_sd/logs/y.log")"
     rm -rf "$_sd"
-    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact, scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C6_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C6_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked"
+    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact (dhcp 2 = both spellings), scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C6_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C6_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked"
     exit 0
 fi
 

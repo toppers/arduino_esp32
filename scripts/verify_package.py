@@ -25,6 +25,10 @@ Usage:
 The platform directory is what scripts/install_platform.py
 produces, or the artifact the verify-package workflow uploads. Copy it to the
 machine under test; it is host-independent.
+
+Build order: boards in the order given (BOARDS by default); within a board,
+the profiles in sorted(PROFILES) order regardless of --profiles order, so
+two runs' summaries line up whatever the command line spelled.
 """
 
 from __future__ import annotations

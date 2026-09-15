@@ -113,6 +113,9 @@
 #define PBUF_POOL_BUFSIZE           1600
 #define MEMP_NUM_PBUF               8
 
+/*  RAW/UDP PCB counts are sized for the DIAG-ON build (ping, udpecho):
+ *  they drive liblwip.a, so do not shrink them without rebuilding the
+ *  archive (arduino_esp32 stage 5, S5-3). */
 #define MEMP_NUM_RAW_PCB            3	/* ping(1) + 予備 */
 /*  UDP PCB: DHCPクライアント(1) + udpecho_rawサーバ(1) + アプリのUDPソケット用
  *  余裕。2だとDHCP+udpechoで満杯になりアプリのlwip_socket(SOCK_DGRAM)が

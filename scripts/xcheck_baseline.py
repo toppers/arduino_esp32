@@ -16,8 +16,10 @@ the release uses - once per chip, with every profile that chip ships:
     esp32c6   minimal  wifi-connect              (only with --chips esp32c6)
 
 The profile sets are taken from build_prebuilt_stages.py itself
-(SHIPPED_PROFILES plus CHIP_ONLY_PROFILES), so adding a shipped profile
-there makes it part of the baseline here without a second edit.
+(SHIPPED_PROFILES plus CHIP_ONLY_PROFILES, narrowed to what the chip can
+stage at all: build_prebuilt_stages.CHIPS[chip].profiles, which is why the
+esp32c6 row above has no m5-unified), so adding a shipped profile there
+makes it part of the baseline here without a second edit.
 
 The stages land where they always do, build/prebuilt/<chip>/<profile>/, and
 each listed profile is then copied to build/xcheck-baseline/<chip>/<profile>/
