@@ -15,10 +15,10 @@ volatile int16_t wifiScanResult = ToppersFMP3WiFiClass::ScanFailed;
 void setup()
 {
     // No SSID or password is needed. Results are also written to the
-    // TOPPERS/FMP3 serial log with RSSI, channel, and authmode. On boards
-    // whose runtime redacts SSIDs from that log (ESP32-C6 as of 2026-09-15),
-    // the log line carries a `<SSID-N>` placeholder instead of the SSID
-    // text; WiFi.SSID(i) below still returns the real SSID either way.
+    // TOPPERS/FMP3 serial log with RSSI and channel; on ESP32-C6 (as of
+    // 2026-09-15) also authmode, and the SSID there is shown as a
+    // `<SSID-N>` placeholder instead of the SSID text. WiFi.SSID(i) below
+    // still returns the real SSID on every board.
     wifiScanResult = WiFi.scanNetworks();
 }
 

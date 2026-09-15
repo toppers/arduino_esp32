@@ -120,9 +120,12 @@ BSD-3-Clause。M5Stack Arduino core 3.3.8 の SDK は lwIP contrib apps のヘ�
   （`components/mbedtls/mbedtls` `ffb280bb63`）で Apache-2.0 OR GPL-2.0-or-later。
   `libmbedtls.a` は Xtensa 側の同名ディレクトリには無い C6 固有の追加で、supplicant の
   EAP-TLS 経路が要求する（WPA2-PSK 経路では未使用と実測済み）。
-- `lwip/esp32c6/liblwip.a` -- 開発リポジトリの `build_lwip_lib_espidf_esp32c6.sh` で建てた
-  ESP-IDF の lwIP、BSD-3-Clause。`LWIP_DNS 0` で建っており、名前解決の扱いは段4 で判断する
-  （`docs/c6-port.md`「段3 の記録」「段4 の入口条件」）。
+- `lwip/esp32c6/liblwip.a` -- 開発リポジトリの `build_lwip_lib_espidf_esp32c6.sh` を
+  `PORT_EXTRA`=本リポジトリの vendored `lwipopts.h`（`LWIP_DNS 1`）・`OUT_DIR`=別出力で
+  建てた ESP-IDF の lwIP、BSD-3-Clause。段4 Task 0（2026-09-15）で `LWIP_DNS 1` へ
+  再生成した（sha256 `5bfbc3ef...`、473,586 B）。dev golden の `.a`（`LWIP_DNS 0`、
+  sha256 `85859f70...`）とは別物で、差分は `lwipopts.h` のみ（R12 の逸脱として
+  `IMPORT_PROVENANCE.md` 方針 8 に記録）。
 
 sha256・生成台本・上流ライセンス本文は `wifi/prebuilt/{wpa2,lwip}/README.md` に記録済み
 （`BUILDING.md` の要求どおり、アーカイブと README は同じコミットで更新する）。

@@ -75,7 +75,8 @@ prebuilt archive、include 配置に依存しています）。
 - **ESP32-C6（M5NanoC6）は統合作業中で配布物には未収録です。** 2026-09-15 実機で、
   stock M5Stack bootloader のまま minimal（`Blink`）が起動することを確認しました
   （warm 5/5、真cold 9/10）。同日、Wi-Fi STA（WPA2-PSK）/ DHCP / DNS / TCP を
-  ユーザーの実 AP に対して実機確認しました（真cold 3/3）。Open AP / WPA3-SAE は
+  ユーザーの実 AP に対して実機確認しました（真cold 3/4、1 回は無音採取）。
+  Open AP / WPA3-SAE は
   AP が用意できず未実測、BLE は未着手です。判断と到達点は
   [`docs/c6-port.md`](docs/c6-port.md)
 

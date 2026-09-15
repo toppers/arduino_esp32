@@ -936,8 +936,9 @@ fix wave（`8912a35`）が足した `notify_link_if_started()` のゲート自�
 > Task 2、下記「段4 の記録」参照）。段4 では TERMINAL な行だけに絞った
 > `MARKERS='TCP request failed|DNS failed|begin: rejected|connection timeout|LWIP-ASSERT'`
 > （固定 `CAPTURE_SEC=45`）を使った。成功時は早期終了せず 45 秒間全体を採取する
-> （`ping gateway -> OK` の複数回カウントもここから得た）。台本（`capture_c6_usj.sh`）自体は
-> 本段・段4 とも無改変（マーカーは呼び出し側の引数）。
+> （`ping gateway -> OK` の複数回カウントもここから得た）。**D-1 の是正自体は台本の変更を
+> 要さず、呼出し側の引数だけで直る**（台本本体の変更は marker 追加と hex マスクで別件、
+> 下記「段4 の記録」節参照）。
 
 ### Xtensa の切り分け順を C6 にも適用する
 
@@ -973,7 +974,7 @@ M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS
 | 4c | APM OFF 対照で 0 AP、ON に戻して復帰（軸表つき） | PASS | Task 1: warm OFF 対照 = 0 AP（`lp_apm_func_ctrl` は warm 残留で `0x0`）。Task 2: 真cold OFF 対照（`scan-cold-apmoff`）= 0 AP・`lp_apm_func_ctrl=0x3`（pristine）。ON 復帰 = warm4 11 AP、warm5 で WiFiConnect も復帰（下記「APM 対照」） |
 | 4d | WiFiConnect warm: connected / DHCP bound / DNS 解決 / TCP 受信の各 marker >= 1、`## Unexpected`/`mcause=` 0 | PASS（初回 1 回の `NO_AP_FOUND` を除く） | warm1-retry・warm2・warm3 のいずれも connected=1 dhcp=1 dnsok=2 tcp=255、unexpected=0。**warm1（最初の接続試行）は `NO_AP_FOUND` で失敗**、1 回の再試行で成功（下記「正直な観察」） |
 | 4e | 真cold 3/3 で 4d と同じ marker | **真cold 3/3（出力のあった run。cold2 は無音 1/6）** | cold1・cold3・cold4 は connected=1 dhcp=1 dnsok=2 tcp=255、unexpected=0（4 回中 3 回が出力あり run で成功、cold2 は 45 秒間 0 バイトの無音採取で成否判定不能。詳細は下記「正直な観察」） |
-| 4f | 秘密: repo の `git status` clean、採取ログに creds 針 0（台本の検査）、docs に SSID/IP/BSSID なし | PASS（残存する軽微な懸念 1 件あり） | `git status --porcelain` 0 行、`git diff --exit-code examples/` rc=0（Task 2）。採取ログ 75 本の creds 針 grep = ssid 0 / pass 0、`.UNREDACTED` 0。本節・本文書に SSID/IP/BSSID を書いていない。**是正済み（fix wave、`a251202`）**: `DHCP address=0x%08x`（hex 形の LAN アドレス）が redact 段の対象外で dev 側 `.steering/` ログに残っていた件は、台本に `address=<HEX32>` マスクを足し、既存ログ 9 本（DHCP 9 行 + DNS 応答 18 行 = 27 語）を台本の `C6_REDACT_ONLY=1` モードで機械的にマスクした（手編集なし、residue 0）。**注記**: 生 creds の針（SSID/PASS）は Task 2 の実採取では一度も発火していない（スケッチは creds を印字しないので平文が元々出ない）＝針の経路の positive control は fixture の selftest のみで、実採取では未実証 |
+| 4f | 秘密: repo の `git status` clean、採取ログに creds 針 0（台本の検査）、docs に SSID/IP/BSSID なし | PASS（残存する軽微な懸念 1 件あり） | `git status --porcelain` 0 行、`git diff --exit-code examples/` rc=0（Task 2）。採取ログ 76 本の creds 針 grep = ssid 0 / pass 0、`.UNREDACTED` 0。本節・本文書に SSID/IP/BSSID を書いていない。**是正済み（fix wave、`a251202`）**: `DHCP address=0x%08x`（hex 形の LAN アドレス）が redact 段の対象外で dev 側 `.steering/` ログに残っていた件は、台本に `address=<HEX32>` マスクを足し、既存ログ 9 本（DHCP 9 行 + DNS 応答 18 行 = 27 語）を台本の `C6_REDACT_ONLY=1` モードで機械的にマスクした（手編集なし、residue 0）。**注記**: 生 creds の針（SSID/PASS）は Task 2 の実採取では一度も発火していない（スケッチは creds を印字しないので平文が元々出ない）。針の経路の positive control は fixture の selftest のみで、実採取では未実証 |
 | 4g | W-1..W-3 の結果（begin-only で繋がったか、scan->begin の cycle が通ったか） | PASS（W-4 は不発、観測なし） | 下記「W-1..W-4 の結果」 |
 | 4h | minimal/wificonnect 非退行: 4 例題リンク、X-check | PASS | Task 0/1 とも X-check 7/7、minimal stage 非改変（Task 0: sha 比較同一、Task 1: 触っていない）。Task 2 はコード変更なし（非退行は自明） |
 
@@ -1042,7 +1043,10 @@ M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS
   dev 側の `hal_stub_include/errno.h` に定義が無く、このリポジトリからは編集できないため）。
 - `hostByName` は `tcpip_callback()` + `dns_gethostbyname()`（tcpip スレッド、5000 ms 上限、
   10 ms ポーリング、世代カウンタで遅延コールバックを破棄）で実装。`netconn_gethostbyname` は
-  待ちが非有界（lwIP 自身の再試行スケジュール）なので不採用。
+  待ちが非有界（lwIP 自身の再試行スケジュール）なので不採用。**この 5 秒上限は lwIP 自身の
+  再試行スケジュールより短い**ため、混雑した AP への最初の問い合わせが遅いと adapter は
+  `timeout` を報告しつつ lwIP が背後で再試行を続け、直後の再問い合わせがキャッシュ経由で
+  成功することがありうる（段4 の実機では発生せず、`dnsfail=0` 9/9。段5 で回す対照）。
 - DHCP option 6（DNS サーバ）-> `dns_setserver()` の経路は `esp-idf` の `dhcp.c` で確認済み
   （adapter 側に手動の `dns_setserver` 呼び出しは無い）。
 - `liblwip.a` は arduino 専用の別出力（`5bfbc3ef...`、473,586 B）で、**dev 側の golden `.a`
@@ -1116,13 +1120,14 @@ C6 でも起きるかは、依然として未確認のまま持ち越す。
 - **早期終了マーカーの誤り（D-1）**: 段3 の「段4 の入口条件」節に書いた
   `MARKERS='DHCP completed|...'` が、DNS/TCP より前に採取を打ち切ってしまう誤りだったこと
   が本段で判明し、該当節に是正を追記した（上記「段4 採取のマーカーと注意」節末尾）。
-  台本本体は無改変で、呼び出し側の引数を直した。
+  **D-1 の是正自体は台本の変更を要さず、呼出し側の引数だけ**（台本
+  `capture_c6_usj.sh` 本体の変更は marker 追加と hex マスクで別件、下記「段4 の記録」節参照）。
 
 ### creds の運用（実施内容）
 
 - スケッチの**作業コピー**（scratchpad 配下）にのみ実 creds を書いた。値は 1 回の Bash 呼出しで
   開発リポジトリの creds ファイルから読み `sed` で注入し、値そのものは一度も表示していない
-  （空欄行 0 件をチェックサムでのみ確認）。
+  （空欄行 0 件を行数で確認）。
 - リポジトリの `examples/WiFiConnect/WiFiConnect.ino` は**無改変**。`git diff --exit-code
   examples/` の終了コード 0（差分なし）で確認し、`git add`・commit の前後とも確認済み。
 - 採取ログの redact は開発リポジトリの creds ファイルの値を針として使う（本リポジトリには
@@ -1151,9 +1156,9 @@ ptable/`boot_app0` は不変。
 
 ### 段5 の入口条件
 
-- **`scripts/verify_package.py` に C6 を追加**: 4 板（Xtensa 3 板 + M5NanoC6）× C6 は
-  `minimal`/`wifi-connect` の 2 profile を対象に足す（現状 `BOARDS`/`PROFILES` は C6 を含まない、
-  段1 から持ち越しの D9/D10 実装の延長）。
+- **`scripts/verify_package.py` に C6 を追加**: 対象を 4 板（Xtensa 3 板 + M5NanoC6）にする。
+  C6 は `minimal`/`wifi-connect` の 2 profile を対象に足す（現状 `BOARDS`/`PROFILES` は C6 を
+  含まない、段1 から持ち越しの D9/D10 実装の延長）。
 - **CI（`.github/workflows/verify-package.yml`）の `for chip in esp32s3 esp32` に `esp32c6` を
   追加**するループ化。
 - **`packaging/release-allowlist.json` に C6 向け entry を追加**（`portBaseRepositoryC6`/
@@ -1174,14 +1179,53 @@ ptable/`boot_app0` は不変。
   `_cnt` カウンタの動的スコープ（関数境界をまたぐ暗黙の共有）を明示化する、selftest の
   fixture の形（現状の埋め込みヒアドキュメント）を読みやすい形に整理する。いずれも挙動は
   変えない整理で、段5 の fix wave 候補。
-- **`examples/WiFiScan/WiFiScan.ino` のコメント修正**: 下記「WiFiScan.ino のコメント」参照。
-  本 commit で対応済み（chip-neutral な表現）。
+- **`examples/WiFiScan/WiFiScan.ino` のコメント修正**: 段3 の懸念（ログが SSID を伏せることを
+  コメントが反映していない）に加え、Xtensa の adapter は authmode を印字しないため
+  「RSSI, channel, and authmode」という書き方自体が Xtensa には chip-neutral でなかった。
+  両方を反映した chip-neutral な文言へ本 commit・最終レビュー是正 fix wave の 2 段で修正済み
+  （コメントのみ、コード変更なし）。
 - **`MEMP_NUM_SYS_TIMEOUT` の余裕注記**: 現在の値（9、余裕 1）は「サイクリックタイマ + ping の
   1 個」という段4 時点の計算に基づく。将来 lwIP 側の機能を追加してタイマが増える変更をすると
   この余裕が再びゼロになりうるため、変更のたびに `lwip_num_cyclic_timers`（`lw_timeouts.o` の
   `.srodata`）を読み直すことを、次にこの値を触る人への申し送りとする。
 - **`ERANGE` の恒久的な置き場所**: 上記「DNS 実装の要約」の宿題（dev 側 `hal_stub_include/
   errno.h` への移設）は段5 でも未実施のまま持ち越し。
+- **ROM `rand()` / `syscall_table_ptr` ハザード**（段3 S3-1・「ROM ld 勝者」節から継続）:
+  ROM の newlib `rand()` が `syscall_table_ptr`（`0x4087ffd4`）を未初期化のまま辿りうる経路が
+  未解決のまま持ち越されている。現在の 4 例題では到達不能（`--gc-sections` で discard）だが、
+  `random()`/`rand()` を呼ぶスケッチを wifi-connect で建てたときに初めて顕在化する。段5 の
+  対象スケッチを広げる前に手当てするか、少なくとも watch item として引き続き明記すること。
+- **port 7 の TCP/UDP echo サーバとゲートウェイ ping の出荷可否**（段3「継承した dev の診断
+  フック」節から継続）: vendored `netif_esp32s3.c` は dev のデモ用フック（port 7 echo、DHCP
+  bound 直後の ping 1 回）を無改変で持ち込んでいる。段4 の証拠採取ではそのまま活用したが、
+  **これを製品として出荷するかは段5 で決める**（外すなら vendored ファイルの改変か adapter
+  側での抑止が要る、R12 の分岐点）。
+- **W-5（disconnect 後に自分から再接続しない）の対応場所**: 有界の再試行を adapter 側
+  （`toppers_wifi_connect.c`、両ポート共通）に足すか、`WiFiConnect` 例題側のスケッチロジック
+  として示すだけに留めるかを段5 で決める。scan-first（W-2）がこの症状を避けるかどうかは
+  1 件の成功例だけでは判断材料が足りず、未検証のまま。
+- **`.journal.txt` サイドカーは実機の真cold run で未実証**: fix wave（`a251202`）で
+  `capture_c6_usj.sh` の `COLD=1` 経路に、無音採取と本当のハングを切り分ける手掛かりとして
+  カーネルジャーナルの USB 関連行を書き出す `.journal.txt` を追加したが、この変更は段4 の
+  真cold run（cold1-4・cold-apmoff・scan-cold-apmoff）**より後**に入っており、実際の真cold
+  採取でこのサイドカーが役に立つ形で出力されることは**まだ 1 回も確認していない**。段5 で
+  少なくとも 1 回、真cold run を回して中身を確認すること。
+- **無音の真cold を区別するリブネスチェックの担当が未定**: 段2 から持ち越しの懸念（板を
+  リセットせずに「アプリは生きているが USJ だけ無音」と「アプリがハング」を区別する手段が
+  無い）は、段2（1/10）・段4（1/6）と 2 段連続で観測されているにもかかわらず、担当段が
+  決まっていない。段5 の入口条件として明示的に割り当てること。
+- **C6 の「基準コミット」の表記ゆれ**: 本文書冒頭「出自」節の `portBaseCommitC6` は
+  `c7fef186d3b98e9046005a3f3ab0f2dfb1a2fdfe`（段0 の出自宣言）だが、段4 で更新した
+  `wifi/prebuilt/lwip/README.md` の DNS `.a` の由来は「dev tree at the time of the rebuild」
+  として `5bdac26e`（README 自身が「`c7fef18` から無改変」と注記）を挙げている。**両者は
+  矛盾ではない**（`5bdac26e` は `c7fef18` 以後の dev 側の無関係な進行を指すだけ）が、
+  README を単独で読むと「基準コミットが変わった」ように誤読されうる表現になっている。段5 で
+  用語を統一するか、少なくとも README 側の注記をもう一段明確にすること。
+- **`hostByName` の 5 秒上限と lwIP 自身の再試行スケジュールの関係**: 上記「DNS 実装の要約」
+  で述べたとおり、混雑した AP に対する最初の問い合わせが遅いと、adapter 側は 5 秒で
+  `timeout` を報告する一方 lwIP は背後で再試行を続けている可能性があり、直後の再試行が
+  キャッシュ経由で成功することがありうる。段4 では実機で発生しなかった（`dnsfail=0`
+  9/9）が、段5 で DNS を使う例題・スケッチを増やすときに再現条件を確かめること。
 
 ## 段ごとの到達点
 
