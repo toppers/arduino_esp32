@@ -140,3 +140,23 @@ python3 scripts/test_xcheck.py                # 判定器の自己テスト
 - baseline は `90872e9` の clean tree で採ったもの（`build/xcheck-baseline/BASELINE.json`）。
   **段1 の途中で採り直さない。**
 - 段1 は `feature/c5-arduino-stage1` で続ける（段0 と同じブランチ）。
+
+## 段1 の記録（2026-09-16、branch `feature/c5-arduino-stage1`、段0 commit `1d9caec` から）
+
+C5 の `minimal` stage が建ち、`m5stampc5_fmp3:FMP3Runtime=minimal` で 3 例題スケッチが
+リンクを通る段。実機は使わない。AC は段の頭で固定し（この表）、判定は Task ごとに埋める。
+証跡は開発リポジトリ `.steering/20260916-c5-arduino-plan/stage1/{AC.md,logs/}`。
+
+### AC 1a-1i（判定は段1 末尾で埋める）
+
+| # | 基準 | 判定 | 根拠 |
+| --- | --- | --- | --- |
+| 1a | `build_prebuilt_stages.py --chip esp32c5 --profiles minimal --clean` rc=0、stage 一式あり、重複定義監査 PASS、manifest の `romLinkerScripts` は 2 本 | (未) | |
+| 1b | X-check 9/9 MATCH（段0 baseline）、`ports/m5stack_xtensa` / `src` / `examples` / `third_party` の `git diff --stat` が空 | (未) | |
+| 1c | `install_platform.py` で 5 板が組め、`arduino-cli board listall` に `m5stampc5_fmp3` が出る。既存 4 板の `boards.txt` 行と `platform.txt` は不変 | (未) | |
+| 1d | 3 例題（Blink / LibraryInfo / TwoFileSketch）が compile rc=0、C-1..C-8 + C-9 PASS | (未) | |
+| 1e | `check_host_paths.py` rc=0、`scripts/test_*.py` 全 PASS（C-9 のケース込み）、Xtensa 板と C6 板の Blink も同じドライバで rc=0 | (未) | |
+| 1f | リンク前 `nm -u` の一覧と勝者一覧の記録、実リンク後 `nm -u` は空 | (未) | |
+| 1g | `IMPORT_PROVENANCE.md` に C5 の dev 由来ファイル全件、本文書に段1 の記録 | (未) | |
+| 1h | `--show-properties` の `recipe.size.regex` が C5 のセクション名を含み、`upload.maximum_size=1310720` / `upload.maximum_data_size=320928`、`bootloader_addr` は継承値 `0x2000` | (未) | |
+| 1i | chip 表化の commit 単独で C6 の 2 stage を `--clean` で建て直して X-check 9/9 MATCH（C6 の値は 1 バイトも動いていない） | (未) | |
