@@ -173,25 +173,48 @@
 #  "esp_usb_jtag: serial (<that serial>)" -- the development side once had
 #  openocd grab a DIFFERENT board because no serial was given. Without that
 #  line .jtag.txt gets "# REFUSED: openocd did not report the pinned serial",
-#  no value is trusted, and a [C6] warning is printed. Registers:
+#  no value is trusted, and a [C6] warning is printed. When openocd prints
+#  NO "serial (" line at all and exits non-zero (no device found, or the
+#  adapter failed before init) that is not a grabbed-wrong-board event: the
+#  sidecar says "verdict: not-run (openocd rc=N, no serial line)" instead,
+#  again with no value printed. Registers:
 #  0x6000F004 = USB_SERIAL_JTAG_EP1_CONF (bit0 WR_DONE, bit1
 #  SERIAL_IN_EP_DATA_FREE = the "data_free" printed, bit2
 #  SERIAL_OUT_EP_DATA_AVAIL), 0x6000F008 = USB_SERIAL_JTAG_INT_RAW (soc/
-#  usb_serial_jtag_reg.h, esp32c6). The parsed sidecar .jtag.txt:
+#  usb_serial_jtag_reg.h, esp32c6). EP1_CONF and INT_RAW are RECORDED RAW
+#  for later comparison with a silent run; they are NOT a health criterion.
+#  In particular data_free is NOT expected to be 1 on a healthy board: the
+#  probe runs after the monitor has been killed, so no host reader drains
+#  the IN endpoint, the application keeps writing, and bit1 reads 0 with
+#  the sketch demonstrably running (stage 6 task 3, forced probe on a warm
+#  run: loop_calls 40528 -> 42283 delta=1755, verdict alive, data_free=0).
+#  The verdict is decided by loop_calls (two reads 2 s apart) alone.
+#  The parsed sidecar .jtag.txt:
 #    # jtag probe <date> reason=<silent-cold|forced> serial=<pinned> elf=<path or none>
 #    pc1=0x........ pc2=0x........
-#    ep1_conf=0x........ int_raw=0x........   (data_free=<0|1>)
+#    ep1_conf=0x........ int_raw=0x........   (data_free=<0|1>; raw evidence, not a criterion)
 #    loop_calls: <a> -> <b> delta=<b-a>        (or "symbol unavailable (...)")
 #    verdict: alive | not-advancing | refused | not-run
-#  alive = loop_calls delta > 0; not-advancing = delta == 0, or (symbol
-#  unknown) pc1 == pc2; refused = the pinned serial line is absent; not-run
-#  = no verdict (openocd missing, no output, fewer than two reads, or symbol
-#  unknown and pc moved -- inconclusive; the qualifier in parentheses says
-#  which). The verdict and loop_calls lines go to .sha.txt under "# jtag:".
-#  The probe is evidence, not a gate: it never changes the exit status.
-#  Caveat: if the 30 s timeout kills openocd between halt and resume the
-#  chip stays halted; the next reset or power cycle recovers it (recorded
-#  in .jtag.txt as "openocd rc=124").
+#  alive = loop_calls delta > 0 with b >= a; not-advancing = delta == 0, or
+#  (symbol unknown) pc1 == pc2; refused = openocd identified a device but
+#  not the pinned one (a serial line is present and differs), or exited 0
+#  without any serial line; not-run = no verdict (openocd missing, no
+#  output, non-zero exit with no serial line at all, fewer than two reads,
+#  symbol unknown and pc moved -- inconclusive, or the counter went
+#  backwards: b < a is printed as "delta=<(b-a) mod 2^32> (wrapped)" and is
+#  NOT called alive, because it can only come from a 32-bit wrap -- about
+#  49 days at the measured ~1 loop() per ms, unreachable inside a capture --
+#  or from the counter being re-zeroed by a reset between the two reads,
+#  and neither shows the instance under test advancing; the qualifier in
+#  parentheses says which). The verdict and loop_calls lines go to .sha.txt
+#  under "# jtag:". The probe is evidence, not a gate: it never changes the
+#  exit status.
+#  Caveat (halt left behind): if openocd stops between halt and resume --
+#  the 30 s timeout (recorded as "openocd rc=124") OR a command error that
+#  ends the -c chain early (a refused mdw, a target error; recorded as the
+#  non-zero rc) -- the chip stays halted until the next reset or power
+#  cycle. A capture that follows without a reset is then silent for that
+#  reason, not for the one under investigation.
 #
 #  Markers counted at the end (strings from src/bridge/ArduinoSketchBridge.cpp,
 #  third_party/fmp3_core/syssvc/banner.c and arch/riscv_gcc/common):
@@ -515,20 +538,27 @@ c6_jtag_wanted() {
 }
 
 #  Parser (pure over a file; exercised by the selftest):
-#    c6_jtag_parse <raw openocd log> <loop_calls addr hex or ""> [<why unavailable>]
-#  prints the .jtag.txt body: pc1/pc2, ep1_conf/int_raw (data_free), the
-#  loop_calls line and the verdict line. The pinned serial is $dut_uc. What
-#  it reads (openocd prints command output without the "Info :" prefix):
+#    c6_jtag_parse <raw openocd log> <loop_calls addr hex or ""> [<why unavailable>] [<openocd rc>]
+#  prints the .jtag.txt body: pc1/pc2, ep1_conf/int_raw (data_free, raw
+#  evidence only), the loop_calls line and the verdict line. The pinned
+#  serial is $dut_uc. What it reads (openocd prints command output without
+#  the "Info :" prefix):
 #    Info : esp_usb_jtag: serial (9C:13:9E:D3:62:18)   <- the pin check
 #    pc (/32): 0x40800abc                              <- reg pc
 #    0x6000f004: 00000002                              <- mdw (8 hex digits)
-#  Verdicts: alive (delta > 0) / not-advancing (delta == 0, or symbol
-#  unknown and pc1 == pc2) / refused (serial line absent: NOTHING from the
-#  run is trusted, no values are printed) / not-run (no verdict: no output,
-#  fewer than two reads, or symbol unknown and pc moved -- inconclusive).
-#  A missing second read is never "alive".
+#  Verdicts: alive (delta > 0 and b >= a) / not-advancing (delta == 0, or
+#  symbol unknown and pc1 == pc2) / refused (a serial line is present but
+#  it is another board's, or openocd exited 0 with no serial line at all:
+#  NOTHING from the run is trusted, no values are printed) / not-run (no
+#  verdict: no output, non-zero rc with no serial line at all -- openocd
+#  found no device --, fewer than two reads, symbol unknown and pc moved,
+#  or the counter went backwards (b < a, "(wrapped)") -- all inconclusive).
+#  A missing second read is never "alive"; a backwards counter is never
+#  "alive" (see the header: a wrap is unreachable inside a capture and a
+#  reset between the reads means the instance under test is gone).
+#  The verdict never depends on ep1_conf/int_raw (stage 6 ruling R7).
 c6_jtag_parse() {
-    local raw="$1" addr="${2:-}" why="${3:-no ELF}"
+    local raw="$1" addr="${2:-}" why="${3:-no ELF}" orc="${4:-}"
     local pc1 pc2 ep1 intraw a b free delta n
     if [ ! -s "$raw" ]; then
         echo "# no openocd output"
@@ -537,6 +567,14 @@ c6_jtag_parse() {
         return 0
     fi
     if ! $GREP -aqF "esp_usb_jtag: serial ($dut_uc)" "$raw"; then
+        if ! $GREP -aqF 'esp_usb_jtag: serial (' "$raw" && [ -n "$orc" ] && [ "$orc" != "0" ]; then
+            #  No device was identified at all and openocd failed: nothing
+            #  was probed. Not a grabbed-wrong-board event, so not "refused".
+            echo "# not run: openocd exited $orc without reporting any serial (no device found, or the adapter failed before init)"
+            echo "loop_calls: not read (no serial line)"
+            echo "verdict: not-run (openocd rc=$orc, no serial line)"
+            return 0
+        fi
         echo "# REFUSED: openocd did not report the pinned serial ($dut_uc); no value from this run is trusted"
         { $GREP -aF 'esp_usb_jtag: serial (' "$raw" || true; } | sed 's/^/#   seen: /'
         echo "loop_calls: not trusted (refused)"
@@ -553,10 +591,11 @@ c6_jtag_parse() {
     echo "pc1=${pc1:+0x}${pc1:-?} pc2=${pc2:+0x}${pc2:-?}"
     if [ -n "$ep1" ]; then
         free=$(( (16#$ep1 >> 1) & 1 ))
-        echo "ep1_conf=0x$ep1 int_raw=${intraw:+0x}${intraw:-?}   (data_free=$free)"
+        echo "ep1_conf=0x$ep1 int_raw=${intraw:+0x}${intraw:-?}   (data_free=$free; raw evidence, not a criterion)"
     else
-        echo "ep1_conf=? int_raw=${intraw:+0x}${intraw:-?}   (data_free=?)"
+        echo "ep1_conf=? int_raw=${intraw:+0x}${intraw:-?}   (data_free=?; raw evidence, not a criterion)"
     fi
+    echo "# ep1_conf/int_raw are recorded for comparison with a silent run; the verdict below is decided by loop_calls only"
     if [ -n "$addr" ]; then
         #  openocd prints the address as 0x%08x, lower case, whatever spelling
         #  the mdw command was given.
@@ -569,6 +608,15 @@ c6_jtag_parse() {
             return 0
         fi
         a=$((16#$a)); b=$((16#$b)); delta=$(( (b - a) & 0xFFFFFFFF ))
+        if [ "$b" -lt "$a" ]; then
+            #  Backwards: a 32-bit wrap (unreachable inside a capture at the
+            #  measured ~1 loop() per ms) or a reset between the two reads
+            #  (the counter lives in .bss). Either way the pair does not show
+            #  the instance under test advancing: inconclusive, never alive.
+            echo "loop_calls: $a -> $b delta=$delta (wrapped)"
+            echo "verdict: not-run (counter went backwards: $a -> $b; a reset between the reads or a 32-bit wrap -- inconclusive)"
+            return 0
+        fi
         echo "loop_calls: $a -> $b delta=$delta"
         if [ "$delta" -gt 0 ]; then echo "verdict: alive"; else echo "verdict: not-advancing (loop_calls delta=0)"; fi
         return 0
@@ -638,8 +686,8 @@ c6_jtag_probe() {   # <reason: silent-cold|forced>
     } > "$JTAG_TXT"
     C6_FILES+=("$JTAG_LOG")
     timeout 30 "${cmd[@]}" > "$JTAG_LOG" 2>&1 || rc=$?
-    echo "# openocd rc=$rc$([ "$rc" -eq 124 ] && echo ' (killed by the 30 s timeout; the chip may be left halted -- reset or power-cycle it)')" >> "$JTAG_TXT"
-    c6_jtag_parse "$JTAG_LOG" "$addr" "$why" >> "$JTAG_TXT"
+    echo "# openocd rc=$rc$([ "$rc" -eq 124 ] && echo ' (killed by the 30 s timeout; the chip may be left halted -- reset or power-cycle it)')$([ "$rc" -ne 0 ] && [ "$rc" -ne 124 ] && echo ' (non-zero: if the -c chain stopped between halt and resume the chip may be left halted -- reset or power-cycle it)')" >> "$JTAG_TXT"
+    c6_jtag_parse "$JTAG_LOG" "$addr" "$why" "$rc" >> "$JTAG_TXT"
     {
         echo "# jtag: reason=$reason serial=$dut_uc openocd rc=$rc"
         $GREP -aE '^(verdict|loop_calls):' "$JTAG_TXT" || true
@@ -854,7 +902,8 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     printf '%s\n' "$_jp" | $GREP -qxF 'loop_calls: 1000 -> 2000 delta=1000' || _fail "(18) loop_calls line: $_jp"
     printf '%s\n' "$_jp" | $GREP -qxF 'verdict: alive' || _fail "(18) verdict is not alive: $_jp"
     printf '%s\n' "$_jp" | $GREP -qxF 'pc1=0x40800abc pc2=0x40800def' || _fail "(18) pc line: $_jp"
-    printf '%s\n' "$_jp" | $GREP -qxF 'ep1_conf=0x00000002 int_raw=0x00000000   (data_free=1)' || _fail "(18) ep1_conf line: $_jp"
+    printf '%s\n' "$_jp" | $GREP -qxF 'ep1_conf=0x00000002 int_raw=0x00000000   (data_free=1; raw evidence, not a criterion)' || _fail "(18) ep1_conf line: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q '^# ep1_conf/int_raw are recorded for comparison' || _fail "(18) raw-evidence note missing: $_jp"
     #  the address spelling is normalized (upper case, no leading zeros)
     _jp="$(c6_jtag_parse "$_jl" 40800123)" || _fail "(18) c6_jtag_parse (bare addr) returned non-zero"
     printf '%s\n' "$_jp" | $GREP -qxF 'verdict: alive' || _fail "(18) bare-address spelling not accepted: $_jp"
@@ -863,16 +912,32 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (equal) returned non-zero"
     printf '%s\n' "$_jp" | $GREP -qxF 'loop_calls: 1000 -> 1000 delta=0' || _fail "(18) equal loop_calls line: $_jp"
     printf '%s\n' "$_jp" | $GREP -q '^verdict: not-advancing' || _fail "(18) equal values are not not-advancing: $_jp"
-    #  no serial line -> refused, and no value is printed at all
+    #  no serial line, rc 0 (or unknown) -> refused, and no value is printed at all
     _jfix "" 0x40800abc 0x40800def 000003e8 000007d0
     _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (no serial) returned non-zero"
     printf '%s\n' "$_jp" | $GREP -qxF 'verdict: refused' || _fail "(18) missing serial is not refused: $_jp"
     printf '%s\n' "$_jp" | $GREP -q '^# REFUSED: openocd did not report the pinned serial' || _fail "(18) REFUSED line missing: $_jp"
     printf '%s\n' "$_jp" | $GREP -qE '^(pc1=|ep1_conf=)|delta=' && _fail "(18) a value was printed although refused: $_jp"
-    #  a DIFFERENT board's serial (the recorded accident) -> refused too
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123 "no ELF" 0)" || _fail "(18) parse (no serial, rc 0) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: refused' || _fail "(18) missing serial with rc 0 is not refused: $_jp"
+    #  no serial line at all AND openocd failed (no device found) -> not-run, not refused, no values
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123 "no ELF" 1)" || _fail "(18) parse (no serial, rc 1) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: not-run (openocd rc=1, no serial line)' || _fail "(18) no device + rc 1 is not not-run: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q 'refused\|REFUSED' && _fail "(18) no device + rc 1 was labelled refused: $_jp"
+    printf '%s\n' "$_jp" | $GREP -qE '^(pc1=|ep1_conf=)|delta=' && _fail "(18) a value was printed although not-run: $_jp"
+    #  a DIFFERENT board's serial (the recorded accident) -> refused too,
+    #  whatever the rc (the not-run sub-case needs NO serial line at all)
     _jfix "Info : esp_usb_jtag: serial (F4:12:FA:5B:4A:58)" 0x40800abc 0x40800def 000003e8 000007d0
     _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (other serial) returned non-zero"
     printf '%s\n' "$_jp" | $GREP -qxF 'verdict: refused' || _fail "(18) another board's serial is not refused: $_jp"
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123 "no ELF" 1)" || _fail "(18) parse (other serial, rc 1) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'verdict: refused' || _fail "(18) another board's serial with rc 1 is not refused: $_jp"
+    #  counter went backwards (b < a) -> "(wrapped)" on the loop_calls line, not-run, never alive
+    _jfix "Info : esp_usb_jtag: serial ($dut_uc)" 0x40800abc 0x40800def 000007d0 000003e8
+    _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (backwards) returned non-zero"
+    printf '%s\n' "$_jp" | $GREP -qxF 'loop_calls: 2000 -> 1000 delta=4294966296 (wrapped)' || _fail "(18) backwards loop_calls line: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q '^verdict: not-run (counter went backwards' || _fail "(18) backwards counter is not not-run: $_jp"
+    printf '%s\n' "$_jp" | $GREP -q 'alive' && _fail "(18) backwards counter reported alive: $_jp"
     #  mutation control: second read missing -> not-run, never alive
     _jfix "Info : esp_usb_jtag: serial ($dut_uc)" 0x40800abc 0x40800def 000003e8 ""
     _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (second read missing) returned non-zero"
@@ -892,7 +957,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     _jp="$(c6_jtag_parse "$_jl" 0x40800123)" || _fail "(18) parse (empty) returned non-zero"
     printf '%s\n' "$_jp" | $GREP -q '^verdict: not-run (no openocd output)' || _fail "(18) empty output is not not-run: $_jp"
     rm -rf "$_sd"
-    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact (dhcp 2 = both spellings), scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C6_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C6_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked (16) EXTRA_MARKERS: fixed strings counted (2/1), '[C6]' literal = 1 (ERE would be 8), empty -> nothing, absent -> 0 (17) c6_jtag_wanted: 6 asserted tuples + on_silent=0 (18) c6_jtag_parse: alive (1000 -> 2000, data_free=1) / not-advancing / refused (no serial, other serial: no values) / second read missing -> not-run, never alive / no symbol: pc equal -> not-advancing, pc moved -> not-run / empty -> not-run"
+    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact (dhcp 2 = both spellings), scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C6_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C6_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked (16) EXTRA_MARKERS: fixed strings counted (2/1), '[C6]' literal = 1 (ERE would be 8), empty -> nothing, absent -> 0 (17) c6_jtag_wanted: 6 asserted tuples + on_silent=0 (18) c6_jtag_parse: alive (1000 -> 2000, data_free=1 raw only) / not-advancing / refused (no serial with rc 0, other serial with rc 0 and 1: no values) / no serial + rc 1 -> not-run (no device), no values / backwards 2000 -> 1000 -> (wrapped), not-run, never alive / second read missing -> not-run, never alive / no symbol: pc equal -> not-advancing, pc moved -> not-run / empty -> not-run"
     exit 0
 fi
 
