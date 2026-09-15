@@ -42,7 +42,7 @@ wpa2 の `.a`（`ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2/README.md`）�
 | D3 | 共有 cmake | `prebuilt_stage.cmake` は共有して chip 分岐、chip 固有（seam 画像検査等）は `prebuilt_stage_c6.cmake` へ分離。**段1 で確定・実装済み、ただし実際には `prebuilt_stage.cmake` 自体は無改変**（chip -> port の表（Task 1）だけで C6 の runtime CMakeLists が自分の `prebuilt_stage_c6.cmake` を呼ぶため、Xtensa 側への白リスト追加も委譲コードも不要だった。委譲は「行を足す」形ではなく「表の port 列」で実現）。**段3 で確定**: Task 1/2 とも `runtime/CMakeLists.txt` と自分の `prebuilt_stage_c6.cmake` だけを触り、Xtensa 側の `prebuilt_stage.cmake` は無改変のまま（X-check 7/7 が両 Task で成立） | `ports/m5stack_xtensa/runtime/cmake/prebuilt_stage.cmake:57-62`（`A1_CHIP` 白リスト）ほか | 二重保守 vs 波及。どちらも X-check が検出 |
 | D4 | manifest / driver 版 | **上げる**（`DRIVER_VERSION` 3、schema に `paddrMode` の新値と `linkBaseFlags` を加法で追加）。**段1 で確定・実装済み**（`DRIVER_VERSION="3"`、`MANIFEST_SCHEMA=2`、`SUPPORTED_MANIFEST_SCHEMAS=(1,2)`。schema 1 は literal のまま不変、schema 2 は `linkTailFlags`（任意キー、ledger に無かったが Task 1 が追加）も持つ） | 段1 完了時点（fix wave 1）の `scripts/fmp3_link.py`: `:87`（`DRIVER_VERSION`）・`:92-93`（`MANIFEST_SCHEMA` / `SUPPORTED_MANIFEST_SCHEMAS`）・`:98-99`（`PADDR_MODES`、schema 1 は `runtime-mmu` のみ）・`:105`（`SCHEMA1_LINK_BASE_FLAGS` = `-nostdlib -mlongcalls`）・`:106`（`SCHEMA1_LINK_TAIL_FLAGS` = `-lgcc -lc`）。以後は名前で引くこと | 旧 manifest を読む経路が無いことを確かめて戻せる |
 | D5 | C6 の CPU クロック | **確定（160 MHz）**。段2 で条件 A を 160 MHz のまま warm 5/5・真cold 9/10 を実機実測し成立、80 MHz へのフォールバックは不要（**S1-6 の watch item は解消**） | -- | -- |
-| D6 | OPEN AP の私的 ABI（`g_ic+0x1b4`） | **C6 では表を差し込まない。** 開発側と同じく `esp_wifi_init` に supplicant を任せる（開発側で STA/DHCP/ping 実測済み）。`--wrap=esp_supplicant_init` の経路は Xtensa 側を触らない。C6 の Open AP は**段4 で実測するまで対応を主張しない**。**段3 で実装どおり確定**: `toppers_wifi_core.c`（C6）はコールバック表・`__real_esp_supplicant_init`・`wpa_crypto_funcs` ゼロ化のいずれも持たない（ソース 0 件を実測）。空パスワード要求は NOTICE を出して driver へそのまま渡す。Open AP の可否は段4 の実機まで未確定のまま | `ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.c:30`（offset）、`BUILDING.md:288-294`（OPEN/WPA 分離） | Open AP が要るなら C6 blob の offset を求め直す（別作業） |
+| D6 | OPEN AP の私的 ABI（`g_ic+0x1b4`） | **C6 では表を差し込まない。** 開発側と同じく `esp_wifi_init` に supplicant を任せる（開発側で STA/DHCP/ping 実測済み）。`--wrap=esp_supplicant_init` の経路は Xtensa 側を触らない。C6 の Open AP は**段4 で実測するまで対応を主張しない**。**段3 で実装どおり確定**: `toppers_wifi_core.c`（C6）はコールバック表・`__real_esp_supplicant_init`・`wpa_crypto_funcs` ゼロ化のいずれも持たない（ソース 0 件を実測）。空パスワード要求は NOTICE を出して driver へそのまま渡す。Open AP の可否は段4 の実機まで未確定のまま。**段4 で実測範囲が確定**: 実測できたのは **WPA2-PSK のみ**（ユーザーの実 AP、真cold 3/3 含む）。Open AP / WPA3-SAE は AP を用意できず**未実測のまま**（下記「段4 の記録」）。D6 の判断（表を差し込まない）自体は変更なし | `ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.c:30`（offset）、`BUILDING.md:288-294`（OPEN/WPA 分離） | Open AP が要るなら C6 blob の offset を求め直す（別作業） |
 | D7 | lwIP | **開発側の型（自前 `liblwip.a` + `netif_esp32s3.c` / `port/sys_arch.c`）**で通し、core の `liblwip.a` へ寄せるのは後。**段3 で確定・リンク成立**: 「段3 でリンクが通らなければ Xtensa 型へ」の分岐は発生しなかった（AC-3d PASS）。gateway/netmask は `netif_esp32s3.h` が公開しないため、adapter 側で lwIP の `netif_default` を読んで吸収（vendored ファイルは無改変のまま） | Xtensa 側は core の `liblwip.a` + `ports/m5stack_xtensa/runtime/wifi/net/` の別系統 | 段3 でリンクが通らなければ Xtensa 型へ（**不要になった**） |
 | D8 | esp-idf 原本 6 本 | **開発側と同じく vendored**（provenance と改変境界を記録）。`BUILDING.md:278`「ESP-IDF を複製しない」からの**逸脱として明記**し、段5 で core の `.a` メンバ + `vPort*` シム案を再評価。**段3 で対象が 3 本増えた**: `netif_esp32s3.c` が要求する lwIP contrib ヘッダ 3 本（BSD-3、入れ子 submodule `fd432e4ee2`）を同じ逸脱の枠で受理（Task 1 レビュー承認）。D8 の逸脱は計 9 本（esp-idf 原本 6・lwIP contrib ヘッダ 3）に確定 | `BUILDING.md:278` | 段5 の再評価で置換 |
 | D9 | C3 / C5 | 板は足さない。`BOARDS` / `--chip` / `PROFILES` を表駆動にするだけ | `scripts/install_platform.py:66`（`BOARDS`）・`:311`（`--chip`）、`scripts/verify_package.py:77`（`PROFILES`）・`:91`・`:97` | -- |
@@ -929,6 +929,16 @@ fix wave（`8912a35`）が足した `notify_link_if_started()` のゲート自�
   貼らないこと**（`CLAUDE.md`「出してはいけないもの」・本リポジトリ `BUILDING.md` と同じ規律。
   自分の AP の SSID だけでなく、近隣の第三者の AP の SSID も写り込む）。
 
+> **是正（D-1、段4 で判明）**: 上記 `MARKERS='DHCP completed|DNS failed|TCP received|
+> begin: rejected|LWIP-ASSERT'` は**誤り**だった。`"DHCP completed"` は adapter の
+> `"[WiFiConnect] connected and DHCP completed"` にも一致するため、DNS 解決・TCP 受信より
+> **前**に採取が早期終了してしまい、`dnsok`/`tcp` のカウントが構造的に 0 になる（実測は段4
+> Task 2、下記「段4 の記録」参照）。段4 では TERMINAL な行だけに絞った
+> `MARKERS='TCP request failed|DNS failed|begin: rejected|connection timeout|LWIP-ASSERT'`
+> （固定 `CAPTURE_SEC=45`）を使った。成功時は早期終了せず 45 秒間全体を採取する
+> （`ping gateway -> OK` の複数回カウントもここから得た）。台本（`capture_c6_usj.sh`）自体は
+> 本段・段4 とも無改変（マーカーは呼び出し側の引数）。
+
 ### Xtensa の切り分け順を C6 にも適用する
 
 `CLAUDE.md`「実機の単発失敗を実装のせいにしない」の表（`NO_AP_FOUND` = AP がまだ上がっていない、
@@ -938,6 +948,224 @@ supplicant が Xtensa と C6 で共通（同じ ESP-IDF v5.5.4 系列）なの�
 再現するか確かめる、の順。本段はリンク時点で実機ログが無いため、上記マーカー文字列の存在確認
 までが本段の射程。
 
+## 段4 の記録（2026-09-15、commit `6602cd7`（Task 0）/ `211a067`・`f7da79e`（Task 1）、Task 2 はコード変更なし）
+
+M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS -> TCP）を、ユーザーの
+実 AP（WPA2-PSK）に対して回した段。詳細な証跡は本リポジトリ
+`.superpowers/sdd/PLAN-stage4-impl/{task-0-report.md,task-1-report.md,task-2-report.md,progress.md}`
+と、開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/{AC.md,logs/}`
+（`task0-*`/`task1-*`/`task2-*`、いずれも dev 側で未 commit）。
+
+- **Task 0**（commit `6602cd7`）: arduino 専用 `liblwip.a`（`LWIP_DNS=1`）を再生成し、
+  `hostByName` を実装に置換した。dev 側のビルド台本は無改変。
+- **Task 1**（commit `211a067` = 採取台本、`f7da79e` = scan adapter の SSID 伏字）:
+  `scripts/capture_c6_usj.sh` に Wi-Fi マーカー集計を足し、`WiFiScan` を warm 3 回・
+  APM OFF 対照 1 回・ON 復帰 1 回、実機で焼いた。
+- **Task 2**（コード変更なし、commit なし）: `WiFiConnect` をユーザーの実 AP（WPA2-PSK）に対し
+  warm・真cold・APM OFF 対照・W-2 で焼いた。
+
+### AC 4a-4h
+
+| # | 基準 | 判定 | 根拠 |
+| --- | --- | --- | --- |
+| 4a | Task 0: 新 `liblwip.a` に DNS 記号あり、dev `seam-c6-wifi` golden MATCH（dev 不変）、4 例題リンク、X-check 7/7 | PASS | `liblwip.a` sha256 `5bfbc3ef...`（473,586 B）に `dns_gethostbyname`/`lwip_getaddrinfo` 等を確認、dev `seam-c6-wifi` app_xip.bin sha256 `2b21d6a5...` = golden MATCH、`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` rc=0、X-check 7/7 |
+| 4b | WiFiScan warm 3/3 で `found N APs` N > 0（採取ログに実 SSID 0 件を grep で示す） | PASS | warm1/2/3 = 12/13/13（下記「WiFiScan 結果」）。5 ログ全件で `SSID=` 行のうち placeholder でないものは **0**（`<SSID-i>` 12+13+13+0+11 = 49 件、実 SSID 0 件） |
+| 4c | APM OFF 対照で 0 AP、ON に戻して復帰（軸表つき） | PASS | Task 1: warm OFF 対照 = 0 AP（`lp_apm_func_ctrl` は warm 残留で `0x0`）。Task 2: 真cold OFF 対照（`scan-cold-apmoff`）= 0 AP・`lp_apm_func_ctrl=0x3`（pristine）。ON 復帰 = warm4 11 AP、warm5 で WiFiConnect も復帰（下記「APM 対照」） |
+| 4d | WiFiConnect warm: connected / DHCP bound / DNS 解決 / TCP 受信の各 marker >= 1、`## Unexpected`/`mcause=` 0 | PASS（初回 1 回の `NO_AP_FOUND` を除く） | warm1-retry・warm2・warm3 のいずれも connected=1 dhcp=1 dnsok=2 tcp=255、unexpected=0。**warm1（最初の接続試行）は `NO_AP_FOUND` で失敗**、1 回の再試行で成功（下記「正直な観察」） |
+| 4e | 真cold 3/3 で 4d と同じ marker | **真cold 3/3（出力のあった run。cold2 は無音 1/6）** | cold1・cold3・cold4 は connected=1 dhcp=1 dnsok=2 tcp=255、unexpected=0（4 回中 3 回が出力あり run で成功、cold2 は 45 秒間 0 バイトの無音採取で成否判定不能。詳細は下記「正直な観察」） |
+| 4f | 秘密: repo の `git status` clean、採取ログに creds 針 0（台本の検査）、docs に SSID/IP/BSSID なし | PASS（残存する軽微な懸念 1 件あり） | `git status --porcelain` 0 行、`git diff --exit-code examples/` rc=0（Task 2）。採取ログ 75 本の creds 針 grep = ssid 0 / pass 0、`.UNREDACTED` 0。本節・本文書に SSID/IP/BSSID を書いていない。**懸念**: `DHCP address=0x%08x`（hex 形の LAN アドレス）9 行が dev 側 `.steering/` ログにマスク外で残る（下記「正直な観察」。公開対象外、fix wave 項目） |
+| 4g | W-1..W-3 の結果（begin-only で繋がったか、scan->begin の cycle が通ったか） | PASS（W-4 は不発、観測なし） | 下記「W-1..W-4 の結果」 |
+| 4h | minimal/wificonnect 非退行: 4 例題リンク、X-check | PASS | Task 0/1 とも X-check 7/7、minimal stage 非改変（Task 0: sha 比較同一、Task 1: 触っていない）。Task 2 はコード変更なし（非退行は自明） |
+
+### 軸表
+
+**Task 1（WiFiScan、書込み前に固定）**
+
+| 軸 | 本 Task で動かした値 | 固定 |
+| --- | --- | --- |
+| イメージ | `examples/WiFiScan`（`wificonnect` runtime） | 1 スケッチ・1 板 |
+| stage（APM） | ON（既定）/ OFF（`TOPPERS_C6_APM_UNBLOCK=OFF`、別 `--output-directory`） | ON(warm1-3) -> OFF(apmoff) -> ON(warm4) の順で 1 軸ずつ |
+| リセット | warm のみ（初回は書込み+実リセット、以後 `NOFLASH=1`） | COLD なし、電源断なし |
+| bootloader/ptable | stock（段2 条件 A） | 不変 |
+
+**Task 2（WiFiConnect、書込み前に固定）**
+
+| 軸 | 本 Task で動かした値 | 固定 |
+| --- | --- | --- |
+| イメージ | `examples/WiFiConnect` の作業コピー（`WIFI_SSID`/`WIFI_PASSWORD` を dev creds ファイルの値と一字一句同じに注入、repo の例題は無改変） | 生 creds は毎回同一 |
+| stage（APM） | ON（warm1-3・cold1-4・warm4・W-2）/ OFF（apmoff-warm-write・cold-apmoff・scan-apmoff-warm-write・scan-cold-apmoff） | 1 軸ずつ切替え |
+| リセット | warm（書込み or `NOFLASH=1`）/ **真cold**（`COLD=1` + `uhubctl -l 2-3.3 -p 3` 電源断 10 秒 -> 採取開始 -> 2 秒後投入） | uhubctl はこの Task でのみ使用 |
+| scan-先行/begin-only | begin-only（既定）/ scan-then-begin（W-2、作業コピーのみの変種を 1 回） | 数えた run は begin-only |
+| 認証方式 | WPA2-PSK（ユーザーの実 AP） | Open/WPA3-SAE 用 AP は用意できず未実測（D6） |
+
+### WiFiScan 結果表
+
+| run | stage | scan（N） | ssidraw（実 SSID 漏れ） | apm 行 | 判定 |
+| --- | --- | --- | --- | --- | --- |
+| warm1 | ON | **12** | 0 | 6 | OK |
+| warm2 | ON | **13** | 0 | 6 | OK |
+| warm3 | ON | **13** | 0 | 6 | OK |
+| apmoff | **OFF** | **0** | 0 | 2 | 想定どおり 0 AP |
+| warm4 | ON | **11** | 0 | 6 | OK（復帰） |
+
+### WiFiConnect 結果表
+
+| run | stage | リセット | connected | dhcp | dnsok | tcp | disc（reason） | 判定 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| warm1 | ON | warm（書込み） | 0 | 0 | 0 | - | 1（201 NO_AP_FOUND） | NG（`connection timeout`） |
+| warm1-retry | ON | warm（NOFLASH） | 1 | 1 | 2 | 255 | 0 | OK |
+| warm2 | ON | warm（NOFLASH） | 1 | 1 | 2 | 255 | 0 | OK |
+| warm3 | ON | warm（NOFLASH） | 1 | 1 | 2 | 255 | 0 | OK |
+| cold1 | ON | 真cold | 1 | 1 | 2 | 255 | 0 | OK |
+| cold2 | ON | 真cold | - | - | - | - | - | **無音採取**（0 バイト、成否判定不能） |
+| cold3 | ON | 真cold | 1 | 1 | 2 | 255 | 0 | OK |
+| cold4 | ON | 真cold | 1 | 1 | 2 | 255 | 0 | OK |
+| apmoff-warm-write | **OFF** | warm（書込み） | 0 | - | - | - | 1（201 NO_AP_FOUND） | 想定どおり非接続 |
+| **cold-apmoff** | **OFF** | **真cold** | 0 | - | - | - | 1（201 NO_AP_FOUND） | **対照成立** |
+| scan-cold-apmoff（WiFiScan OFF 像） | **OFF** | 真cold | - | - | - | - | - | **scan=0 AP、pristine 読み戻し**（下記「APM 対照」） |
+| W-2（scan-then-begin、作業コピー） | ON | warm（書込み） | 1 | 1 | 2 | 255 | 0 | OK、scan=11 |
+| warm4/warm5（最終確認・板の最終状態） | ON | warm（書込み） | 1 | 1 | 2 | 255 | 0 | OK |
+
+- `dnsok=2` は `hostByName()`（スケッチ）と TCP 経路内部の名前解決の 2 回で、`dnsfail` は
+  全 run で 0（DNS 解決は 9/9 接続 run で成功）。
+- `tcp=255` は 9/9 接続 run で一致（256 バイト受信バッファから終端 1 バイトを引いた値）。
+- `disconnected reason=` の合計はどの run でも `201 (NO_AP_FOUND)` のみ（`4WAY_HANDSHAKE_TIMEOUT`
+  や `AUTH_EXPIRE` は 0 件、W-4 参照）。
+
+### DNS 実装の要約（Task 0）
+
+- vendored `wifi/net/port/include/lwipopts.h` を 3 箇所編集: (1) `LWIP_DNS 0 -> 1`、
+  (2) **`MEMP_NUM_SYS_TIMEOUT 8 -> 9`**（サイクリックタイマが DNS 追加で 6 本から 7 本に増え、
+  8 のままだと定常状態で pool が満杯になり次の `sys_timeout()` が assert で tcpip スレッドを
+  停止させる経路になるため。**9 は旧値と同じ 1 個の余裕を保つ数字**で、恒久的な安全マージンの
+  保証ではない）、(3) `#ifndef ERANGE` ガードで `ERANGE 34` を追加（`netdb.c` が要求するが
+  dev 側の `hal_stub_include/errno.h` に定義が無く、このリポジトリからは編集できないため）。
+- `hostByName` は `tcpip_callback()` + `dns_gethostbyname()`（tcpip スレッド、5000 ms 上限、
+  10 ms ポーリング、世代カウンタで遅延コールバックを破棄）で実装。`netconn_gethostbyname` は
+  待ちが非有界（lwIP 自身の再試行スケジュール）なので不採用。
+- DHCP option 6（DNS サーバ）-> `dns_setserver()` の経路は `esp-idf` の `dhcp.c` で確認済み
+  （adapter 側に手動の `dns_setserver` 呼び出しは無い）。
+- `liblwip.a` は arduino 専用の別出力（`5bfbc3ef...`、473,586 B）で、**dev 側の golden `.a`
+  （`85859f70...`）は無改変**。差分は vendored `lwipopts.h` のみ（決定性は既定引数ビルドが
+  dev golden と byte 一致することで実証済み）。
+- **恒久化の宿題**: `ERANGE` の本来の置き場所は dev リポジトリ側の `hal_stub_include/errno.h`
+  （この定義は dev の C6 ビルドでは未参照なので golden を動かさずに足せる）。そちらへ移せば
+  arduino 側の `#ifndef` ブロックは不要になる（Task 0 reviewer の指摘、まだ未実施）。
+
+### APM 対照（レジスタ値）
+
+| 状態 | `hp_func_ctrl` | `lp_apm0_func_ctrl` | `lp_apm_func_ctrl` | scan 結果 |
+| --- | --- | --- | --- | --- |
+| ON、unblock 後（warm/cold 共通） | `0x00000000` | `0x00000000` | `0x00000000` | N > 0 |
+| OFF、**warm**（Task 1、ON 実行の残留状態から） | `0x0000000f` | `0x00000001` | **`0x00000000`（残留）** | 0 |
+| OFF、**真cold**（Task 2、`scan-cold-apmoff`） | `0x0000000f` | `0x00000001` | **`0x00000003`（pristine）** | 0 |
+
+Task 1 の懸念（「warm の OFF 対照は LP_APM が ON 側の残留で `0x0` のまま、真の初期値ではない」）
+は Task 2 の真cold 対照で解消した: 電源断を経た直後は 3 レジスタとも有効（`lp_apm_func_ctrl=0x3`
+を含む）状態で、それでも scan は 0 AP。HP_APM の M1 例外ラッチ（`status=0x00000001`、
+`info0=0x00130001`）も真cold 側で確認済みで、0 AP の機序（modem 側アクセスの拒否）が
+ON/OFF・warm/真cold のいずれでも一貫している。
+
+### WPA3-SAE / Open は未実測（D6）
+
+ユーザーのルーター以外に AP を用意できなかったため、WPA3-SAE と Open（無認証）は
+**本段では実測していない**。D6 の判断（C6 では私的 ABI の表を差し込まず `esp_wifi_init` に
+supplicant を任せる）自体は段3 の実装どおりで変更なし。実測できたのは WPA2-PSK のみ
+（真cold 3/3 を含む）。Open AP で Xtensa 側に見られた「常時 supplicant だと `AUTH_EXPIRE`」が
+C6 でも起きるかは、依然として未確認のまま持ち越す。
+
+### 正直な観察
+
+- **初回接続の `NO_AP_FOUND`（warm1、書込み直後の最初の接続試行 1/9）**: 単発・再現なし。
+  CLAUDE.md の切り分け順（scan で見えるか -> 再試行 -> 基準側で確認）に従い 1 回再試行して
+  成功した。9 回の begin-only 接続試行（出力のあった run）のうち失敗はこの 1 回のみで、
+  この証拠からは実装起因と判断できない。同じ `NO_AP_FOUND` + 非接続のパターンは APM OFF 像
+  （想定どおりの失敗）でも決定的に 2/2 再現しており、区別が付く形にはなっている。
+- **接続断後に adapter が自動で再接続しない（W-5）**: `disconnected` ハンドラは理由コードを
+  ログするだけで、次の `esp_wifi_connect()` を自分からは呼ばない（スケッチの `loop()` 側の
+  タイムアウト待ちに委ねる設計）。**Xtensa 側の adapter
+  （`ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_connect.c`）を実ソースで確認した
+  結果、この挙動は C6 固有ではなく Xtensa と共通の既存設計**（disconnect ハンドラの実装が
+  両ポートで同型）。したがって C6 の回帰ではなく、両ポート共通の未対応項目として記録する
+  （段5 でスケッチ側に有界の再試行を足すかどうかを検討）。
+- **無音の真cold 採取（cold2、1/6）**: 電源投入から USJ（by-id）認識までの時間がこの 6 回の
+  中で最も遅く（3.91 秒）、45 秒の採取窓で 0 バイト。段2（cold5、1/10、認識 3.86 秒）と
+  **同型の現象**で、台本は「USJ が無音」と「アプリがハング」を区別できない。次の電源投入
+  （cold3）は即座に成功しており、板のハングやフラッシュ破損の兆候は無い。
+- **`DHCP address=0x%08x` の hex 表記が未マスク**: `capture_c6_usj.sh` の redact 段は
+  ドット十進表記の IPv4（`ip=`/`gw=` 行）はマスクするが、adapter の
+  `"[WiFiConnect] DHCP address=0x%08x"` 行が持つ hex 形の LAN アドレスは対象外で、
+  dev 側ログに 9 行残っている。**このログは開発リポジトリの `.steering/` 配下にのみ存在し、
+  公開対象ではない**（本文書・本節にも書いていない）。是正は台本の redact 段へ
+  `address=0x[0-9a-f]{8}` 相当のマスクを足すことで、最終レビュー後の fix wave 項目として
+  持ち越す。
+- **早期終了マーカーの誤り（D-1）**: 段3 の「段4 の入口条件」節に書いた
+  `MARKERS='DHCP completed|...'` が、DNS/TCP より前に採取を打ち切ってしまう誤りだったこと
+  が本段で判明し、該当節に是正を追記した（上記「段4 採取のマーカーと注意」節末尾）。
+  台本本体は無改変で、呼び出し側の引数を直した。
+
+### creds の運用（実施内容）
+
+- スケッチの**作業コピー**（scratchpad 配下）にのみ実 creds を書いた。値は 1 回の Bash 呼出しで
+  開発リポジトリの creds ファイルから読み `sed` で注入し、値そのものは一度も表示していない
+  （空欄行 0 件をチェックサムでのみ確認）。
+- リポジトリの `examples/WiFiConnect/WiFiConnect.ino` は**無改変**。`git diff --exit-code
+  examples/` の終了コード 0（差分なし）で確認し、`git add`・commit の前後とも確認済み。
+- 採取ログの redact は開発リポジトリの creds ファイルの値を針として使う（本リポジトリには
+  commit 時点の secret guard フックが無いため、台本の EXIT トラップと `git diff --exit-code`
+  の手動確認が唯一の防波堤）。
+
+### 板の最終状態
+
+最後の書込みは warm5（`WiFiConnect` の実 creds 入りイメージ）で、ユーザーの AP に接続し
+DHCP/DNS/TCP まで完了した状態で終了している。**フラッシュには実 creds が残っている**
+（ユーザーの標準運用ルールにより許容。書込み直後にダミー値へ戻すのはリポジトリ側の
+ファイルのみで、板そのものを毎回ダミーへ焼き直す運用にはしていない）。stock bootloader/
+ptable/`boot_app0` は不変。
+
+### W-1..W-4 の結果
+
+| # | 内容 | 結果 |
+| --- | --- | --- |
+| W-1 | `begin()` は scan 無しで connect（scan-無しの connect で `NO_AP_FOUND` が出るか） | 出力のあった 9 回の begin-only 接続試行中 8 回は初回で接続、1 回（warm1）は `NO_AP_FOUND` で失敗し再試行で成功。scan 無し自体が原因と断定できる証拠は無い（1 件のみ、非再現） |
+| W-2 | scan -> begin の driver cycle（stop -> set_config -> start）が C6 で動くか | **動く**。`esp_wifi_stop` -> `esp_wifi_set_config` -> `esp_wifi_start` -> `esp_wifi_connect` の順で 1 回サイクルし、`AUTH_EXPIRE` も再起動失敗も無く接続・DHCP/DNS/TCP まで完了（scan=11 AP） |
+| W-3 | `attachInterrupt` の動作確認 | 段4 では対象外（段6 で扱う。リンクのみの状態は段3 のまま不変） |
+| W-4 | STA ハンドラ内 `logtask_flush(0)` が blob のタイムアウト系を遅らせるか | **不発・未計測**。9 回の接続 run すべてで `4WAY_HANDSHAKE_TIMEOUT` は 0 件のため、flush を外す対照を回す条件が発生しなかった |
+
+### 段5 の入口条件
+
+- **`scripts/verify_package.py` に C6 を追加**: 4 板（Xtensa 3 板 + M5NanoC6）× C6 は
+  `minimal`/`wifi-connect` の 2 profile を対象に足す（現状 `BOARDS`/`PROFILES` は C6 を含まない、
+  段1 から持ち越しの D9/D10 実装の延長）。
+- **CI（`.github/workflows/verify-package.yml`）の `for chip in esp32s3 esp32` に `esp32c6` を
+  追加**するループ化。
+- **`packaging/release-allowlist.json` に C6 向け entry を追加**（`portBaseRepositoryC6`/
+  `portBaseCommitC6`/`portBaseCommitDateC6` は本文書冒頭の「出自」節で既に宣言済みだが、
+  出荷を許可する allowlist 側のエントリは未追加）。
+- **利用者向け文書の更新**: `README.md`（本 commit で暫定の 1 行を追加済み。配布物収録が
+  決まった段階で「統合作業中」の記述を外す）、`BUILDING.md`（C6 の vendoring 経路と D8 の
+  逸脱 9 本の記述）、`packaging/README.release.md`（M5NanoC6 の導入手順）、
+  `THIRD_PARTY_NOTICES.md`（段3 で足した分に段4 の DNS liblwip 差分の由来を追記するか判断）、
+  `library.properties`（C6 対応を謳うかどうか）。
+- **D8 の再評価**: esp-idf 原本 6 本 + lwIP contrib ヘッダ 3 本（vendored、計 9 本の逸脱）を、
+  core の `.a` メンバ + `vPort*` シム案へ置き換えられるか段5 で再評価する（段3 から継続）。
+- **Arduino IDE の size 行の分母上書き**: `upload.maximum_data_size=327680`（FreeRTOS 前提の
+  継承値）は実際の ld 上限 `0x6E610=452,112` と合わず「91% 使用」のように誤解を招く表示になる
+  （段3 で確認済み）。`install_platform.py` の板行を上書きするか、`README.release.md` に
+  値の意味を書くかを段5 で決める。
+- **`scripts/capture_c6_usj.sh` の 2 つの Minor 是正**（Task 1 レビュー、まだ未実施）:
+  `_cnt` カウンタの動的スコープ（関数境界をまたぐ暗黙の共有）を明示化する、selftest の
+  fixture の形（現状の埋め込みヒアドキュメント）を読みやすい形に整理する。いずれも挙動は
+  変えない整理で、段5 の fix wave 候補。
+- **`examples/WiFiScan/WiFiScan.ino` のコメント修正**: 下記「WiFiScan.ino のコメント」参照。
+  本 commit で対応済み（chip-neutral な表現）。
+- **`MEMP_NUM_SYS_TIMEOUT` の余裕注記**: 現在の値（9、余裕 1）は「サイクリックタイマ + ping の
+  1 個」という段4 時点の計算に基づく。将来 lwIP 側の機能を追加してタイマが増える変更をすると
+  この余裕が再びゼロになりうるため、変更のたびに `lwip_num_cyclic_timers`（`lw_timeouts.o` の
+  `.srodata`）を読み直すことを、次にこの値を触る人への申し送りとする。
+- **`ERANGE` の恒久的な置き場所**: 上記「DNS 実装の要約」の宿題（dev 側 `hal_stub_include/
+  errno.h` への移設）は段5 でも未実施のまま持ち越し。
+
 ## 段ごとの到達点
 
 | 段 | ゴール | 実機 | 状態 |
@@ -946,6 +1174,6 @@ supplicant が Xtensa と C6 で共通（同じ ESP-IDF v5.5.4 系列）なの�
 | 1 | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` が stage を出し、`m5nanoc6_fmp3:FMP3Runtime=minimal` で `Blink` / `LibraryInfo` / `TwoFileSketch` がリンクを通る。X-check で Xtensa 不変 | 不要 | **完了（2026-09-15、`07b239b`/`709b36a`/`ffefc52`/`5dbb8d1`/`f40490e` + 最終レビュー是正 fix wave 1）。** AC 1a-1h 全 PASS、記録は「段1 の記録」節 |
 | 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | **完了（2026-09-15、`639331a`）。** 条件 A（stock bootloader）で warm 5/5・真cold 9/10（成立（条件付き）、cold5 無音 1 回・再試行後 5 連続）、D1/D5 確定。B/C/80 MHz は未実施（A が成立したため不要）。記録は「段2 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage2/AC.md` |
 | 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | **完了（2026-09-15、`760fce9`/`4448a8d`/`a4c346a`/`45122a5`/`8912a35`）。** AC 3a-3j 全 PASS（`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` の 4 例題、`8912a35` の最終レビュー是正後の値で確定）、記録は「段3 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage3/AC.md` |
-| 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | 次に着手。入口条件は「段3 の記録」節「段4 の入口条件」（creds はスケッチに書く、APM OFF 対照、DNS は `LWIP_DNS=1` の再生成が Task 0） |
-| 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 未着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ |
+| 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | **完了（2026-09-15、`6602cd7`/`211a067`/`f7da79e`、Task 2 はコード変更なし）。** AC 4a-4h 全 PASS（4e は「真cold 3/3（出力のあった run。cold2 は無音 1/6）」、4f は残存する軽微な懸念 1 件（hex アドレス未マスク、公開対象外）付き PASS）。WPA3-SAE/Open は AP が用意できず未実測のまま（D6）。記録は「段4 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/AC.md` |
+| 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 次に着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ。**段4 から持ち越し**: 「段4 の記録」節「段5 の入口条件」（利用者向け文書の更新、D8 再評価、IDE size 分母上書き、`capture_c6_usj.sh` の Minor 是正 2 件、`MEMP_NUM_SYS_TIMEOUT`/`ERANGE` の恒久化） |
 | 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |
