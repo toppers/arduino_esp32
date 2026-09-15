@@ -25,8 +25,13 @@
 #      become needles as well. Values are never printed.
 #
 #  The gate (fail-closed, nothing is written unless all pass):
-#    1. DUT_MAC is not in the FORBIDDEN list (string compare, no hardware).
-#    2. esptool flash-id (read-only, ROM only, --after no-reset) reports
+#    1. DUT_MAC has the hh:hh:hh:hh:hh:hh shape and is not in the FORBIDDEN
+#       list (string compare, no hardware).
+#    2. the images are plausible: none empty, bootloader and app start with
+#       the ESP image magic 0xE9, the partition table is exactly 3072 bytes,
+#       boot_app0 exactly 8192 bytes.
+#    3. the capture prerequisites exist (esp_idf_monitor python, port node).
+#    4. esptool flash-id (read-only, ROM only, --after no-reset) reports
 #       BASE MAC == DUT_MAC, chip type == DUT_CHIP, detected flash size 4MB.
 #
 #  Usage:
@@ -41,9 +46,10 @@
 #    BOOTLOADER    explicit bootloader image (overrides SKETCH_BUILD's).
 #    PTABLE        explicit partition table image (overrides SKETCH_BUILD's).
 #    BOOT_APP0     boot_app0 image. Default: the M5Stack core's
-#                  tools/partitions/boot_app0.bin. `none` skips it (needed
-#                  when the partition table puts nvs at 0xe000, i.e. the
-#                  development-side ptable; otherwise always write it).
+#                  tools/partitions/boot_app0.bin. `none` skips it. WARNING:
+#                  the stage 2 plan forbids a run without boot_app0 except as
+#                  a recorded deviation (the development-side ptable puts nvs
+#                  at 0xe000, which is the only reason `none` exists).
 #    APP           explicit application image (overrides SKETCH_BUILD's).
 #    ESPTOOL       esptool executable. Default: newest
 #                  <arduino data>/packages/m5stack/tools/esptool_py/*/esptool.
@@ -62,22 +68,29 @@
 #    LOG_DIR       default directory for OUT
 #                  (default $HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/.steering/
 #                   20260915-c6-arduino-plan/stage2/logs).
-#    CAPTURE_SEC   capture length in seconds (default 60).
+#    CAPTURE_SEC   capture length in seconds (default 60; digits only).
 #    MARKERS       ERE; when it matches the capture, stop early (default empty
 #                  = always capture the full CAPTURE_SEC).
 #    DRYRUN=1      identify the DUT read-only, print what WOULD be written and
 #                  the exact esptool command line, write nothing, capture
-#                  nothing.
+#                  nothing. NOTE: the identification enters the ROM download
+#                  mode (esptool --before default-reset) and, with
+#                  --after no-reset, LEAVES THE BOARD THERE; the next write
+#                  (or a power cycle / hard reset) recovers it.
 #    NOFLASH=1     do not write; capture only. The monitor hard-resets the
 #                  chip when it opens the port (warm-boot capture).
-#    NORESET=1     open the monitor with --no-reset (listen to a board that is
-#                  already running; the head of the boot is not captured).
+#    NORESET=1     open the monitor with --no-reset. With NOFLASH=1 (and not
+#                  COLD) the identification uses --after hard-reset instead of
+#                  --after no-reset, so the board is running again when the
+#                  monitor opens; the head of the boot (ROM banner, 'S', and
+#                  usually the banner) is lost during the reconnect.
 #    COLD=1        true cold boot. Implies NOFLASH=1 and NORESET=1, and calls
 #                  esptool NOT AT ALL (esptool's connect performs a reset that
 #                  would overwrite the cold boot). The power cycle is done
 #                  outside this script (uhubctl or by hand); the script waits
 #                  for the by-id node to disappear and reappear (COLD_WAIT_SEC,
-#                  default 120), records both instants, then opens the port.
+#                  default 120, digits only), records both instants, then
+#                  opens the port.
 #    WIFI_CREDS    credentials shell file for the redact needles (default
 #                  $HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/esp/boot/
 #                  wifi_credentials.sh; absent = no needles).
@@ -122,6 +135,8 @@ FORBIDDEN="60:55:f9:57:c2:60 d0:cf:13:f0:a7:44 d0:cf:13:f0:c8:94 30:76:f5:ed:86:
 
 dut_lc="$(printf '%s' "$DUT_MAC" | tr 'A-Z' 'a-z')"
 dut_uc="$(printf '%s' "$DUT_MAC" | tr 'a-z' 'A-Z')"
+printf '%s' "$dut_lc" | /usr/bin/grep -qE '^[0-9a-f]{2}(:[0-9a-f]{2}){5}$' \
+    || die "DUT_MAC must look like hh:hh:hh:hh:hh:hh (given: $DUT_MAC)"
 DUT_PORT="${DUT_PORT:-/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_${dut_uc}-if00}"
 
 #  ---------------------------------------------------------------- redact stage
@@ -205,13 +220,16 @@ c6_redact_transform() {
     if [ "${#args[@]}" -gt 0 ]; then
         sed -i "${args[@]}" "$f" || return 1
     fi
-    #  Peer-MAC mask: park the DUT spellings, mask, restore.
+    #  Peer-MAC mask: park the DUT spellings, mask 8-octet EUI-64 forms
+    #  first (else a peer EUI-64 would leave "<PEER-MAC>:hh:hh" behind), then
+    #  6-octet forms, then TAHI/TALO and IPv4, then restore the DUT spellings.
     local lc eui lcU euiU
     lc="$(_dut_forms_lc | sed -n 1p)"; eui="$(_dut_forms_lc | sed -n 2p)"
     lcU="$(printf '%s' "$lc" | tr 'a-z' 'A-Z')"; euiU="$(printf '%s' "$eui" | tr 'a-z' 'A-Z')"
     sed -i -E \
         -e "s/${eui:-__none__}/__C6_DUT_EUI_LC__/g" -e "s/${euiU:-__none__}/__C6_DUT_EUI_UC__/g" \
         -e "s/${lc:-__none__}/__C6_DUT_MAC_LC__/g"  -e "s/${lcU:-__none__}/__C6_DUT_MAC_UC__/g" \
+        -e 's/([0-9A-Fa-f]{2}:){7}[0-9A-Fa-f]{2}/<PEER-MAC>/g' \
         -e 's/[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}/<PEER-MAC>/g' \
         -e 's/TAHI:0x[0-9A-Fa-f]+/TAHI:<PEER-MAC>/gI' -e 's/TALO:0x[0-9A-Fa-f]+/TALO:<PEER-MAC>/gI' \
         -e 's/\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b/<IPv4>/g' \
@@ -303,7 +321,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     _fail() { echo "selftest FAIL: $*" >&2; chmod -R u+w "$_sd" 2>/dev/null; rm -rf "$_sd"; exit 1; }
     _count() { $GREP -o "$1" "$2" | wc -l; }
     _fix_mask() {
-        printf 'port _%s-if00\nBASE MAC: %s\nMAC: %s\nCCMP mgmt frame from 12:34:56:ab:cd:ef used\n<ba-add> TAHI:0xabcd, TALO:0x12345678, x\ngot ip 192.168.4.23 mask 255.255.255.0\n' \
+        printf 'port _%s-if00\nBASE MAC: %s\nMAC: %s\nCCMP mgmt frame from 12:34:56:ab:cd:ef used\n<ba-add> TAHI:0xabcd, TALO:0x12345678, x\ngot ip 192.168.4.23 mask 255.255.255.0\npeer eui64 12:34:56:ff:fe:ab:cd:ef seen\n' \
             "$dut_uc" "$dut_lc" "${dut_lc:0:8}:ff:fe:${dut_lc:9}" > "$_st"
     }
     #  --- (1)-(6): no needles (credentials file absent) ---
@@ -312,7 +330,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     [ "${#NEEDLE_VALUES[@]}" -eq 0 ] || _fail "(0) needles loaded from a missing file"
     _fix_mask
     _pre="$(c6_residue_count "$_st")" || _fail "(1) checker returned non-zero on the fixture"
-    [ "$_pre" = "3" ] || _fail "(1) residue before masking is not 3 lines ($_pre)"
+    [ "$_pre" = "4" ] || _fail "(1) residue before masking is not 4 lines ($_pre)"
     c6_redact_check "$_st" 2>/dev/null && _fail "(2) quarantine branch returned zero"
     [ ! -e "$_st" ] && [ -f "$_st.UNREDACTED" ] || _fail "(2) fixture was not renamed to .UNREDACTED"
     mv -f -- "$_st.UNREDACTED" "$_st"
@@ -321,17 +339,21 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     ( C6_FILES=("$_ro/fixture.log"); c6_redact_on_exit 2>/dev/null ) && _rc=0 || _rc=$?
     chmod 755 "$_ro"
     [ "$_rc" -eq 93 ] || _fail "(3) c6_redact_on_exit rc is not 93 ($_rc)"
-    #  (4) transform: residue 0, DUT spellings kept, 3 peer masks, 2 IPv4 masks
+    #  (4) transform: residue 0, DUT spellings kept, 4 peer masks (one of them
+    #  a whole 8-octet EUI-64, no ":hh:hh" tail left), 2 IPv4 masks
     c6_redact_file "$_st" || _fail "(4) residue after transform"
     $GREP -qF "_${dut_uc}-if00" "$_st" || _fail "(4) DUT MAC (upper case) was masked"
     $GREP -qF "BASE MAC: ${dut_lc}" "$_st" || _fail "(4) DUT MAC (lower case) was masked"
     $GREP -qF "MAC: ${dut_lc:0:8}:ff:fe:${dut_lc:9}" "$_st" || _fail "(4) DUT EUI-64 spelling was masked"
-    [ "$(_count '<PEER-MAC>' "$_st")" -eq 3 ] || _fail "(4) peer masks are not 3"
+    [ "$(_count '<PEER-MAC>' "$_st")" -eq 4 ] || _fail "(4) peer masks are not 4 ($(_count '<PEER-MAC>' "$_st"))"
+    [ "$(_count '<PEER-MAC>:[0-9A-Fa-f]' "$_st")" -eq 0 ] || _fail "(4) a peer EUI-64 left a tail after <PEER-MAC>"
+    $GREP -qF "peer eui64 <PEER-MAC> seen" "$_st" || _fail "(4) the peer EUI-64 line is not masked whole"
     [ "$(_count '<IPv4>' "$_st")" -eq 2 ] || _fail "(4) IPv4 masks are not 2"
     #  (5) DUT_MAC unset: everything MAC-shaped is masked, still clean
     _fix_mask
     ( DUT_MAC=""; c6_redact_file "$_st" ) || _fail "(5) transform with DUT_MAC unset failed"
-    [ "$(_count '<PEER-MAC>' "$_st")" -eq 6 ] || _fail "(5) peer masks with DUT_MAC unset are not 6 ($(_count '<PEER-MAC>' "$_st"))"
+    [ "$(_count '<PEER-MAC>' "$_st")" -eq 7 ] || _fail "(5) peer masks with DUT_MAC unset are not 7 ($(_count '<PEER-MAC>' "$_st"))"
+    [ "$(_count '<PEER-MAC>:[0-9A-Fa-f]' "$_st")" -eq 0 ] || _fail "(5) the DUT EUI-64 left a tail after <PEER-MAC>"
     #  (6) checker stage failure -> empty output and non-zero (never "0")
     _n="$(c6_residue_count "$_sd/missing.log" 2>/dev/null)" && _fail "(6) checker returned zero on a missing file"
     [ -z "$_n" ] || _fail "(6) checker printed something on a missing file ($_n)"
@@ -355,7 +377,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     _pre="$(c6_residue_count "$_st")" || _fail "(9) checker failed"
     [ "$_pre" = "1" ] || _fail "(9) checker does not see the extra needle ($_pre)"
     rm -rf "$_sd"
-    echo "c6 redact selftest PASS: (1) residue 3 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 3 / IPv4 2 / DUT kept (5) DUT_MAC unset -> 6 masks (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle"
+    echo "c6 redact selftest PASS: (1) residue 4 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle"
     exit 0
 fi
 
@@ -374,6 +396,13 @@ unset _v_name _v_val
 if [ "$COLD" = "1" ]; then NOFLASH=1; NORESET=1; fi
 CAPTURE_SEC="${CAPTURE_SEC:-60}"
 COLD_WAIT_SEC="${COLD_WAIT_SEC:-120}"
+for _v_name in CAPTURE_SEC COLD_WAIT_SEC; do
+    eval "_v_val=\$$_v_name"
+    case "$_v_val" in
+        ''|*[!0-9]*) die "$_v_name must be a non-negative integer (given: $_v_val)" ;;
+    esac
+done
+unset _v_name _v_val
 MARKERS="${MARKERS:-}"
 BAUD="${BAUD:-921600}"
 
@@ -428,6 +457,32 @@ if [ "$COLD" != "1" ] && { [ "$NOFLASH" != "1" ] || [ "$DRYRUN" = "1" ]; }; then
     if [ "$BOOT_APP0" != "none" ]; then
         [ -n "$BOOT_APP0" ] && [ -f "$BOOT_APP0" ] || die "boot_app0.bin not found (BOOT_APP0=$BOOT_APP0; set BOOT_APP0=<path> or =none)"
     fi
+    #  Plausibility of what would be written (an empty or truncated file, or a
+    #  file that is not an ESP image, is refused before esptool is even found).
+    _first_byte() { od -An -tx1 -N1 "$1" | tr -d ' \n'; }
+    _seg_count()  { od -An -tu1 -j1 -N1 "$1" | tr -d ' \n'; }
+    _check_image() {   # label path kind(esp|size:<n>)
+        local label="$1" f="$2" kind="$3" sz
+        [ -s "$f" ] || die "$label image is empty (0 bytes): $f"
+        sz="$(stat -c %s "$f")"
+        case "$kind" in
+            #  ESP image: magic 0xE9, a 24-byte header plus at least one 8-byte
+            #  segment header, and a segment count in 1..16 (esp_image_header_t).
+            esp)  [ "$(_first_byte "$f")" = "e9" ] \
+                      || die "$label image does not start with the ESP image magic 0xE9 (first byte 0x$(_first_byte "$f")): $f"
+                  [ "$sz" -ge 32 ] \
+                      || die "$label image is shorter than an ESP image header + one segment header (32 bytes; is $sz): $f"
+                  [ "$(_seg_count "$f")" -ge 1 ] && [ "$(_seg_count "$f")" -le 16 ] \
+                      || die "$label image segment count byte is not in 1..16 (is $(_seg_count "$f")): $f" ;;
+            size:*) [ "$sz" -eq "${kind#size:}" ] \
+                      || die "$label image must be exactly ${kind#size:} bytes (is $sz): $f" ;;
+        esac
+    }
+    _check_image bootloader "$IMG_BL" esp
+    _check_image "partition table" "$IMG_PT" size:3072
+    [ "$BOOT_APP0" = "none" ] || _check_image boot_app0 "$BOOT_APP0" size:8192
+    _check_image app "$IMG_APP" esp
+    say "images plausible: bootloader/app are ESP images (0xE9, header, 1..16 segments), partition table 3072 B$([ "$BOOT_APP0" = "none" ] || echo ", boot_app0 8192 B")"
     [ -n "$ESPTOOL" ] && [ -x "$ESPTOOL" ] || die "esptool not found (ESPTOOL=$ESPTOOL)"
 fi
 
@@ -448,7 +503,7 @@ print_write_plan() {
             "$(sha256sum "${WRITE_ARGS[$((i+1))]}" | cut -c1-64)" \
             "$(stat -c %s "${WRITE_ARGS[$((i+1))]}")" "${WRITE_ARGS[$((i+1))]}"
     done
-    [ "$BOOT_APP0" = "none" ] && say "    (BOOT_APP0=none: 0xe000 is NOT written)"
+    [ "$BOOT_APP0" = "none" ] && say "    WARNING: BOOT_APP0=none -- 0xe000 (otadata/boot_app0) is NOT written. The stage 2 plan forbids this except as a recorded deviation."
     say "esptool command line:"
     printf '    '; printf '%q ' "${FLASH_CMD[@]}"; printf '\n'
 }
@@ -459,20 +514,44 @@ OUT="${OUT:-$LOG_DIR/c6-capture-$(date +%Y%m%d-%H%M%S).log}"
 BASE="${OUT%.log}"
 IDENT_LOG="$BASE.ident.log"; FLASH_LOG="$BASE.flash.log"; COLD_TXT="$BASE.cold.txt"; SHA_TXT="$BASE.sha.txt"
 
-#  ---------------------------------------------------------------- 3. gate part 2 (hardware, read-only)
+#  ---------------------------------------------------------------- 3. capture prerequisites
+#  Checked BEFORE anything touches the board: a write followed by a monitor
+#  that cannot start would leave the board's new state unobserved.
+#  esp_idf_monitor (the same reader the development-side script uses): it
+#  follows the USB re-enumeration that a reset of a USJ-console chip causes,
+#  which a plain pyserial reader would lose.
+if [ -z "${IDF_PYTHON:-}" ]; then
+    IDF_PYTHON="$(ls -d "$HOME"/tools/espressif/python_env/idf*_py3.*_env/bin/python 2>/dev/null | sort -V | tail -1 || true)"
+    [ -n "$IDF_PYTHON" ] || IDF_PYTHON="$(ls -d "$HOME"/.espressif/python_env/idf*_py3.*_env/bin/python 2>/dev/null | sort -V | tail -1 || true)"
+fi
+[ -n "$IDF_PYTHON" ] && [ -x "$IDF_PYTHON" ] || die "no ESP-IDF python env with esp_idf_monitor (set IDF_PYTHON=)"
+"$IDF_PYTHON" -c 'import esp_idf_monitor' 2>/dev/null || die "esp_idf_monitor is not importable by $IDF_PYTHON"
+command -v script >/dev/null 2>&1 || die "the 'script' utility (util-linux) is required for the capture"
+if [ "$COLD" != "1" ]; then
+    [ -e "$DUT_PORT" ] || die "DUT by-id node is absent: $DUT_PORT"
+fi
+say "capture prerequisites OK: monitor python $IDF_PYTHON"
+
+#  ---------------------------------------------------------------- 4. gate part 2 (hardware, read-only)
+#  --after for the identification: the board is left in the ROM download mode
+#  (no-reset) when a write follows (write-flash resets it again anyway) or in
+#  DRYRUN; when nothing will be written and the monitor will not reset either
+#  (NOFLASH=1 NORESET=1), hard-reset so the monitor listens to a running
+#  board rather than to one this script parked in the download mode.
+IDENT_AFTER=no-reset
+if [ "$NOFLASH" = "1" ] && [ "$NORESET" = "1" ] && [ "$DRYRUN" != "1" ]; then IDENT_AFTER=hard-reset; fi
 if [ "$COLD" = "1" ]; then
     say "COLD=1: esptool is not called at all (its connect would reset the chip and overwrite the cold boot)"
     say "  expected MAC=$DUT_MAC (by-id derivation only)  port=$DUT_PORT"
     if [ "$DRYRUN" = "1" ]; then say "DRYRUN=1: stopping here (nothing done)"; exit 0; fi
 else
-    [ -e "$DUT_PORT" ] || die "DUT by-id node is absent: $DUT_PORT"
     [ -n "$ESPTOOL" ] && [ -x "$ESPTOOL" ] || die "esptool not found (ESPTOOL=$ESPTOOL)"
-    say "==== 1. identify the DUT before anything is written (read-only, ROM only) ===="
+    say "==== 1. identify the DUT before anything is written (read-only, ROM only, --after $IDENT_AFTER) ===="
     say "  expected MAC=$DUT_MAC  chip=\"$DUT_CHIP\"  port=$DUT_PORT"
     say "  esptool: $ESPTOOL ($("$ESPTOOL" version 2>/dev/null | tail -1))"
     mkdir -p "$(dirname "$OUT")"
     C6_FILES+=("$IDENT_LOG")
-    if ! "$ESPTOOL" --chip esp32c6 --port "$DUT_PORT" --no-stub --after no-reset flash-id >"$IDENT_LOG" 2>&1; then
+    if ! "$ESPTOOL" --chip esp32c6 --port "$DUT_PORT" --no-stub --after "$IDENT_AFTER" flash-id >"$IDENT_LOG" 2>&1; then
         sed 's/^/    /' "$IDENT_LOG" >&2
         die "flash-id failed (the DUT did not answer); see $IDENT_LOG"
     fi
@@ -489,38 +568,59 @@ else
     say "gate OK: BASE MAC $DUT_MAC / $DUT_CHIP / 4MB"
     if [ "$DRYRUN" = "1" ]; then
         print_write_plan
-        say "DRYRUN=1: stopping here (nothing written, nothing captured; the DUT is left in the ROM download mode, as esptool --after no-reset leaves it)"
+        say "DRYRUN=1: stopping here (nothing written, nothing captured). The DUT is LEFT IN THE ROM DOWNLOAD MODE (esptool --after no-reset); the next write, a hard reset or a power cycle recovers it."
         exit 0
+    fi
+    if [ "$IDENT_AFTER" = "hard-reset" ]; then
+        say "NOFLASH=1 NORESET=1: the identification hard-reset the board; the monitor will open with --no-reset, so the head of this boot is lost during the reconnect"
     fi
 fi
 
-#  ---------------------------------------------------------------- 4. write
+#  ---------------------------------------------------------------- 5. write
+#  The .sha.txt "written by this run" record is made right after a successful
+#  write-flash, before the monitor starts: a capture failure must never leave
+#  the board's new contents unrecorded.
+mkdir -p "$(dirname "$OUT")"
+C6_FILES+=("$SHA_TXT")
+{
+    echo "# $(date '+%F %T')  DRYRUN=$DRYRUN NOFLASH=$NOFLASH COLD=$COLD NORESET=$NORESET  DUT_MAC=$DUT_MAC"
+} > "$SHA_TXT"
 if [ "$NOFLASH" != "1" ]; then
     say "==== 2. write (bootloader 0x0 / ptable 0x8000 / boot_app0 0xe000 / app 0x10000) ===="
     print_write_plan
     C6_FILES+=("$FLASH_LOG")
     if ! "${FLASH_CMD[@]}" >"$FLASH_LOG" 2>&1; then
         tail -30 "$FLASH_LOG" | sed 's/^/    /' >&2
+        echo "# write-flash FAILED (rc!=0); flash contents are UNDEFINED (partially written?). See $FLASH_LOG" >> "$SHA_TXT"
         die "write-flash failed; see $FLASH_LOG"
     fi
     N="$($GREP -c "Hash of data verified" "$FLASH_LOG" || true)"
-    [ "${N:-0}" -ge "$N_IMAGES" ] || die "\"Hash of data verified\" seen $N times, expected $N_IMAGES; see $FLASH_LOG"
+    if [ "${N:-0}" -lt "$N_IMAGES" ]; then
+        echo "# write-flash rc=0 but \"Hash of data verified\" seen $N times, expected $N_IMAGES; flash contents are SUSPECT. See $FLASH_LOG" >> "$SHA_TXT"
+        die "\"Hash of data verified\" seen $N times, expected $N_IMAGES; see $FLASH_LOG"
+    fi
     say "write OK (Hash of data verified x$N)"
+    {
+        echo "# written by this run (address  sha256  size  file), Hash of data verified x$N:"
+        for ((i = 0; i < ${#WRITE_ARGS[@]}; i += 2)); do
+            printf '%-8s %s  %8d  %s\n' "${WRITE_ARGS[$i]}" "$(sha256sum "${WRITE_ARGS[$((i+1))]}" | cut -c1-64)" \
+                "$(stat -c %s "${WRITE_ARGS[$((i+1))]}")" "${WRITE_ARGS[$((i+1))]}"
+        done
+        [ "$BOOT_APP0" = "none" ] && echo "# WARNING: BOOT_APP0=none -- 0xe000 was NOT written (recorded deviation from the stage 2 plan)"
+    } >> "$SHA_TXT"
+    say "written images recorded -> $SHA_TXT"
+else
+    {
+        echo "# NOT written by this run (NOFLASH=$NOFLASH COLD=$COLD). Flash holds whatever the previous writing run wrote."
+        if [ -n "$IMG_APP" ] && [ -f "$IMG_APP" ]; then
+            echo "# app image on disk at capture time (informational only):"
+            sha256sum "$IMG_APP"
+        fi
+    } >> "$SHA_TXT"
 fi
 
-#  ---------------------------------------------------------------- 5. capture
+#  ---------------------------------------------------------------- 6. capture
 say "==== 3. capture (up to ${CAPTURE_SEC}s${MARKERS:+, early stop on MARKERS}) ===="
-#  esp_idf_monitor (the same reader the development-side script uses): it
-#  follows the USB re-enumeration that a reset of a USJ-console chip causes,
-#  which a plain pyserial reader would lose.
-if [ -z "${IDF_PYTHON:-}" ]; then
-    IDF_PYTHON="$(ls -d "$HOME"/tools/espressif/python_env/idf*_py3.*_env/bin/python 2>/dev/null | sort -V | tail -1 || true)"
-    [ -n "$IDF_PYTHON" ] || IDF_PYTHON="$(ls -d "$HOME"/.espressif/python_env/idf*_py3.*_env/bin/python 2>/dev/null | sort -V | tail -1 || true)"
-fi
-[ -n "$IDF_PYTHON" ] && [ -x "$IDF_PYTHON" ] || die "no ESP-IDF python env with esp_idf_monitor (set IDF_PYTHON=)"
-"$IDF_PYTHON" -c 'import esp_idf_monitor' 2>/dev/null || die "esp_idf_monitor is not importable by $IDF_PYTHON"
-
-mkdir -p "$(dirname "$OUT")"
 if [ "$COLD" = "1" ]; then
     #  Record the by-id timeline: the node must go away (power off) and come
     #  back (power on) within COLD_WAIT_SEC. The power cycle is external.
@@ -572,7 +672,7 @@ sleep 1
 sed -i 's/\x1b\[[0-9;]*m//g' "$OUT" 2>/dev/null || true
 say "captured $(wc -l < "$OUT") lines -> $OUT"
 
-#  ---------------------------------------------------------------- 6. markers
+#  ---------------------------------------------------------------- 7. markers
 _cnt() { $GREP -acE "$1" "$OUT" || true; }
 n_banner="$(_cnt 'TOPPERS/FMP3 Kernel Release')"
 n_setup="$(_cnt '\[Arduino\] setup complete')"
@@ -581,24 +681,6 @@ n_unexp="$(_cnt '## Unexpected|## Assertion|## Internal|Unregistered (exception|
 n_smark="$(_cnt '^S'$'\r''*$')"
 n_blink="$(_cnt '\[Blink\] (ON|OFF)')"
 say "markers: banner=$n_banner setup=$n_setup heartbeat=$n_heart unexpected=$n_unexp smark=$n_smark blink=$n_blink"
-
-#  ---------------------------------------------------------------- 7. sha sidecar
-C6_FILES+=("$SHA_TXT")
-{
-    echo "# $(date '+%F %T')  DRYRUN=$DRYRUN NOFLASH=$NOFLASH COLD=$COLD NORESET=$NORESET  DUT_MAC=$DUT_MAC"
-    if [ "$NOFLASH" != "1" ]; then
-        echo "# written by this run (address  sha256  file):"
-        for ((i = 0; i < ${#WRITE_ARGS[@]}; i += 2)); do
-            printf '%-8s %s  %s\n' "${WRITE_ARGS[$i]}" "$(sha256sum "${WRITE_ARGS[$((i+1))]}" | cut -c1-64)" "${WRITE_ARGS[$((i+1))]}"
-        done
-    else
-        echo "# NOT written by this run (NOFLASH=$NOFLASH COLD=$COLD). Flash holds whatever the previous writing run wrote."
-        if [ -n "$IMG_APP" ] && [ -f "$IMG_APP" ]; then
-            echo "# app image on disk at capture time (informational only):"
-            sha256sum "$IMG_APP"
-        fi
-    fi
-    echo "markers: banner=$n_banner setup=$n_setup heartbeat=$n_heart unexpected=$n_unexp smark=$n_smark blink=$n_blink"
-} > "$SHA_TXT"
-say "image sha256 -> $SHA_TXT"
+echo "markers: banner=$n_banner setup=$n_setup heartbeat=$n_heart unexpected=$n_unexp smark=$n_smark blink=$n_blink" >> "$SHA_TXT"
+say "record -> $SHA_TXT"
 exit 0
