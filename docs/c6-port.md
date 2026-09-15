@@ -37,11 +37,11 @@ wpa2 の `.a`（`ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2/README.md`）�
 | ID | 判断 | 仮決定 | 本リポジトリ側の箇所 | 外れたときの費用 |
 | --- | --- | --- | --- | --- |
 | D0 | 出自 | 開発リポジトリ `c7fef18` を直接出自にする。公開 #8 は別途ユーザー操作 | `packaging/release-allowlist.json:3-6`（Xtensa の出自）、同ファイルの `*C6` キー | #8 が出たら出自欄を差し替えるだけ |
-| D1 | bootloader | **stock M5Stack bootloader（同梱なし）を第一候補。** 段2 で stock / 開発側 seam bootloader / +開発側 ptable の 3 通りを 1 軸ずつ実測して確定 | 本リポジトリは bootloader を出荷していない（`BUILDING.md`・`README.md`・`packaging/README.release.md`・`scripts/install_platform.py` に bootloader の記述なし）。M5Stack platform.txt の prebuild hook を継承 | 同梱経路 = 板別の prebuild hook 上書き |
+| D1 | bootloader | **確定（stock M5Stack bootloader、同梱なし）**。段2 で条件 A（stock bootloader + stock `default` ptable + boot_app0、160 MHz）warm 5/5・真cold 9/10 を実機実測し成立。B（開発側 seam bootloader）/ C（+開発側 ptable）/ 80 MHz は**未実施**（A が成立したため不要。詳細は「段2 の記録」節） | 本リポジトリは bootloader を出荷していない（`BUILDING.md`・`README.md`・`packaging/README.release.md`・`scripts/install_platform.py` に bootloader の記述なし）。M5Stack platform.txt の prebuild hook を継承 | 同梱経路 = 板別の prebuild hook 上書き |
 | D2 | port ディレクトリ | `ports/m5stack_riscv`。**段1 で確定・実装済み**（`ports/m5stack_xtensa/` は完全に不変。X-check 7/7 で実測） | `ports/m5stack_xtensa/` と並ぶ。`scripts/build_prebuilt_stages.py:161`（runtime）・`:195-198`（app）の固定パスを chip -> port の表にする | 改名は機械的 |
 | D3 | 共有 cmake | `prebuilt_stage.cmake` は共有して chip 分岐、chip 固有（seam 画像検査等）は `prebuilt_stage_c6.cmake` へ分離。**段1 で確定・実装済み、ただし実際には `prebuilt_stage.cmake` 自体は無改変**（chip -> port の表（Task 1）だけで C6 の runtime CMakeLists が自分の `prebuilt_stage_c6.cmake` を呼ぶため、Xtensa 側への白リスト追加も委譲コードも不要だった。委譲は「行を足す」形ではなく「表の port 列」で実現） | `ports/m5stack_xtensa/runtime/cmake/prebuilt_stage.cmake:57-62`（`A1_CHIP` 白リスト）ほか | 二重保守 vs 波及。どちらも X-check が検出 |
 | D4 | manifest / driver 版 | **上げる**（`DRIVER_VERSION` 3、schema に `paddrMode` の新値と `linkBaseFlags` を加法で追加）。**段1 で確定・実装済み**（`DRIVER_VERSION="3"`、`MANIFEST_SCHEMA=2`、`SUPPORTED_MANIFEST_SCHEMAS=(1,2)`。schema 1 は literal のまま不変、schema 2 は `linkTailFlags`（任意キー、ledger に無かったが Task 1 が追加）も持つ） | 段1 完了時点（fix wave 1）の `scripts/fmp3_link.py`: `:87`（`DRIVER_VERSION`）・`:92-93`（`MANIFEST_SCHEMA` / `SUPPORTED_MANIFEST_SCHEMAS`）・`:98-99`（`PADDR_MODES`、schema 1 は `runtime-mmu` のみ）・`:105`（`SCHEMA1_LINK_BASE_FLAGS` = `-nostdlib -mlongcalls`）・`:106`（`SCHEMA1_LINK_TAIL_FLAGS` = `-lgcc -lc`）。以後は名前で引くこと | 旧 manifest を読む経路が無いことを確かめて戻せる |
-| D5 | C6 の CPU クロック | **minimal も wifi-connect も 160 MHz**（開発側は wifi=160 で較正済み、Arduino 利用者の期待に合わせる）。**段1 で既定値として実装済み**（`CORE_CLK_MHZ` 既定 160、`SEAM_C6_CLK_BOOST=1`）だが**実機での hello 起動は未検証**（S1-6 も参照）。段2 の真cold が 160 で落ちたら minimal を 80 に戻す（1 軸、`-DA1_C6_CPU_FREQ_MHZ=80`） | -- | 段2 で判明する |
+| D5 | C6 の CPU クロック | **確定（160 MHz）**。段2 で条件 A を 160 MHz のまま warm 5/5・真cold 9/10 を実機実測し成立、80 MHz へのフォールバックは不要（**S1-6 の watch item は解消**） | -- | -- |
 | D6 | OPEN AP の私的 ABI（`g_ic+0x1b4`） | **C6 では表を差し込まない。** 開発側と同じく `esp_wifi_init` に supplicant を任せる（開発側で STA/DHCP/ping 実測済み）。`--wrap=esp_supplicant_init` の経路は Xtensa 側を触らない。C6 の Open AP は**段4 で実測するまで対応を主張しない** | `ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.c:30`（offset）、`BUILDING.md:288-294`（OPEN/WPA 分離） | Open AP が要るなら C6 blob の offset を求め直す（別作業） |
 | D7 | lwIP | **開発側の型（自前 `liblwip.a` + `netif_esp32s3.c` / `port/sys_arch.c`）**で通し、core の `liblwip.a` へ寄せるのは後 | Xtensa 側は core の `liblwip.a` + `ports/m5stack_xtensa/runtime/wifi/net/` の別系統 | 段3 でリンクが通らなければ Xtensa 型へ |
 | D8 | esp-idf 原本 6 本 | **開発側と同じく vendored**（provenance と改変境界を記録）。`BUILDING.md:278`「ESP-IDF を複製しない」からの**逸脱として明記**し、段5 で core の `.a` メンバ + `vPort*` シム案を再評価 | `BUILDING.md:278` | 段5 の再評価で置換 |
@@ -408,14 +408,230 @@ diff <scratch>/sb-old/hardware/toppers/esp32/boards.txt <(grep -v '^m5nanoc6_fmp
 3（HEAD）で Xtensa Blink を同じ build から再リンクすると ELF / BIN とも sha256 同一
 （`fw1-xtensa-blink-driver2-vs-3.txt`）。
 
+## 段2 の記録（2026-09-15、commit `2f7bc0f` / `639331a`）
+
+M5NanoC6 実機で `minimal` 版 `Blink` が起動し、D1（bootloader）と D5（CPU クロック）を
+確定した段。書込み・採取は台本 `scripts/capture_c6_usj.sh` のみで行い、実機操作は
+uhubctl による電源断／投入のみ。詳細な証跡は開発リポジトリ
+`.steering/20260915-c6-arduino-plan/stage2/{AC.md,logs/}`（`task1-*` が採取台本の同定・
+selftest、`task2-A-*` が実機実験）と本リポジトリ `.superpowers/sdd/PLAN-stage2-impl/
+{task-1-report.md,task-2-report.md,progress.md}`。
+
+### AC 2a-2h
+
+| # | 基準 | 判定 | 根拠 |
+| --- | --- | --- | --- |
+| 2a | `capture_c6_usj.sh` の DRYRUN が焼く物 4 点の sha256・番地を出し、MAC 不一致・DUT 不在で rc!=0、selftest PASS | PASS | `task1-dryrun.txt`（4 点の sha256・番地・実 esptool コマンド行）、`task1-gate-neg.txt`（FORBIDDEN MAC / DUT_MAC 不一致 / port 固定の 3 通り、いずれも rc=1・書込み 0 本）、`task1-selftest.txt`（9 項目 PASS、変異体 4 種 FAIL）、`task1-imgcheck-neg.txt`（fix round 1、画像妥当性検査の負対照） |
+| 2b | 条件 A（stock bootloader + stock `default` ptable + boot_app0、160 MHz）warm 5/5 | PASS | `task2-A-warm{1..5}.log/.run.txt/.sha.txt`（banner=1・setup=1・heartbeat=39・unexpected=0 が 5/5） |
+| 2c | 条件 A の真cold 5/5 | **成立（条件付き）: 9/10、cold5 無音 1 回、再試行後 5 連続**（5/5 と丸めない） | `task2-A-cold{1..10}.log/.cold.txt/.run.txt/.sha.txt`。cold1-4,6,8-10 は heartbeat=39、cold7 は heartbeat=38（1 文字落ち、下記 2-6）、**cold5 のみ heartbeat=0（40 秒無音）**。初回 5 回中 4/5、無音回の再試行（cold6）と追加 4 回（cold7-10）で連続 5/5。先頭行の欠落（ROM banner/`S`/FMP3 banner/`Processor 1 start.`）は R11 どおり不成立の根拠にしていない |
+| 2d | 2b/2c 不成立なら B -> C、結果表、R1 の対照 | **不要（実施せず）** -- A が 2b/2c を満たしたため B（開発側 seam bootloader）・C（+開発側 ptable）は走らせていない。下記「結果」節に未実施と明記 |
+| 2e | 160 MHz 不成立なら 80 MHz を 1 軸 | **不要（実施せず）** -- A が 160 MHz のまま成立したため（D5 確定、S1-6 の watch item 解消） |
+| 2f | 選んだ条件の像の size、USJ 最初の行（`S` mark の有無）、WDT 停止の根拠 | PASS | 下記「最初の行の観察」「WDT の根拠」節。像 size は「板の最終状態」節 |
+| 2g | `docs/c6-port.md` 段2 節、`README.md` 到達点 | PASS（本コミット） | 本節、`README.md` |
+| 2h | 非退行: 段1 の 3 例題が引き続きリンク、X-check 7/7（scripts を触った場合） | PASS（再検証不要と判断） | Task 1/2 とも `ports/`・`src/`・`third_party/`・既存 `scripts/*.py` を触っていない（新設は `scripts/capture_c6_usj.sh` のみで、X-check が対象とする共有ファイル `build_prebuilt_stages.py`/`prebuilt_stage.cmake`/`fmp3_link.py`/`install_platform.py` は無改変）。段1 の PASS（AC 1a-1h）から状態は不変 |
+
+### 軸表（書込み前に固定、`task-2-report.md` 1 節）
+
+独立に変えられる軸を先に書き出し、1 回の書込みで変えるのは 1 軸とした。
+
+| 軸 | 値 | 条件 A（採った条件） | 条件 B | 条件 C | 80 MHz 腕 |
+| --- | --- | --- | --- | --- | --- |
+| bootloader | stock（`bootloader_qio_80m.elf`、WDT 9 秒 armed、UART0 主）／開発側 seam（WDT 無効、USJ、DIO） | stock | 開発側 | 開発側 | A と同じ |
+| ptable | stock `default`（OTA。otadata 0xe000、app0 0x10000 +0x140000）／開発側（nvs 0xe000、factory 0x10000） | stock | stock | 開発側 | A と同じ |
+| boot_app0 @0xe000 | 焼く／焼かない | 焼く | 焼く | 焼く（開発側 ptable の nvs と重なる。記録のみ、実施せず） | 焼く |
+| CPU | 160／80 MHz | 160 | 160 | 160 | 80 |
+| reset | warm（`NOFLASH=1`、monitor の hard reset）／真cold（`COLD=1` + uhubctl） | 両方 | 両方 | 両方 | 両方 |
+
+手順の順序は A warm x5 -> A cold x5 ->（不成立なら）B -> C -> 80 MHz。**A で成立したため B/C/80 MHz は未実施**。
+
+### 結果表
+
+| 条件 | warm | 真cold | 判定 |
+| --- | --- | --- | --- |
+| A: stock bootloader + stock `default` ptable + boot_app0 + 160 MHz | **5/5** | **9/10**（初回ブロックで 4/5、無音回の再試行で成立、追加 4 回で連続 5/5） | **成立**（D1 = stock、D5 = 160 MHz） |
+| B: 開発側 bootloader + stock ptable | 未実施（A 成立のため） | 未実施 | -- |
+| C: 開発側 bootloader + 開発側 ptable | 未実施（A 成立のため） | 未実施 | -- |
+| 80 MHz | 未実施（160 MHz のまま A が成立したため） | 未実施 | -- |
+
+書込みは全 15 run 中 **1 回だけ**（`task2-A-warm1`）。以後は `NOFLASH=1`（warm）または `COLD=1`（cold）で
+flash に触れていない（各 `.sha.txt` に "NOT written by this run"）。
+
+### 最初の行の観察（AC-2f）
+
+warm（5/5 とも同一の系列、`task2-A-warm{1..5}.log`）:
+
+```
+ESP-ROM:esp32c6-20220919
+...
+load:0x4086b910,len:0xdd0
+...
+entry 0x4086b910
+S
+TOPPERS/FMP3 Kernel Release 3.4.0 for M5NanoC6 (ESP32-C6) (...)
+...
+Processor 1 start.
+System logging task is started on port 1.
+```
+
+系列は **ROM 起動バナー -> `load:`/`entry 0x4086b910` -> 生の `S` の単独行（`SEAM_C6_ENTRY_MARK`）
+-> FMP3 banner**。**stock bootloader 自身は USJ に 1 行も出力しない**（ROM の `load:`/`entry` 行の
+直後が即 `S`）-- docs 冒頭「stock bootloader と開発側 seam bootloader の差」節の予測どおり実測できた。
+
+真cold（9/9 とも同一）: 最初の行は **`System logging task is started on port 1.`**。ROM 行・`S`・
+FMP3 banner・`Processor 1 start.`・hrt notice は host が tty を開く前に出るため**必ず失われる**
+（R11 どおり、不成立の根拠にはしない。判定は heartbeat 回数で行う）。
+
+### WDT が止まっていることの根拠（AC-2f、推論と明記）
+
+- stock bootloader は `CONFIG_BOOTLOADER_WDT_ENABLE=y`・9000 ms で armed のまま app へ飛ぶ
+  （段1 記載）。`CAPTURE_SEC=40` の窓で **heartbeat（約 1 秒周期、`ArduinoSketchBridge.cpp:72-81`
+  の `loop()` 1000 回ごと）が 39 本**（15 run 中 14 run。cold7 は文字落ちで 38 本、下記）出ており、
+  9 秒の壁を大きく超えて連続している。
+- 採取中に USB 再列挙が無い（journal は電源サイクルごとに 1 回の列挙のみ）、warm の `rst:` 行は
+  毎回 `0x15 (USB_UART_HPSYS)`（USJ 経由のホスト reset）で **RTC WDT の reset 理由は 15 run のどこにも
+  出ていない**。
+- **これは間接証拠であり、LP_WDT レジスタの読み戻しはしていない**（minimal stage にその手段が無い、
+  ledger の pre-flight どおり）。以上から `hardware_init_hook`（`target/m5nanoc6_gcc/target_kernel_impl.c`）
+  が stock bootloader の armed した 9 秒 RTC WDT を実際に止めている、と**推論する**（実証ではない）。
+
+### D1・D5 の確定
+
+- **D1 = stock M5Stack bootloader（確定、実測で裏付け）**。条件 A（stock bootloader + stock
+  `default` ptable + boot_app0）で warm 5/5・真cold 9/10 が成立し、bootloader を本リポジトリに
+  同梱する必要は無い（`D1` の仮決定どおり）。開発側 seam bootloader（B）・+開発側 ptable（C）は
+  D1 の確定に不要となったため未実施のまま残る（下記「懸念・持ち越し」(4)）。
+- **D5 = 160 MHz（確定、実機の hello で実測済み）**。段1 時点の watch item「160 MHz は実機未検証」
+  （S1-6）は本段で解消した。80 MHz へのフォールバックは発生していない。
+
+### cold5（1 回の無音）の扱い
+
+- 事実: by-id は正常に出現（他の cold より約 0.3 秒遅い 3.86 秒）、monitor は `--no-reset` で開いた、
+  40 秒間 0 バイト。採取中に再列挙は無い（= WDT reset・panic 再起動のどちらも起きていない）。
+  再試行（cold6）は成立、以後 cold7-10 も成立（連続 5/5）。同じ flash 内容・同じ手順で 9/10。
+- **「app が動いていたが USJ が黙っていた」のか「app が hang した」のかは、この台本だけでは
+  区別できない**（COLD は reset を伴わないため生存確認の手段が無く、LED も見ていない）。推測としては
+  開発側段4 で報告されている USJ の host 列挙／tty 開閉と app 側送信のタイミング競合（H1）と同型。
+  bootloader 軸（B）で cold を回せば「stock bootloader 固有か」は切り分けられるが、A が成立した
+  以上、板を焼き替えてまでは行っていない（未検証のまま残す）。
+- 判定: `CLAUDE.md`「実機の単発失敗を実装のせいにしない」の規約に従い、単発の無音 1 回を根拠に
+  不成立とはしない。ただし **cold の無音は 1/10 の頻度で起き得る**ことは事実として記録し、
+  段3 以降の入口条件（下記）へ持ち越す。
+
+### cold7 の 1 文字落ち
+
+`task2-A-cold7.log` の `[Arduino] loop heartbeat` が 1 箇所 `hartbeat`（'e' が 1 文字欠落）。
+marker の正規表現に掛からず heartbeat=38（blink 行は 39 のまま）と数えた。起動直後の
+`[Arduino] task start` の頭欠け（次項）と同じ経路（USJ の TX 文字落ち）と推定。定常状態でも
+約 430 heartbeat 行に 1 回程度の頻度で起き得る。marker の判定（>=5）自体には影響しないが、
+**行を厳密に照合する試験では偽陰性を生む**。
+
+### 台本のインタフェースと安全ゲート（`scripts/capture_c6_usj.sh`）
+
+- 入力: `SKETCH_BUILD`（`arduino-cli --build-path` の成果物）、`BOOTLOADER`/`PTABLE`/`APP`
+  の個別上書き（B/C 軸用）、`BOOT_APP0`（`none` で 0xe000 を焼かない選択肢もあるが既定は常に焼く）、
+  `DRYRUN`/`NOFLASH`/`NORESET`/`COLD`/`CAPTURE_SEC`/`OUT` など。esptool は M5Stack core 同梱の
+  `esptool_py 5.2.0`。番地は M5Stack platform.txt の upload recipe と同一（0x0/0x8000/0xe000/0x10000）。
+- **安全ゲート**（すべて実測、`task-1-report.md`）:
+  1. **DUT 同定**: `flash-id --no-stub`（read-only）で `BASE MAC:`／chip 完全文字列／flash size を照合。
+     FORBIDDEN MAC 一覧と期待 MAC 以外は書込み前に rc!=0（esptool 未呼出、ファイル 0 本）。
+  2. **画像妥当性検査**（fix round 1 で追加）: 0 バイト拒否、bootloader/app は先頭 0xE9 + ヘッダ長・
+     セグメント数、ptable は 3072 バイトちょうど、boot_app0 は 8192 バイトちょうど。いずれも
+     esptool を呼ぶ前に入力段で拒否（負対照 `task1-imgcheck-neg.txt`）。
+  3. **COLD**: esptool を一切呼ばず、by-id の消失 -> 出現を待って `.cold.txt` に時刻を記録し、
+     出現直後に `--no-reset` で開く。
+  4. **EXIT トラップ**: SSID/PASS/BSSID とその hex 綴りの針（`WIFI_CREDS` があれば）、peer-MAC
+     マスク（DUT の MAC/EUI-64 綴りだけ保持）、IPv4 マスクを実行し、selftest で「壊れた検証も
+     成功と同じ顔をする」対策済み（positive control 4 種）。redact 不成立時は `.UNREDACTED` へ
+     隔離し rc=93（fail-closed）。
+- 段2 の実機実験ではこれらのゲートが実際に効くこと（DUT 同定 OK、負対照 3 通り rc!=0、画像検査
+  負対照 rc=1、cold の消失/出現記録、redact "masked and checked clean" 全 run）を確認した上で、
+  書込みは 1 回（`task2-A-warm1`）のみ行った。
+
+### 懸念・持ち越し（段3 以降、owner: 段3+）
+
+(a) **`[Arduino] task start` の頭欠け（15/15）と定常時の 1 文字落ち（cold7 で 1/約430 行）**:
+  `target_fput_log()` の busy-poll 経路と logtask（ISR 経路）が同じ USJ TX FIFO を同時に使う瞬間に
+  文字が落ちる型（Xtensa 板では同じ行が無傷）。marker（banner/setup/heartbeat）の判定には影響しないが、
+  **段4 以降で行単位の厳密照合をする試験は偽陰性を作る**ため、marker 判定を厳密な文字列一致にしないこと。
+
+(b) **真cold の無音 1/10（cold5）が USJ 無音と app hang のどちらか切り分けられない**: COLD は reset を
+  伴わないため生存確認の手段が無い。段3 以降で採取台本に reset を伴わない生存確認（例: LED 点滅の
+  監視、または一定時間無音なら 1 回だけ NORESET で再オープンする）を足すか判断すること。
+
+(c) **`no time event is processed in hrt interrupt on PRC1.` が毎起動 1 回（LOG_NOTICE）**: 15 run
+  すべてで観測。開発側 C6 Wi-Fi ログにも同じ行があり、Xtensa 板の Windows 実測にも `on PRC2.` がある
+  （既知の型で、本段固有ではない）。挙動上の害は観測していない（heartbeat の周期は正常）が、
+  起源（最初の hrt 割込みがイベント無しで入ること）は未確認。
+
+(d) **B（開発側 seam bootloader）/ C（+開発側 ptable）は Blink で未検証**。D1 は stock で確定した
+  ため必須ではないが、上記「stock bootloader と開発側 seam bootloader の差」節の「3 通りを 1 軸ずつ
+  実測」という記述は本段の実施範囲（A のみ）に合わせて読むこと。cold5 が bootloader 固有かどうかも
+  B を回せば切り分けられるが、未実施のまま残る。
+
+### 板の最終状態
+
+最後に書込みをした run は `task2-A-warm1`（`.sha.txt` に `Hash of data verified x4`）。以後 flash には
+書いていない。
+
+| 番地 | sha256 | size | 物 |
+| --- | --- | --- | --- |
+| 0x0 | `d8499f43...` | 20976 | stock bootloader（`Blink.ino.bootloader.bin`、`bootloader_qio_80m.elf` 由来） |
+| 0x8000 | `148b959c...` | 3072 | stock `default` OTA ptable（`Blink.ino.partitions.bin`） |
+| 0xe000 | `f94c5d78...` | 8192 | `boot_app0.bin`（M5Stack core 3.3.8） |
+| 0x10000 | `feb533de...` | 83360 | `Blink.ino.bin`（minimal、160 MHz） |
+
+= 条件 A（成立した条件）が焼かれたまま。最後の run（cold10）は成立して終わっており、板は Blink を
+実行中（電源 on、by-id 存在）。開発側の seam-c6-wifi 像 + 開発側 bootloader/ptable（Task 2 実験前の
+板の状態）は本段の初回書込みで上書きされている。
+
+### 段3 の入口条件
+
+`wifi-connect` stage 着手前に必要な判断・準備（`INVESTIGATION.md` 3-2 節、D6-D8 と対応）:
+
+- **shim 第2コピー**: `ports/m5stack_xtensa` の Wi-Fi shim（公開版由来の fork、動的 mtx・ring
+  キュー・xcore crit を経た土台）へ、開発側 C6 分岐（動的 mtx 以前の土台に C6 分岐が乗った版、
+  出自 `c7fef18`）を当てることはできない（土台が違う）。C6 port は**開発側 `esp/shim` を独立した
+  第2コピーとして持つ**（Xtensa 側は無改変のまま）。以後の shim 修正は 2 系統に分かれることを
+  前提に計画すること（R12）。
+- **adapter の C6 分岐**: 開発側の `esp_shim.c`／`esp_shim_libc.c`／`esp_wifi_adapter.c`／
+  `esp_shim_blobglue.c`／`esp_shim.cfg` に入っている `#if defined(TOPPERS_ESP32C6)` 分岐と、
+  C6 専用の `esp_shim_intr_intmtx.{c,h,cfg}` + `_lines.h`（割込みマトリクス予約、CFG_INT/DEF_INH
+  x15、16=systimer+FROM_CPU_0）を、そのまま vendoring するか本リポジトリの adapter
+  （`toppers_wifi_core.c`/`_connect.c`/`_scan.c`/`_optional_stubs.c`）から呼ぶ形にするかを決める。
+- **`.a` の事前生成**: 開発側と同じ自前 `liblwip.a`（D7）＋ software crypto の `libsupplicant`/
+  `libmbedcrypto`＋ core の `libnet80211`/`libpp`/`libcore`/`libcoexist`/`libmesh`/`libphy` の
+  リンク構成を、本リポジトリの prebuilt stage としてどう事前生成・配布するか（D8「vendored」の
+  実体）。
+- **13 ROM ld + libc 供給の決定**: 段1 は minimal を ROM ld 2 本（`esp32c6.rom.ld`/`.rom.api.ld`）に
+  絞り、残り 11 本（`rom.libc`/`rom.libgcc`/`rom.newlib`/`rom.libc-suboptimal_for_misaligned_mem`/
+  `rom.version`/`rom.api`(riscv)/`rom.net80211`/`rom.pp`/`rom.phy`/`rom.systimer`/`rom.coexist`）を
+  wifi-connect でどう扱うかを**段1 の「M-6 parity gap」節**の指摘どおり先に決める必要がある:
+  ROM の newlib（`atoi`/`rand`/`strtol`/`malloc` 等）を使うなら `syscall_table_ptr`/
+  `_global_impure_ptr` を張る **`chip_rom_libc.c` 相当**（Xtensa port が持つタスク毎 `_reent`・
+  ROM syscall stub table・`software_init_hook` 初期化）を C6 側にも用意すること。決めないまま
+  11 本を戻すと、素の代入が `-Wl,--allow-multiple-definition` の下で黙って勝つ経路が復活する
+  （段1 の実測どおり）。
+- **`nm -u` をゼロにする**: wifi-connect stage をリンクしたあと、未定義記号が残らないことを
+  段1 の smoke リンクと同じ手法（`nm -u`）で確認する。
+- **`esp_shim_intr_intmtx` の割込み線割当**: 上記の C6 専用割込みマトリクス予約が、本リポジトリの
+  既存割込み使用（USJ・timer 等）と衝突しないことを確認する。
+- **APM 解除の置き場所**: 開発側は `esp_wifi_adapter.c` の `c6_apm_unblock`（`A1_C6_APM_UNBLOCK`
+  ビルドフラグ）で行っており、OFF にすると scan が 0 AP になることを対照実験で確認済み
+  （開発側実測）。本リポジトリでもこの解除をどこで呼ぶか（adapter 初期化のどのタイミングか）を
+  決める必要がある。
+- **D6/D7/D8 の実装**: D6（OPEN AP の私的 ABI は差し込まない、段4 で実測するまで対応を主張しない）、
+  D7（lwIP は開発側の自前型で通す）、D8（esp-idf 原本 6 本は vendored、`BUILDING.md`「ESP-IDF を
+  複製しない」からの逸脱として明記済み）は上記 D0-D11 表のとおり。段3 ではこれらの決定を
+  実装へ落とし込む。
+
 ## 段ごとの到達点
 
 | 段 | ゴール | 実機 | 状態 |
 | --- | --- | --- | --- |
 | 0 | X-check の道具と baseline、本文書、C6 の出自宣言 | 不要 | **完了（2026-09-15）。** AC 0a-0h の記録は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage0/logs/` |
 | 1 | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` が stage を出し、`m5nanoc6_fmp3:FMP3Runtime=minimal` で `Blink` / `LibraryInfo` / `TwoFileSketch` がリンクを通る。X-check で Xtensa 不変 | 不要 | **完了（2026-09-15、`07b239b`/`709b36a`/`ffefc52`/`5dbb8d1`/`f40490e` + 最終レビュー是正 fix wave 1）。** AC 1a-1h 全 PASS、記録は「段1 の記録」節 |
-| 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | 未着手 |
-| 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | 未着手 |
+| 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | **完了（2026-09-15、`639331a`）。** 条件 A（stock bootloader）で warm 5/5・真cold 9/10（成立（条件付き）、cold5 無音 1 回・再試行後 5 連続）、D1/D5 確定。B/C/80 MHz は未実施（A が成立したため不要）。記録は「段2 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage2/AC.md` |
+| 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | 次に着手。入口条件は「段2 の記録」節「段3 の入口条件」 |
 | 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | 未着手 |
 | 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 未着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ |
 | 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |
