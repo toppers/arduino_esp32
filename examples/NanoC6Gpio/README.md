@@ -59,13 +59,13 @@ warm 4 回（うち 1 回は JTAG probe 付き）+ 真cold 1 回の 5 run すべ
 `[C6-GPIO] readback ok` 1、`[C6-INTR] VERDICT PASS rising=5 falling=5 change=10
 detached=0 dispatch=20 call=20 orphan=0 acre=2` 1、`[C6-RGB] tx_done` 8（1..8）、
 `tx timeout` 0、`## Unexpected` 0、heartbeat 38-39 / 40 秒でした。
-**LED の色は確認していません**（`tx_done` は RMT の送信完了で、光ったことの
-証拠ではありません。目視は未実施）。
+**LED の色は目視で確認済み**（赤 -> 緑 -> 青 -> 消灯。`tx_done` は RMT の
+送信完了で、光ったことの証拠ではないため、別途ユーザーが目で確かめた）。
 
 G19（`NANOC6_RGB_POWER_ENABLE`）は 1 と 0 の両方で焼き、ログのカウントは
 全項目で同一でした（`[C6-RGB] power pin G19 HIGH` / `... left alone` の行だけが
-違う）。点灯に差があるかは目視でしか分からず、未確認です。G19 が要るのか
-要らないのかはこの結果からは言えません。
+違う）が、**目視では 0 のとき光らない**。G19 HIGH は必須で、既定の 1 のまま
+使ってください。
 
 ## 制約
 

@@ -89,7 +89,7 @@ prebuilt archive、include 配置に依存しています）。
   Wi-Fi STA（**WPA2-PSK のみ**）-> DHCP -> DNS -> TCP がユーザーの実 AP に対して
   通ること（真cold 3/4、1 回は無音採取で成否判定不能）、および `WiFi` 構成で
   `pinMode` / `digitalRead` の読み戻し、`attachInterrupt` の自己駆動試験、RGB LED への
-  RMT 送信完了が通ること（例題 `NanoC6Gpio`、warm 4 + 真cold 1。LED の色は目視未確認）
+  RMT 送信完了が通ること（例題 `NanoC6Gpio`、warm 4 + 真cold 1。LED の色は赤 -> 緑 -> 青を目視確認）
   です。**Open AP/WPA3-SAE は AP が用意できず未実測、BLE は未着手、M5Unified 相当の
   profile はありません**（下記「M5NanoC6 の既知の制限」）。判断と到達点は
   [`docs/c6-port.md`](docs/c6-port.md)
@@ -116,9 +116,10 @@ prebuilt archive、include 配置に依存しています）。
   mode は `INPUT` / `INPUT_PULLUP` / `INPUT_PULLDOWN` / `OUTPUT` の 4 つで、それ以外は
   何も書かずにログを出します。USB の G12 / G13 は拒否します。`attachInterrupt` は
   `pinMode` を呼ばないので、先に `pinMode` してください。on-board RGB LED（G20、
-  WS2812 系）は `rgbLedWrite` が RMT で駆動し、送信完了（`[C6-RGB] tx_done`）までは
-  実機で確認していますが、**実際に光る色は目視で確かめていません**（G19 の電源
-  イネーブルを HIGH にしても触らなくても送信完了は同じで、点灯の差は未確認）。
+  WS2812 系）は `rgbLedWrite` が RMT で駆動し、赤 -> 緑 -> 青 -> 消灯の色サイクルを
+  実機で目視確認しています。**G19（電源イネーブル）を HIGH にしないと光りません**
+  （送信完了のログは G19 に関係なく出るので、光らないときはまず G19 を疑って
+  ください。例題は `NANOC6_RGB_POWER_ENABLE 1` で G19 を HIGH にします）。
   `delay()` / `Serial` が使えないのは他の構成と同じです。
 - **成果物のホスト間（Windows／Linux／macOS）バイト一致は未計測です。**
   driver 4（S5-8）で「同じホスト内で build path を変えても `.bin` が一致する」

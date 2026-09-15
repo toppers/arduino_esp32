@@ -51,8 +51,8 @@ extern "C" volatile int32_t ard_intr_acre_ercd;
 // the driver when pressed; the Grove/IR/RGB pins may have something
 // attached.
 #define NANOC6_TEST_PIN 7
-// RGB LED: data on G20, power gate on G19 (M5 docs; the G19 requirement is
-// unverified). The controller flips this to 0 for the "G19 axis" run.
+// RGB LED: data on G20, power gate on G19 (M5 docs; verified by eye in
+// stage 6: with 0 the LED stays dark). Keep 1; 0 exists for the "G19 axis" run.
 #define NANOC6_RGB_POWER_ENABLE 1
 #define NANOC6_RGB_POWER_PIN 19
 #define NANOC6_RGB_DATA_PIN 20

@@ -11,7 +11,8 @@
  *  (completion is polled), so arduino_interrupt.cfg is unchanged.
  *
  *  The M5NanoC6's RGB LED is data = G20, and its power gate is G19 (M5
- *  docs; unverified on hardware as of stage 6 task 1). This function only
+ *  docs; verified by eye in stage 6: G19 HIGH lights, G19 untouched does
+ *  not, colour order red/green/blue is right). This function only
  *  drives the data pin it is given; the sketch enables the power pin.
  *
  *  Task context only, one pixel per call (no chaining). Every call applies
