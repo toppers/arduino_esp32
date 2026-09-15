@@ -1,35 +1,48 @@
 cmake_minimum_required(VERSION 3.23)
 
 #
-#  ESP32-C6 (M5NanoC6, RISC-V RV32IMAC, single core) runtime for the Arduino
-#  board package: builds the sketch-independent FMP3 stage.
+#  RISC-V (ESP32-C6 M5NanoC6 / ESP32-C5 M5Stamp-C5, RV32IMAC, single core)
+#  runtime for the Arduino board package: builds the sketch-independent FMP3
+#  stage of the chip A1_CHIP names.
 #
 #  This is the RISC-V counterpart of ports/m5stack_xtensa/runtime/CMakeLists.txt
-#  and is driven the same way (scripts/build_prebuilt_stages.py, chip row
-#  "esp32c6"). It is deliberately a separate file rather than a chip branch of
-#  the Xtensa one: the Xtensa file is protected by the X-check (its stages are
-#  compared byte for byte against a baseline), and nothing the C6 needs -
-#  -march instead of -mlongcalls, a fixed-VMA image instead of runtime PADDR
-#  resolution, no flash_cache_init - would fit as a small branch there.
+#  and is driven the same way (scripts/build_prebuilt_stages.py, chip rows
+#  "esp32c6" and "esp32c5"). It is deliberately a separate file rather than a
+#  chip branch of the Xtensa one: the Xtensa file is protected by the X-check
+#  (its stages are compared byte for byte against a baseline), and nothing the
+#  RISC-V chips need - -march instead of -mlongcalls, a fixed-VMA image
+#  instead of runtime PADDR resolution, no flash_cache_init - would fit as a
+#  small branch there.
+#
+#  Chips (the "chip table" below, C5 plan decision A2): everything that names
+#  a chip - the target and arch directories, the XIP linker script, the ROM
+#  linker scripts, the seam sources, the console HAL, the CPU clock variable,
+#  the staging script - is one row per chip, chosen by A1_CHIP. The esp32c6
+#  row carries exactly the strings this file used to spell inline, so the C6
+#  stages are byte-identical to what they were before the table (the X-check
+#  of the C5 plan, stage 1 AC-1i, is what proves it). The esp32c5 row is the
+#  dev repository's cmake/a1_c5_stage1.cmake seam configuration.
 #
 #  What it builds (profiles "minimal" and "wifi-connect"):
 #    fmp3            libfmp3.a from third_party/fmp3_core with the chip/target
-#                    layers in arch/riscv_gcc/esp32c6 and target/m5nanoc6_gcc
-#                    (vendored from fmp3_esp_idf_dev c7fef18, IMPORT_PROVENANCE.md)
+#                    layers in arch/riscv_gcc/<chip> and target/<target>
+#                    (vendored from fmp3_esp_idf_dev: C6 c7fef18, C5 1d96bcba;
+#                    IMPORT_PROVENANCE.md)
 #    seam_objects    application TU, syssvc, console driver, app descriptor,
 #                    CPU clock boost
-#    seam_start      chip_start.S (FMP3 entry) and seam_c6_entry.S (image entry)
+#    seam_start      chip_start.S (FMP3 entry) and seam_<chip>_entry.S (image entry)
 #    seam_cxx        init_array.cpp (esp_run_init_array for the sketch bridge)
 #    wifi_objects    (wifi-connect) the ESP-IDF OS shim, PHY/Wi-Fi hal sources,
 #                    the six esp-idf originals and the lwIP glue under wifi/
 #                    (second copy of the dev esp/shim, IMPORT_PROVENANCE.md),
 #                    plus the Arduino-facing adapter (wifi/adapter) and
-#                    attachInterrupt (arduino/)
-#    fmp3_prebuilt   cmake/prebuilt_stage_c6.cmake -> ${CMAKE_BINARY_DIR}/prebuilt
+#                    attachInterrupt (arduino/). C6 only until C5 stage 3.
+#    fmp3_prebuilt   cmake/prebuilt_stage_<chip>.cmake -> ${CMAKE_BINARY_DIR}/prebuilt
 #
 #  Build facts come from the dev repository's cmake/a1_c6_stage1.cmake (the
 #  seam-c6-* presets; the wifi-connect profile mirrors its if(A1_C6_WIFI)
-#  block); where this file differs it says so in place.
+#  block) and cmake/a1_c5_stage1.cmake (seam-c5-min); where this file differs
+#  it says so in place.
 #
 
 foreach(required
@@ -78,26 +91,92 @@ if(NOT DEFINED FMP3_RUNTIME_PROFILE)
 endif()
 if(NOT FMP3_RUNTIME_PROFILE MATCHES "^(minimal|wifi-connect)$")
     message(FATAL_ERROR
-        "FMP3_RUNTIME_PROFILE must be minimal or wifi-connect for the esp32c6 "
+        "FMP3_RUNTIME_PROFILE must be minimal or wifi-connect for the RISC-V "
         "port (got '${FMP3_RUNTIME_PROFILE}')")
 endif()
 
 #
-#  This runtime is the ESP32-C6 only. build_prebuilt_stages.py always passes
-#  A1_CHIP; a missing value is accepted as esp32c6 the way the Xtensa runtime
-#  accepts a missing value as esp32s3, and anything else is refused.
+#  ---- chip table ----------------------------------------------------------
+#
+#  build_prebuilt_stages.py always passes A1_CHIP; a missing value is
+#  accepted as esp32c6 the way the Xtensa runtime accepts a missing value as
+#  esp32s3 (and as this file did before it had a table), and anything not in
+#  the table is refused.
+#
+#  Per chip:
+#    A1_CHIP_TAG            C6 / C5: the infix of the chip-named build
+#                           definitions (SEAM_<TAG>_CLK_BOOST,
+#                           SEAM_<TAG>_ENTRY_MARK) and cache variables
+#                           (A1_<TAG>_CPU_FREQ_MHZ, A1_<TAG>_SEAM_ENTRY_MARK,
+#                           the target.cmake override A1_<TAG>_LDSCRIPT)
+#    A1_CHIP_TARGET_NAME    target/<name> (FMP3_TARGET)
+#    A1_CHIP_ARCH_NAME      arch/riscv_gcc/<name>, also the SDK's ld name stem
+#    A1_XIP_LD_NAME         the XIP linker script in the target directory
+#    A1_CHIP_ROM_LD         the SDK ld/ file whose presence proves the SDK
+#    A1_CHIP_USBJTAG_HAL    the target's USB-Serial/JTAG console HAL
+#    A1_CHIP_SEAM_APPDESC / A1_CHIP_SEAM_CLK / A1_CHIP_SEAM_ENTRY
+#                           the seam sources under seam/ (dev esp/boot)
+#    A1_CHIP_PREBUILT_SCRIPT cmake/prebuilt_stage_<chip>.cmake
+#    A1_CHIP_CPU_FREQ_CHOICES / A1_CHIP_CPU_FREQ_DEFAULT / A1_CHIP_CPU_FREQ_BOOST
+#                           the MHz values the chip layer is calibrated for,
+#                           the default, and the value at which the seam
+#                           entry raises the clock (SEAM_<TAG>_CLK_BOOST)
+#    A1_CHIP_WIFI           ON when this file can stage wifi-connect for the
+#                           chip (C5: stage 3 of the C5 plan)
+#    A1_ROM_LDS_<profile>   the ROM linker scripts per profile (below)
 #
 if(NOT DEFINED A1_CHIP OR A1_CHIP STREQUAL "")
     set(A1_CHIP esp32c6)
 endif()
-if(NOT A1_CHIP STREQUAL "esp32c6")
+if(A1_CHIP STREQUAL "esp32c6")
+    set(A1_CHIP_TAG C6)
+    set(A1_CHIP_TARGET_NAME m5nanoc6_gcc)
+    set(A1_CHIP_ARCH_NAME esp32c6)
+    set(A1_XIP_LD_NAME esp32c6_xip.ld)
+    set(A1_CHIP_ROM_LD esp32c6.rom.ld)
+    set(A1_CHIP_USBJTAG_HAL esp32c6_usbjtag_hal.c)
+    set(A1_CHIP_SEAM_APPDESC seam_c6_appdesc.c)
+    set(A1_CHIP_SEAM_CLK seam_c6_clk.c)
+    set(A1_CHIP_SEAM_ENTRY seam_c6_entry.S)
+    set(A1_CHIP_PREBUILT_SCRIPT prebuilt_stage_c6.cmake)
+    #  80 MHz is what the bootloader leaves; 160 MHz is the ESP-IDF default
+    #  and the setting the dev repository validated Wi-Fi with (S1-6).
+    set(A1_CHIP_CPU_FREQ_CHOICES 80 160)
+    set(A1_CHIP_CPU_FREQ_DEFAULT 160)
+    set(A1_CHIP_CPU_FREQ_BOOST 160)
+    set(A1_CHIP_WIFI ON)
+elseif(A1_CHIP STREQUAL "esp32c5")
+    set(A1_CHIP_TAG C5)
+    set(A1_CHIP_TARGET_NAME m5stampc5_gcc)
+    set(A1_CHIP_ARCH_NAME esp32c5)
+    set(A1_XIP_LD_NAME esp32c5_xip.ld)
+    set(A1_CHIP_ROM_LD esp32c5.rom.ld)
+    set(A1_CHIP_USBJTAG_HAL esp32c5_usbjtag_hal.c)
+    set(A1_CHIP_SEAM_APPDESC seam_c5_appdesc.c)
+    set(A1_CHIP_SEAM_CLK seam_c5_clk.c)
+    set(A1_CHIP_SEAM_ENTRY seam_c5_entry.S)
+    set(A1_CHIP_PREBUILT_SCRIPT prebuilt_stage_c5.cmake)
+    #  80 MHz is what the bootloader leaves (PLL_F240M / 3); 240 MHz is the
+    #  M5Stack core's f_cpu for the board and the condition the dev
+    #  repository measured Wi-Fi and SIL_DLY under (C5 plan A6, dev D5).
+    #  There is no 160: the C5 keeps the PLL_F240M source and only changes
+    #  the divider (seam/seam_c5_clk.c).
+    set(A1_CHIP_CPU_FREQ_CHOICES 80 240)
+    set(A1_CHIP_CPU_FREQ_DEFAULT 240)
+    set(A1_CHIP_CPU_FREQ_BOOST 240)
+    #  wifi-connect for the C5 is stage 3 of the C5 plan (shim CLIC branch,
+    #  C5 blobs and prebuilt archives). Refused until then rather than
+    #  configured with the C6 lists.
+    set(A1_CHIP_WIFI OFF)
+else()
     message(FATAL_ERROR
-        "ports/m5stack_riscv/runtime builds the esp32c6 only (got A1_CHIP='${A1_CHIP}')")
+        "ports/m5stack_riscv/runtime builds the esp32c6 or the esp32c5 (got A1_CHIP='${A1_CHIP}')")
 endif()
-set(A1_CHIP_TARGET_NAME m5nanoc6_gcc)
-set(A1_CHIP_ARCH_NAME esp32c6)
-set(A1_XIP_LD_NAME esp32c6_xip.ld)
-set(A1_CHIP_ROM_LD esp32c6.rom.ld)
+if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND NOT A1_CHIP_WIFI)
+    message(FATAL_ERROR
+        "the ${A1_CHIP} port cannot stage wifi-connect yet (C5 plan stage 3)")
+endif()
+string(TOLOWER "${A1_CHIP_TAG}" A1_CHIP_TAG_LOWER)
 
 #
 #  ROM linker scripts the sketch link applies, relative to the SDK's ld/
@@ -134,23 +213,35 @@ set(A1_CHIP_ROM_LD esp32c6.rom.ld)
 #  exist in the SDK at configure time, and the list goes into the manifest
 #  as romLinkerScripts, so the driver links the same set for every sketch.
 #
-set(A1_ROM_LDS_minimal
-    esp32c6.rom.ld
-    esp32c6.rom.api.ld)
-set(A1_ROM_LDS_wifi-connect
-    esp32c6.rom.ld
-    esp32c6.rom.api.ld
-    esp32c6.rom.libc.ld
-    esp32c6.rom.libgcc.ld
-    esp32c6.rom.newlib.ld
-    esp32c6.rom.libc-suboptimal_for_misaligned_mem.ld
-    esp32c6.rom.version.ld
-    rom.api.ld
-    esp32c6.rom.net80211.ld
-    esp32c6.rom.pp.ld
-    esp32c6.rom.phy.ld
-    esp32c6.rom.systimer.ld
-    esp32c6.rom.coexist.ld)
+#  The C5 minimal set is the same two by name stem (dev seam-c5-min,
+#  target/m5stampc5_gcc/target.cmake). Its wifi-connect set is the same
+#  thirteen (dev a1_c5_stage1.cmake A1_C5_ROM_LD_WIFI_LIST, no
+#  esp32c5.rom.eco3.ld: dev D14, the M5Stamp-C5 is chip rev v1.0) and is
+#  written at stage 3 with the libc-supply decision, not here.
+#
+if(A1_CHIP STREQUAL "esp32c6")
+    set(A1_ROM_LDS_minimal
+        esp32c6.rom.ld
+        esp32c6.rom.api.ld)
+    set(A1_ROM_LDS_wifi-connect
+        esp32c6.rom.ld
+        esp32c6.rom.api.ld
+        esp32c6.rom.libc.ld
+        esp32c6.rom.libgcc.ld
+        esp32c6.rom.newlib.ld
+        esp32c6.rom.libc-suboptimal_for_misaligned_mem.ld
+        esp32c6.rom.version.ld
+        rom.api.ld
+        esp32c6.rom.net80211.ld
+        esp32c6.rom.pp.ld
+        esp32c6.rom.phy.ld
+        esp32c6.rom.systimer.ld
+        esp32c6.rom.coexist.ld)
+elseif(A1_CHIP STREQUAL "esp32c5")
+    set(A1_ROM_LDS_minimal
+        esp32c5.rom.ld
+        esp32c5.rom.api.ld)
+endif()
 if(NOT DEFINED A1_ROM_LDS_${FMP3_RUNTIME_PROFILE})
     message(FATAL_ERROR
         "no ROM linker script list for profile '${FMP3_RUNTIME_PROFILE}' "
@@ -179,42 +270,52 @@ endforeach()
 
 #
 #  CPU clock. The image is entered at 80 MHz (the ESP-IDF 2nd-stage
-#  bootloader leaves the PCR at 480/3/2) and seam_c6_entry.S raises it to
-#  160 MHz before toppers_start when SEAM_C6_CLK_BOOST is defined
-#  (seam/seam_c6_clk.c). 160 MHz is the ESP-IDF default and the setting the
-#  dev repository validated Wi-Fi with, so it is the default here (S1-6);
+#  bootloader leaves the PCR at 480/3/2 on the C6, PLL_F240M/3 on the C5) and
+#  seam_<chip>_entry.S raises it to A1_CHIP_CPU_FREQ_BOOST before
+#  toppers_start when SEAM_<TAG>_CLK_BOOST is defined (seam/seam_<chip>_clk.c).
+#  C6: 160 MHz is the ESP-IDF default and the setting the dev repository
+#  validated Wi-Fi with, so it is the default (S1-6). C5: 240 MHz (A6).
 #  CORE_CLK_MHZ is the value the kernel's timing constants are calibrated
-#  for and has to say the same thing.
+#  for and has to say the same thing. The cache variable keeps its chip name
+#  (A1_C6_CPU_FREQ_MHZ / A1_C5_CPU_FREQ_MHZ) so the documented
+#  --cmake-define fallback (docs/c6-port.md, 80 MHz) is unchanged.
 #
-set(A1_C6_CPU_FREQ_MHZ "160" CACHE STRING "ESP32-C6 CPU frequency (80 or 160 MHz)")
-if(NOT A1_C6_CPU_FREQ_MHZ STREQUAL "80" AND NOT A1_C6_CPU_FREQ_MHZ STREQUAL "160")
+set(A1_CPU_FREQ_VAR A1_${A1_CHIP_TAG}_CPU_FREQ_MHZ)
+string(REPLACE ";" " or " _a1_cpu_freq_choices_text "${A1_CHIP_CPU_FREQ_CHOICES}")
+set(${A1_CPU_FREQ_VAR} "${A1_CHIP_CPU_FREQ_DEFAULT}" CACHE STRING
+    "${A1_CHIP} CPU frequency (${_a1_cpu_freq_choices_text} MHz)")
+set(A1_CPU_FREQ_MHZ "${${A1_CPU_FREQ_VAR}}")
+if(NOT A1_CPU_FREQ_MHZ IN_LIST A1_CHIP_CPU_FREQ_CHOICES)
     message(FATAL_ERROR
-        "A1_C6_CPU_FREQ_MHZ must be 80 or 160 (got '${A1_C6_CPU_FREQ_MHZ}')")
+        "${A1_CPU_FREQ_VAR} must be ${_a1_cpu_freq_choices_text} (got '${A1_CPU_FREQ_MHZ}')")
 endif()
 #  One byte written raw to the USB-Serial/JTAG FIFO at the image entry, before
 #  anything of FMP3 runs; tells "the bootloader jumped" from "FMP3 is silent".
 #  Empty removes the code. Same default as the dev seam builds.
-set(A1_C6_SEAM_ENTRY_MARK "0x53" CACHE STRING
+set(A1_SEAM_ENTRY_MARK_VAR A1_${A1_CHIP_TAG}_SEAM_ENTRY_MARK)
+set(${A1_SEAM_ENTRY_MARK_VAR} "0x53" CACHE STRING
     "ASCII code emitted to USB-Serial/JTAG at the seam entry (empty = none)")
+set(A1_SEAM_ENTRY_MARK "${${A1_SEAM_ENTRY_MARK_VAR}}")
 
 #
 #  Definitions for the kernel and every runtime object. TOPPERS_OMIT_TECS,
-#  TOPPERS_SUPPORT_TLS and TOPPERS_ESP32C6_CONSOLE_USBJTAG are added by
+#  TOPPERS_SUPPORT_TLS and TOPPERS_ESP32C6_CONSOLE_USBJTAG (C5:
+#  TOPPERS_ESP32C5_CONSOLE_USBJTAG, USE_RISCV_DIRECT_TRAP) are added by
 #  target.cmake / chip.cmake; -march and friends by chip.cmake. All of them
 #  reach the runtime objects through the fmp3 target's PUBLIC properties (see
 #  seam_common below), so the kernel and the runtime cannot drift apart.
 #
 set(FMP3_COMPILE_DEFS
-    CORE_CLK_MHZ=${A1_C6_CPU_FREQ_MHZ})
-if(A1_C6_CPU_FREQ_MHZ STREQUAL "160")
-    list(APPEND FMP3_COMPILE_DEFS SEAM_C6_CLK_BOOST=1)
+    CORE_CLK_MHZ=${A1_CPU_FREQ_MHZ})
+if(A1_CPU_FREQ_MHZ STREQUAL "${A1_CHIP_CPU_FREQ_BOOST}")
+    list(APPEND FMP3_COMPILE_DEFS SEAM_${A1_CHIP_TAG}_CLK_BOOST=1)
 endif()
-if(NOT A1_C6_SEAM_ENTRY_MARK STREQUAL "")
-    list(APPEND FMP3_COMPILE_DEFS SEAM_C6_ENTRY_MARK=${A1_C6_SEAM_ENTRY_MARK})
+if(NOT A1_SEAM_ENTRY_MARK STREQUAL "")
+    list(APPEND FMP3_COMPILE_DEFS SEAM_${A1_CHIP_TAG}_ENTRY_MARK=${A1_SEAM_ENTRY_MARK})
 endif()
 set(FMP3_INCLUDE_DIRS
     "${FMP3_APPLICATION_DIR}"
-    #  seam_c6_clk.h for anything that wants the boost result.
+    #  seam_<chip>_clk.h for anything that wants the boost result.
     "${RUNTIME_ROOT}/seam")
 
 #
@@ -379,16 +480,17 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     endforeach()
 endif()
 
-project(toppers_fmp3_arduino_runtime_c6 C CXX ASM)
+project(toppers_fmp3_arduino_runtime_${A1_CHIP_TAG_LOWER} C CXX ASM)
 
 set(FMP3_TARGET "${A1_CHIP_TARGET_NAME}")
 set(FMP3_TARGET_DIR "${RUNTIME_ROOT}/target/${A1_CHIP_TARGET_NAME}")
 set(FMP3_CHIP_DIR "${RUNTIME_ROOT}/arch/riscv_gcc/${A1_CHIP_ARCH_NAME}")
 set(A1_XIP_LD "${FMP3_TARGET_DIR}/${A1_XIP_LD_NAME}")
 #  The XIP linker script also serves the cfg pass-1 link (cfg1_out), as in
-#  the dev seam builds (A1_C6_LDSCRIPT); its ENTRY symbol is absent there,
-#  which the linker reports as a warning only.
-set(A1_C6_LDSCRIPT "${A1_XIP_LD}")
+#  the dev seam builds (A1_C6_LDSCRIPT / A1_C5_LDSCRIPT, the target.cmake
+#  override); its ENTRY symbol is absent there, which the linker reports as
+#  a warning only.
+set(A1_${A1_CHIP_TAG}_LDSCRIPT "${A1_XIP_LD}")
 set(FMP3_LIBRARY_ONLY ON)
 #  Single core: target_kernel.h refuses any other TNUM_PRCID.
 set(FMP3_PRC_NUM 1)
@@ -441,15 +543,17 @@ add_library(seam_objects OBJECT
     "${FMP3_CORE_ROOT}/library/vasyslog.c"
     "${FMP3_CORE_ROOT}/library/t_perror.c"
     "${FMP3_CORE_ROOT}/library/strerror.c"
-    #  Console: USB-Serial/JTAG (chip.cmake ESP32C6_CONSOLE=usbjtag; the
-    #  M5NanoC6 has no UART bridge). These two are what fmp3_add_syssvc()
-    #  would add from FMP3_SYSSVC_TARGET_C_FILES in a non-library build.
+    #  Console: USB-Serial/JTAG (chip.cmake ESP32C6_CONSOLE / ESP32C5_CONSOLE
+    #  = usbjtag; neither board has a UART bridge). These two are what
+    #  fmp3_add_syssvc() would add from FMP3_SYSSVC_TARGET_C_FILES in a
+    #  non-library build.
     "${FMP3_CHIP_DIR}/chip_serial.c"
-    "${FMP3_TARGET_DIR}/esp32c6_usbjtag_hal.c"
+    "${FMP3_TARGET_DIR}/${A1_CHIP_USBJTAG_HAL}"
     #  esp_app_desc at the head of the DROM segment; the bootloader reads it.
-    "${RUNTIME_ROOT}/seam/seam_c6_appdesc.c"
-    #  80 -> 160 MHz, called from seam_c6_entry.S when SEAM_C6_CLK_BOOST.
-    "${RUNTIME_ROOT}/seam/seam_c6_clk.c"
+    "${RUNTIME_ROOT}/seam/${A1_CHIP_SEAM_APPDESC}"
+    #  80 -> 160 (C6) / 240 (C5) MHz, called from the seam entry when
+    #  SEAM_<TAG>_CLK_BOOST.
+    "${RUNTIME_ROOT}/seam/${A1_CHIP_SEAM_CLK}"
     #  _exit / _kill / _getpid / _write / __getreent for newlib-nano's
     #  __stack_chk_fail path: the M5Stack core builds every sketch with
     #  -fstack-protector, so a sketch with a local char array needs them.
@@ -458,15 +562,19 @@ target_link_libraries(seam_objects PRIVATE seam_common)
 add_dependencies(seam_objects generate_cfg_gen_files)
 
 #
-#  Startup: chip_start.S is the C6 replacement for fmp3_core's common
+#  Startup: chip_start.S is the chip's replacement for fmp3_core's common
 #  start.S (chip.cmake swaps it in FMP3_START_FILES; the common one issues
 #  FPU instructions the rv32imac assembler rejects) and defines
-#  toppers_start. seam_c6_entry.S is the image entry the bootloader jumps to
-#  (ENTRY(seam_c6_entry) in esp32c6_xip.ld); it ends in toppers_start.
+#  toppers_start. seam_<chip>_entry.S is the image entry the bootloader jumps
+#  to; it ends in toppers_start. C6: ENTRY(seam_c6_entry) in esp32c6_xip.ld.
+#  C5: the dev linker script keeps ENTRY(toppers_start) and the seam build
+#  passes -e (dev a1_c5_stage1.cmake); here the -e goes into the manifest's
+#  linkBaseFlags (see XIP_LINK_BASE_FLAGS below) - seam_c5_entry_boost
+#  (clock boost, then seam_c5_entry) at 240 MHz, seam_c5_entry at 80.
 #
 add_library(seam_start OBJECT
     "${FMP3_CHIP_DIR}/chip_start.S"
-    "${RUNTIME_ROOT}/seam/seam_c6_entry.S")
+    "${RUNTIME_ROOT}/seam/${A1_CHIP_SEAM_ENTRY}")
 target_link_libraries(seam_start PRIVATE seam_common)
 target_include_directories(seam_start PRIVATE
     "${FMP3_CORE_ROOT}/kernel")
@@ -475,7 +583,7 @@ add_dependencies(seam_start generate_cfg_gen_files)
 #
 #  esp_run_init_array() for src/bridge/ArduinoSketchBridge.cpp. Chip
 #  independent; the copy is the Xtensa runtime's seam/init_array.cpp. The
-#  symbols it walks are defined by esp32c6_xip.ld (S1-5).
+#  symbols it walks are defined by the chip's XIP linker script (S1-5).
 #
 add_library(seam_cxx OBJECT
     "${RUNTIME_ROOT}/seam/init_array.cpp")
@@ -629,6 +737,15 @@ file(GENERATE OUTPUT "${PREBUILT_CONSUMER_OBJS_FILE}"
 #
 set(XIP_LINK_BASE_FLAGS ${A1_LINK_ISA_FLAGS}
     -nostartfiles -nostdlib -Wl,--build-id=none)
+if(A1_CHIP STREQUAL "esp32c5")
+    #  The image entry (see seam_start above). GNU ld takes -e over the
+    #  script's ENTRY(), which is how the dev seam build selects it too.
+    if(A1_CPU_FREQ_MHZ STREQUAL "${A1_CHIP_CPU_FREQ_BOOST}")
+        list(APPEND XIP_LINK_BASE_FLAGS -Wl,-e,seam_c5_entry_boost)
+    else()
+        list(APPEND XIP_LINK_BASE_FLAGS -Wl,-e,seam_c5_entry)
+    endif()
+endif()
 string(JOIN "@@" XIP_LINK_BASE_FLAGS ${XIP_LINK_BASE_FLAGS})
 set(XIP_LINK_UFLAGS
     -Wl,--undefined=_kernel_mpfinib_table
@@ -712,7 +829,7 @@ add_custom_command(
         "-DLINK_TAIL_FLAGS=${XIP_LINK_TAIL_FLAGS}"
         "-DEXTRA_TSCRIPTS="
         "-DARDUINO_OBJECT_NAMES=${PREBUILT_ARDUINO_OBJECTS}"
-        -P "${RUNTIME_ROOT}/cmake/prebuilt_stage_c6.cmake"
+        -P "${RUNTIME_ROOT}/cmake/${A1_CHIP_PREBUILT_SCRIPT}"
     DEPENDS
         #  Target names alone give order-only dependencies; list the objects
         #  too so a recompiled object re-stages (Xtensa runtime's note).
@@ -720,9 +837,9 @@ add_custom_command(
         "$<TARGET_FILE:fmp3>"
         ${PREBUILT_CONSUMER_OBJECTS}
         ${WIFI_PREBUILT_ARCHIVES}
-        "${RUNTIME_ROOT}/cmake/prebuilt_stage_c6.cmake"
+        "${RUNTIME_ROOT}/cmake/${A1_CHIP_PREBUILT_SCRIPT}"
         "${A1_XIP_LD}"
-    COMMENT "Staging sketch-independent ${FMP3_RUNTIME_PROFILE} FMP3 artifacts (esp32c6)"
+    COMMENT "Staging sketch-independent ${FMP3_RUNTIME_PROFILE} FMP3 artifacts (${A1_CHIP})"
     VERBATIM)
 
 add_custom_target(fmp3_prebuilt DEPENDS "${PREBUILT_MANIFEST}")
