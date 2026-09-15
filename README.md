@@ -70,8 +70,10 @@ prebuilt archive、include 配置に依存しています）。
   wifi-connect のみ）。Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
-  （**M5NanoC6 の成果物はホスト間バイト一致の対象外**--ELF の
-  `.debug_str` にビルドパスが残るため。下記「既知の制限」参照）
+  （**M5NanoC6 の成果物はホスト間バイト一致の対象外**: 3 ホストでの
+  同一性は未計測です。driver 4（S5-8）でビルドパス依存は解消しましたが
+  （同一ホスト内で build path を変えても `.bin` が一致することは実測済み）、
+  cross-host は未検証のままです。下記「M5NanoC6 の既知の制限」参照）
 - CoreS3 実機で、M5Unified（LCD・touch、SMP カーネル上）と Wi-Fi 接続
   （Open / WPA2-PSK / WPA3-SAE -> DHCP -> DNS -> TCP）
 - M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
@@ -106,6 +108,9 @@ prebuilt archive、include 配置に依存しています）。
   （adapter のコードは共通）。有界の再試行は現状スケッチ側の責務です。
 - **`attachInterrupt` はリンクできるところまでで、実機での動作確認はまだです**
   （段6 の候補）。
+- **成果物のホスト間（Windows／Linux／macOS）バイト一致は未計測です。**
+  driver 4（S5-8）で「同じホスト内で build path を変えても `.bin` が一致する」
+  ことは実測済みですが、cross-host の一致はまだ確認していません。
 - **M5Unified 相当の profile はありません。** LCD・touch・IMU 等を使う
   `M5Unified + Dual Core` 構成は M5NanoC6 には提供していません。
 

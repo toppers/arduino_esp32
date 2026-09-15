@@ -48,9 +48,16 @@
    `BUILDING.md`「ESP-IDF を複製しない」からの逸脱。dev の C6 Wi-Fi 構成が esp-idf submodule
    から直接コンパイルする 6 本（`.c`）と、`netif_esp32s3.c` が include する lwIP contrib の
    ヘッダ 3 本（M5Stack core の SDK には含まれない）。内容は無改変、Apache-2.0 / BSD-3 の
-   ヘッダを保持。**段5 の判断 S5-2（2026-09-15）: 維持** -- core の `.a` メンバ + `vPort*` シム案は
-   未検証で、段4 の実機実績は vendored 版のもの。再評価の条件は M5Stack core の固定版が
-   動くとき（`BUILDING.md` の例外条項）。なお 9（下記）の既定 OFF では lwIP contrib ヘッダ 3 本は
+   ヘッダを保持。**理由**: M5Stack core の `esp32c6-libs` が持つ `.a`（`libesp_hw_support.a`／
+   `libhal.a`）のこの 6 本に対応するメンバは `vPortEnterCritical`／`vPortExitCritical`／
+   `xPortInIsrContext`（FreeRTOS のクリティカルセクション API）を未解決参照として要求するが、
+   FMP3 はこれらを提供しない。そのため `.a` のメンバをそのままリンクする経路は使えず、
+   dev はこの 6 本をソースから FreeRTOS スタブ（`esp/bt/stub/include`）に対してリンクしている
+   （出典: 開発リポジトリ `.steering/20260915-c6-arduino-plan/INVESTIGATION.md` 2-3 節）。
+   **段5 の判断 S5-2（2026-09-15）: 維持** -- core の `.a` メンバ + `vPort*` シム案は未検証で、
+   段4 の実機実績は vendored 版のもの。**再評価の条件**は、(1) 「core の `.a` メンバ + `vPort*`
+   シム」経路を実際に検証する、または (2) 固定中の M5Stack core バージョンが動く、のどちらか
+   （`BUILDING.md` の例外条項）。なお 9（下記）の既定 OFF では lwIP contrib ヘッダ 3 本は
    どの TU からも include されない（ON のときだけ使う）が、同梱は維持する。
 7. **ファイル名の変更のみ**（`idf_src/efuse_hal_esp32c6.c`）: esp-idf の `hal/efuse_hal.c` と
    `hal/esp32c6/efuse_hal.c` は同名で、stage は全オブジェクトを 1 つのディレクトリに

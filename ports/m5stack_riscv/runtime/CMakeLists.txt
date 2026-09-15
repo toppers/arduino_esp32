@@ -503,12 +503,18 @@ add_dependencies(seam_cxx generate_cfg_gen_files)
 #    wifi/idf_src   the six esp-idf v5.5.4 originals (D8: vendored, a
 #                   recorded deviation from BUILDING.md; the chip efuse_hal.c
 #                   is renamed efuse_hal_esp32c6.c because the stage keeps
-#                   every object in one directory by basename). Stage 5
-#                   decision S5-2: kept as vendored copies. The alternative
-#                   (the core's .a members plus vPort* shims) is unverified,
-#                   and stage 4's hardware record is with these files; the
-#                   condition for re-evaluating is a move of the pinned
-#                   M5Stack core version (BUILDING.md exception clause).
+#                   every object in one directory by basename). Reason: the
+#                   matching members of the core's esp32c6-libs .a files
+#                   (libesp_hw_support.a / libhal.a) require
+#                   vPortEnterCritical/vPortExitCritical/xPortInIsrContext
+#                   (FreeRTOS) as undefined references, which FMP3 does not
+#                   supply, so these are compiled from source against a
+#                   FreeRTOS stub instead (dev repo INVESTIGATION.md 2-3).
+#                   Stage 5 decision S5-2: kept as vendored copies; stage 4's
+#                   hardware record is with these files. Re-evaluate when
+#                   either the "core's .a members + vPort* shim" route is
+#                   actually verified, or the pinned M5Stack core version
+#                   moves (BUILDING.md exception clause).
 #    wifi/net       lwIP glue of the dev type (D7): netif_esp32s3.c and the
 #                   sys_arch port; liblwip.a itself is prebuilt. The three
 #                   lwIP contrib headers under net/lwip_contrib_include are

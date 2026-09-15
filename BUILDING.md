@@ -238,16 +238,18 @@ M5NanoC6 7 = 計 47。導出の正本はコマンドそのもので、この数�
   行ってください（Boards Manager が強制します）。
 - **M5NanoC6 イメージのビルドパス非依存化（S5-8）。** 段5 の 4 板 verify で、
   同じソース・同じステージから建てた M5NanoC6 の 7 成果物が、ビルドパスの
-  綴りが違うだけで 64 バイト（esptool が書く app descriptor の ELF sha256と
-  イメージ末尾ハッシュ）だけ異なることが分かりました。原因は arduino-cli が
-  コンパイルするスケッチ／コアのオブジェクトの `.debug_str` にビルドパスが
+  綴りが違うだけで 64-65 B（esptool が書く app descriptor の ELF sha256・32 B
+  とイメージ末尾ハッシュ・32 B の 2 本。実測では 64 バイトの差になることも
+  65 バイトの差になることもあります--2 本のハッシュのどちらかで 1 バイトが
+  たまたま一致する場合があるため）だけ異なることが分かりました。原因は
+  arduino-cli がコンパイルするスケッチ／コアのオブジェクトの `.debug_str` にビルドパスが
   残ること（stage 側は `-ffile-prefix-map` で対策済みだが、スケッチ側の
   コンパイルはその外）です。**stage-5 の fix wave（driver 4、commit `aa62fde`）**で
   `fmp3-link` の fixed-vma 経路に、`elf2image` の前に ELF のコピーを
   `--strip-debug` する処理を追加し（読み込む内容は不変）、`app_elf_sha256`
   が DWARF に依存しないようにしました。実測（positive control）: 同じスケッチを
   2 つの異なる build path で建てて `.bin` の sha256 が一致することを確認済みです
-  （strip を外すと 65 バイトが再び異なります）。Xtensa（schema 1／runtime-mmu
+  （strip を外すと 64-65 バイトが再び異なります）。Xtensa（schema 1／runtime-mmu
   経路）はこの変更の対象外（driver 3/4 の再リンクで app bin が byte 同一なことを
   確認済み）。**ただしこの実測は 1 ホスト内の build path 差のみで、3 ホストの
   バイト一致は Xtensa 側についての記述です。** M5NanoC6 の成果物についてホスト間
@@ -348,16 +350,30 @@ PY
   構成が違う 4 板の表駆動へ変わりました）。触る箇所は次の名前で引けます。
   - `scripts/verify_package.py` の `BOARD_PROFILES`（板 -> 選べる構成の集合）
     と `PROFILES`（構成 -> 例題）。本数の導出はこの 2 つの直積です。
-  - `scripts/build_prebuilt_stages.py` の chip -> profile の対応表。
+  - `scripts/build_prebuilt_stages.py` の chip -> profile の対応表（`CHIPS`）。
   - `ports/<xtensa|riscv>/runtime/CMakeLists.txt` の構成分岐。
-  - `scripts/install_platform.py` の `UPLOAD_SIZE_OVERRIDES`（size 表示の
-    分母を上書きする板だけの表）を含むメニュー定義。
+  - `scripts/install_platform.py` の `BOARDS`／メニュー定義と
+    `UPLOAD_SIZE_OVERRIDES`（size 表示の分母を上書きする板だけの表）。
   - `packaging/release-allowlist.json` の `releaseArtifacts.platformArchive`
     配下、`prebuiltStages`（チップ -> 必須 profile）と
     `chipToolDependencies`（チップ -> 必須ツール）の 2 つの表。
-  - `.github/workflows/verify-package.yml` の chip ループと stage 存在検査。
-  どれか 1 つだけ更新すると、`scripts/test_check_release_artifacts.py` の
-  ドリフト検査（上の表どうしが一致することを確認する）が落ちます。
+  - `.github/workflows/verify-package.yml` の chip ループ・板名検査・
+    stage 存在検査の spec 文字列。
+
+  **このうち機械的に一致を強制されている（ドリフト検査がある）のは次だけです。**
+  `scripts/test_check_release_artifacts.py:352-380` が、`packaging/
+  release-allowlist.json` の `prebuiltStages`／`chipToolDependencies` と、
+  `make_package_index.CHIP_TOOL_DEPENDENCIES`、`install_platform.
+  EXPECTED_PROFILES`＋`CHIP_ONLY_ENTRIES`、`xcheck_compare.profiles_for()`
+  （`build_prebuilt_stages.CHIPS` から導出）の 4 つが同じ内容であることを
+  比較します。**それ以外**--`verify_package.py` の `BOARD_PROFILES`／
+  `PROFILES`、CI yml の spec 文字列と板名リスト、`ports/*/runtime/
+  CMakeLists.txt` の構成分岐、`install_platform.py` の `BOARDS`／
+  メニュー定義／`UPLOAD_SIZE_OVERRIDES`--は**どのテストにも縫い付けられて
+  いません**。ずれても `test_check_release_artifacts.py` は落ちず、実際に
+  `verify_package.py` を走らせるか CI を回さない限り気づけません
+  （レビューで `BOARD_PROFILES` に架空の `"m5"` を M5NanoC6 行へ足しても
+  テストは green のままであることを実演済み）。
 
 ### どこに何を置くか
 
@@ -391,9 +407,15 @@ PY
   >
   > - **esp-idf 原本 6 本**（Apache-2.0）: `periph_ctrl.c` `modem_clock.c`
   >   `modem_clock_hal.c` `efuse_hal.c` `efuse_hal_esp32c6.c`
-  >   `phy_init_data.c`。M5Stack core の SDK には `.a` としてしか入っておらず、
-  >   C6 の Wi-Fi 初期化シーケンスがこれらを個別にコンパイル・リンクする
-  >   構成を要求するため。
+  >   `phy_init_data.c`。**理由**: M5Stack core の `esp32c6-libs` が持つ
+  >   `.a`（`libesp_hw_support.a`／`libhal.a`）のこれらに対応するメンバは、
+  >   `vPortEnterCritical`／`vPortExitCritical`／`xPortInIsrContext`
+  >   （FreeRTOS のクリティカルセクション API）を未解決参照として要求します
+  >   が、FMP3 はこれらを提供しません。そのため `.a` のメンバをそのまま
+  >   リンクする経路は使えず、開発リポジトリはこの 6 本を esp-idf の
+  >   ソースからコンパイルし、FreeRTOS スタブ（`esp/bt/stub/include`）に
+  >   対してリンクしています（出典: 開発リポジトリ
+  >   `.steering/20260915-c6-arduino-plan/INVESTIGATION.md` 2-3 節）。
   > - **lwIP contrib ヘッダ 3 本**（BSD-3-Clause）: `ping.h` `tcpecho_raw.h`
   >   `udpecho_raw.h`。`netif_esp32s3.c` が include するが、M5Stack core の
   >   SDK は lwIP contrib apps のヘッダを含まない（実体は `liblwip.a` の
@@ -403,10 +425,10 @@ PY
   > fmp3_esp_idf_dev.git`）で、内容は無改変・原ライセンスヘッダ保持。
   > 1 本ごとの正確な出自と改変境界は
   > [`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md)
-  > （このファイルでは再掲しない）。**再評価の条件**は、M5Stack core が
-  > この 9 本を `.a` のメンバとして公開する（または FMP3 側に `vPort*`
-  > シムを実装してこれらへの依存自体を無くす）ようになったときで、
-  > いずれも段5 時点では未検証。それまではこの例外のまま維持します
+  > （このファイルでは再掲しない）。**再評価の条件**は、(1) 「core の
+  > `.a` メンバ + `vPort*` シム」経路を実際に検証する、または (2) 固定中の
+  > M5Stack core バージョンが動く、のどちらかが起きたときです。いずれも
+  > 段5 時点ではまだ起きていません。それまではこの例外のまま維持します
   > （段5 判断 S5-2）。
 - **M5Unified 構成は大量の `-Wl,--wrap=` で mangled C++ シンボルを差し替えて
   います**（`ports/m5stack_xtensa/runtime/CMakeLists.txt`）。M5Unified／M5GFX の
@@ -475,10 +497,14 @@ python scripts/test_xcheck.py                # 判定器自身の自己テスト
 ```
 
 - **既定の比較対象は Xtensa（`esp32s3`／`esp32`）の 7 stage のままです。**
-  `xcheck_baseline.py --chips esp32c6` は C6 の baseline を別途採れますが、
-  既定の baseline ディレクトリを上書きしてしまうので、C6 用には
-  `--baseline-directory` で別の場所を指定してください。C6 の golden を
-  比較対象にするかどうかは今後の判断です（段5 時点では未定）。
+  `xcheck_baseline.py --chips esp32c6` を既定の baseline ディレクトリに対して
+  実行すると、既存の baseline がある限り **`--force` 無しでは拒否されます**
+  （rc=1、「先に取り直す理由がない限り上書きしない」設計）。**`--force` を
+  付けると、指定した `--chips` に関わらず既存の baseline セット全体
+  （Xtensa の分も含む）を消して置き換えます。** C6 だけの baseline が欲しい
+  ときは、既定のディレクトリへ `--force` するのではなく、
+  `--baseline-directory <別の場所>` で完全に別の置き場所を指定してください。
+  C6 の golden を比較対象にするかどうかは今後の判断です（段5 時点では未定）。
 - 比較するのは `link-manifest.json`（バイト一致。時刻系キーだけの差は注記つき
   MATCH）、`objects.rsp`、`objs/*.o` の sha256（`banner.o` は `--strict`
   無しでは除外）、`lib/*.a`、その他のファイル。stage が片側にしか無ければ
