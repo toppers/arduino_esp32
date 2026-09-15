@@ -91,6 +91,24 @@ SDK headers, linker scripts and libraries (`esp32c6-libs`) that the M5Stack Ardu
 core 3.3.8 installs; none of those files are copied into this repository or into the
 Release ZIP.
 
+## ESP32-C5 (M5Stamp-C5) port
+
+The same `ports/m5stack_riscv/runtime` also holds, as a chip branch beside the C6
+files (C5 plan decision A2), the ESP32-C5 chip layer (`arch/riscv_gcc/esp32c5`), the
+M5Stamp-C5 target layer (`target/m5stampc5_gcc`), the seam boot glue (`seam/seam_c5_*`)
+and the `config/esp32c5/sdkconfig.h` configuration header, selected from the same
+development repository `https://github.com/exshonda/fmp3_esp_idf_dev.git` at commit
+`1d96bcba32a043eb7066126550b0dbe598e4aad6` (2026-09-16). The provenance model, the
+license headers and the modification kinds are those of the C6 section above (the
+SDK path remapping in `target.cmake` and the `.init_array`/`.ctors` and
+`.eh_frame`/`.gcc_except_table` linker input in `esp32c5_xip.ld`; nothing else is
+modified), recorded file by file in the C5 section of
+[`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md).
+`runtime/arduino/arduino_interrupt_c5.{c,cfg,h}` and `runtime/arduino/arduino_gpio_c5.c`
+were newly written for this repository from their C6 counterparts. At build time the
+port uses the RISC-V toolchain (`esp-rv32`) and the ESP32-C5 SDK (`esp32c5-libs`) of the
+M5Stack Arduino core 3.3.8, which are not copied into this repository or the Release ZIP.
+
 ### 段3: wifi-connect profile の追加出典（2026-09-15）
 
 `ports/m5stack_riscv/runtime/wifi/` の Wi-Fi shim は、`ports/m5stack_xtensa/runtime/wifi/shim`

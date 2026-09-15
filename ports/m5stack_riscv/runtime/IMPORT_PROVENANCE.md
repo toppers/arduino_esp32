@@ -295,3 +295,81 @@ wifi-connect だけが include path に加える（minimal は不変）。
 | `runtime/arduino/arduino_interrupt.{c,cfg,h}` | `runtime/arduino/arduino_interrupt.{c,cfg,h}` | **あり** | S3-4: 線 19、GPIO ソース `ETS_GPIO_INTR_SOURCE`（30）を kernel の `_kernel_esp32c6_intmtx_route` で配線（MAP レジスタ直書きではない）。`hal/gpio_ll.h` の esp32c6 版（`status_high` 系は無い = 32 本未満）。衝突検査は `INTNO_TIMER` / `INTNO_SIO` / `esp_shim_intr_intmtx_lines.h` の範囲 / 18,20,21。未対応モードは失敗（WARNING + attach しない）。段3 はリンクまで、動作は段6 |
 | `app/wifi_connect/phase9_wifi_connect_app.{c,cfg,h}` | `app/wifi_connect/phase9_wifi_connect_app.{c,cfg,h}` | **あり** | `TA_FPU` 除去、`CLASS(CLS_PRC1)`、`INCLUDE("net.cfg")` を追加（dev 型 lwIP の `NET_TSK` / sys_arch プール）。`esp_shim_intr_intmtx.cfg` は CMake が cfg ファイルとして先に渡す |
 | （新規） | `runtime/CMakeLists.txt` の追記 | - | `wifi_objects` に上記 5 TU を追加、`FMP3_INCLUDE_DIRS` に `wifi/adapter` と `arduino`（cfg の INCLUDE 解決） |
+
+## ESP32-C5（M5Stamp-C5、C5 計画 段1、2026-09-16）: chip 分岐として並置した C5 の層
+
+`docs/c5-port.md` の A2（`ports/m5stack_riscv` を chip 分岐にし、C5 の層を C6 の隣に並置する）に
+従って足した分。`packaging/release-allowlist.json` の `portBaseRepositoryC5` / `portBaseCommitC5`
+と同じ出典である。**C6 の層（上記）は 1 バイトも触っていない**（C5 計画 段0 の baseline に対する
+X-check 9/9 MATCH。`runtime/CMakeLists.txt` の chip 表化は構造の変更で、C6 の値は同じ）。
+
+- 出典: `https://github.com/exshonda/fmp3_esp_idf_dev.git`（非公開の開発リポジトリ）
+  commit **`1d96bcba32a043eb7066126550b0dbe598e4aad6`**（2026-09-16、C5 計画 3 完了 commit）。
+- 取込み: 2026-09-16（arduino_esp32 C5 計画 段1 Task 3）。`git archive 1d96bcba <path>` で当該
+  commit の内容をそのまま写した。
+- 出典側との照合コマンド（改変「なし」の行はこれで 0 差分になる）:
+  `git -C <dev repo> show 1d96bcba:<dev path> | cmp - <arduino path>`
+- 出典側にある `arch/riscv_gcc/esp32c5/IMPORT_PROVENANCE.md` と
+  `target/m5stampc5_gcc/IMPORT_PROVENANCE.md` は、さらに上流（asp3_esp_idf / P4 / C6）から dev への
+  出典と改変の記録で、そのまま同梱している。
+- fmp3_core は C6 と同じ既存 submodule `685b36a` を使い、無改変。`chip.cmake` が共通
+  `arch/riscv_gcc/common/start.S` を `chip_start.S` へ差し替える仕組み、共通 `clic_kernel_impl.c`
+  を積む仕組みもそのまま。
+
+### 改変の方針（C5）
+
+C6 の改変方針 1（SDK パスの写像）、2（C++ 静的初期化の表）、3（unwind 表の入力規則）を **同じ
+内容で** C5 の `target.cmake` / `esp32c5_xip.ld` に施した。4（`TA_FPU` 除去）と 5（`PADDR_PROBE`
+削除）は C6 のアプリ `app/phase3/` を共有するので C5 で新たに行うことは無い。6-9（wifi-connect
+の逸脱）は段3。C5 固有の改変は無い。
+
+### chip 層 `runtime/arch/riscv_gcc/esp32c5/`（dev `fmp3/arch/riscv_gcc/esp32c5/`、23 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `fmp3/arch/riscv_gcc/esp32c5/IMPORT_PROVENANCE.md` | `runtime/arch/riscv_gcc/esp32c5/IMPORT_PROVENANCE.md` | なし | P4 / C6 -> dev の記録。同梱 |
+| `fmp3/arch/riscv_gcc/esp32c5/chip.cmake` | 同名 | なし | `-march=rv32imac_zicsr_zifencei -mabi=ilp32 -mcmodel=medany --specs=nano.specs`、`USE_RISCV_DIRECT_TRAP`（CLIC 非ベクタ）、共通 `clic_kernel_impl.c` の追加、`chip_start.S` 差替え、コンソール選択（usbjtag）はそのまま |
+| `chip_asm.inc` `chip_kernel.h` `chip_kernel.py` `chip_kernel_impl.c` `chip_kernel_impl.h` `chip_rename.def` `chip_rename.h` `chip_serial.c` `chip_serial.cfg` `chip_serial.h` `chip_sil.h` `chip_start.S` `chip_stddef.h` `chip_support.S` `chip_unrename.h` `clic_kernel.py` `esp32c5_clic_kernel_impl.h` `esp32c5.h` `esp32c5_uart.c` `esp32c5_uart.h` `esp32c5_usbjtag.h`（計 21 本） | 同名 | なし | バイト同一（`cmp` で確認）。C6 に無い `clic_kernel.py` / `esp32c5_clic_kernel_impl.h` は CLIC（P4 型）の分、C6 の `intmtx_kernel_impl.h` / `esp32c6_usbjtag.c` に当たるものは C5 では無い（USJ の実体は target 側 `esp32c5_usbjtag_hal.c` のみ） |
+
+### target 層 `runtime/target/m5stampc5_gcc/`（dev `fmp3/target/m5stampc5_gcc/` から `app/` を除く 29 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `fmp3/target/m5stampc5_gcc/target.cmake` | `runtime/target/m5stampc5_gcc/target.cmake` | **あり** | C6 の `target.cmake` と同じ写像: (a) `ESP_SUP_DIR`（esp-idf submodule）の参照を `ARDUINO_SDK_INCLUDE_ROOT` / `ARDUINO_SDK_LD_ROOT`（M5Stack core の `esp32c5-libs/3.3.8/{include,ld}`）へ: include 10 本は `components/X` -> `include/X`、`-L components/soc/esp32c5/ld` -> `-L <ld>`、ROM ld 2 本は `<ld>/esp32c5.rom.ld` / `esp32c5.rom.api.ld`。(b) esp-idf submodule の存在検査を SDK の存在検査（`hal/esp32c5/include/hal/systimer_ll.h`、`esp32c5.rom.ld`）に置換。(c) `esp/config/esp32c5` の参照を本 runtime の `config/esp32c5` へ。(d) 冒頭に改変の説明を英語で追記。`FMP3_TARGET_C_FILES`・cfg/py の列挙・`FMP3_LINK_OPTIONS`（`--gc-sections`、`--build-id=none`、`--undefined=_kernel_*_table` 4 本）・`FMP3_CFG1_OUT_LINK_OPTIONS` は不変 |
+| `fmp3/target/m5stampc5_gcc/esp32c5_xip.ld` | `runtime/target/m5stampc5_gcc/esp32c5_xip.ld` | **あり** | C6 の `esp32c6_xip.ld` と同じ追加: `.flash.rodata` 出力セクションの末尾に (a) `__init_array_start/end`・`__fini_array_start/end`・`__ctors_start/end`・`__dtors_start/end` と対応する `KEEP(*(...))` 入力規則、(b) `.eh_frame` / `.eh_frame_hdr` / `.gcc_except_table` の入力規則。MEMORY（RAM LENGTH = `0x4084E5A0 - 0x40800000`）・`ENTRY(toppers_start)`（seam のエントリは manifest の `linkBaseFlags` の `-Wl,-e,seam_c5_entry_boost` で上書き = dev の `-Wl,-e` と同じ機構）・`.text`・`.flash_rodata_dummy`・`.flash.appdesc`・`.data`（dev が段4 で IRAM 群を移した形のまま）・`.bss`・`.tbss` は不変。実測: 3 例題とも `mapped=2 ram=1 pad=1`、C-1..C-9 成立（`.steering/20260916-c5-arduino-plan/stage1/logs/task4-compile-c5-*.txt`） |
+| `IMPORT_PROVENANCE.md` `diag_recorder.c` `diag_recorder.h` `esp32c5_usbjtag_hal.c` `target_asm.inc` `target_cfg1_out.h` `target_check.py` `target_class.py` `target_hrt64.c` `target_ipi.h` `target_kernel.cfg` `target_kernel.h` `target_kernel_impl.c` `target_kernel_impl.h` `target_kernel.py` `target_rename.def` `target_rename.h` `target_serial.cfg` `target_serial.h` `target_sil.h` `target_stddef.h` `target_syssvc.h` `target_test.h` `target_timer.c` `target_timer.cfg` `target_timer.h` `target_unrename.h`（計 27 本） | 同名 | なし | バイト同一。`diag_recorder.*`・`target_hrt64.c` は minimal では使わない（段3 の wifi-connect で使う）が、target 層を丸ごと写す方針で同梱。C6 の Direct Boot 用 `esp32c6.ld` に当たるものは C5 には無い（dev D2） |
+| `fmp3/target/m5stampc5_gcc/app/**`（`fmp_app`、`usj_probe`） | （持ち込まない） | - | dev の hello / 計測用アプリ。arduino のアプリは C6 と共有の `ports/m5stack_riscv/app/phase3`（chip 非依存。`TA_FPU` 無し、`CLS_PRC1`。C5 の `target_class.py` も `CLS_PRC1 = 1` / `CLS_ALL_PRC1 = 2`） |
+
+### seam `runtime/seam/`（dev `esp/boot/`、4 本。`init_array.cpp` / `newlib_syscalls.c` は C6 と共有）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/boot/seam_c5_appdesc.c` | `runtime/seam/seam_c5_appdesc.c` | なし | `.appdesc` セクションの esp_app_desc スタブ（`mmu_page_size` は C5 では読まれない） |
+| `esp/boot/seam_c5_entry.S` | `runtime/seam/seam_c5_entry.S` | なし | 像のエントリ 2 本: `seam_c5_entry`（`SEAM_C5_ENTRY_MARK`、80 MHz 用）と `seam_c5_entry_boost`（`SEAM_C5_CLK_BOOST` のときだけ組まれる 240 MHz 用。gp/sp を用意して `seam_c5_clk_set()` を呼び `seam_c5_entry` へ）。どちらを ELF のエントリにするかは `runtime/CMakeLists.txt` が `A1_C5_CPU_FREQ_MHZ` から決めて manifest の `linkBaseFlags` に `-Wl,-e,...` で入れる（既定 240 = `seam_c5_entry_boost`） |
+| `esp/boot/seam_c5_clk.c` | `runtime/seam/seam_c5_clk.c` | なし | 80 -> 240 MHz（PCR の CPU_DIV_NUM 2 -> 0 + `bus_clk_update`。ソース切替はしない = dev D5）。結果は `.data` の `g_seam_c5_clk_result`（3 例題とも `0x40800004`） |
+| `esp/boot/seam_c5_clk.h` | `runtime/seam/seam_c5_clk.h` | なし | 同上のヘッダ |
+| `esp/boot/seam_c5_clk.cfg` | （持ち込まない） | - | dev の 240 MHz 証跡用の報告タスク（`CRE_TSK(SEAM_C5_CLK_REPORT_TASK, ...)`、優先度 11）。arduino の stage には配布物としてタスクを 1 本足すことになるため持ち込まない。段2 で 240 MHz の証跡が要るときは、スケッチから `extern "C" seam_c5_clk_result_t g_seam_c5_clk_result` を読む（判断 S1-C5-3、`docs/c5-port.md`） |
+
+### config `runtime/config/esp32c5/`（dev `esp/config/esp32c5/`、1 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/config/esp32c5/sdkconfig.h` | `runtime/config/esp32c5/sdkconfig.h` | なし | hal ヘッダが読む `CONFIG_*`（asp3 の手書きスタブ。`nuttx/config.h` を include しないので C6 の `hal_stub_include/nuttx/config.h` に当たるものは無い = dev `target.cmake` 冒頭 (2)） |
+
+### 本 port で新規に書いたもの（C5、出典なし）
+
+- `runtime/CMakeLists.txt` の esp32c5 行（chip 表）-- dev `cmake/a1_c5_stage1.cmake` の seam-c5-min 相当:
+  `CORE_CLK_MHZ`（既定 240 = A6、`SEAM_C5_CLK_BOOST=1`、80 は `--cmake-define A1_C5_CPU_FREQ_MHZ=80`）、
+  `SEAM_C5_ENTRY_MARK=0x53`、`FMP3_PRC_NUM=1`、cfg1_out に xip ld を使う（`A1_C5_LDSCRIPT`）、ROM ld は
+  minimal で dev と同じ 2 本（`esp32c5.rom.ld` / `esp32c5.rom.api.ld`）。wifi-connect の 13 本
+  （eco3 無し）は段3。dev の `A1_C5_SEAM=1` define は arduino の C5 ソースのどれも読まないので渡さない。
+- `runtime/cmake/toolchain-riscv-esp32c5.cmake` -- `toolchain-riscv-esp32c6.cmake` の c6 -> c5 写し
+  （dev `cmake/toolchain-riscv-esp32c5.cmake` と同じ形。版固定は同じ `esp-14.2.0_20260121`）。
+- `runtime/cmake/prebuilt_stage_c5.cmake` -- `prebuilt_stage_c6.cmake` の写し（`A1_CHIP` の検査を esp32c5 に、
+  flash 4MB は M5Stamp-C5 の `boards.txt`）。C-9 は staging ではなくドライバ側
+  （`scripts/fmp3_link.py` の `FIXED_VMA_LAYOUTS["esp32c5"]`: `chip_id=0x0017`、`board_rev_full=100`）。
+- `runtime/arduino/arduino_interrupt_c5.{c,cfg,h}` / `runtime/arduino/arduino_gpio_c5.c` -- C6 の
+  `arduino_interrupt.{c,cfg,h}` / `arduino_gpio.c` の C5 版（A3。CLIC 線 23、`_kernel_esp32c5_intmtx_route`、
+  `ETS_GPIO_INTR_SOURCE == 31`、USB 13/14、MSPI 15-22、GPIO 0..28。`arduino_gpio.h` は共有）。段1 では
+  どの stage にも組み込まれず、stage の compile 行で `-fsyntax-only` を通しただけ
+  （`stage1/logs/task3-syntax-check-arduino-c5.txt`。`esp_shim_intr_c5_lines.h` は段3 で vendoring）。

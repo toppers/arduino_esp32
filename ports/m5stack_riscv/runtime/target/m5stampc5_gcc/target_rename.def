@@ -1,0 +1,11 @@
+# target_kernel_impl.c
+target_mprc_initialize
+target_initialize
+target_exit
+
+# target_timer.c
+target_hrt_initialize
+target_hrt_terminate
+target_hrt_handler
+
+INCLUDE "chip"

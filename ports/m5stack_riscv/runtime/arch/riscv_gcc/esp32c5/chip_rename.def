@@ -1,0 +1,15 @@
+# chip_kernel_impl.c
+chip_initialize
+chip_terminate
+chip_mprc_initialize
+esp32c5_intmtx_route
+
+# chip_support.S
+trap_vector_table
+irc_begin_int
+irc_end_int
+irc_get_intpri
+irc_begin_exc
+irc_end_exc
+
+INCLUDE "core"
