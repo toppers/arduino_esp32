@@ -12,8 +12,7 @@
  *    M5Stack CoreS3 G8 (Grove Port B p1)
  *    M5Stack Basic  G16 (Grove Port C p1; G8-11 are the flash)
  *    M5StickS3      G9  (Grove port SDA; M5Unified's Ex_I2C SDA for this
- *                       board. Not yet run on hardware: assigned 2026-09-15
- *                       from M5Unified's pin table, link-checked only)
+ *                       board)
  *    other boards   no pin assigned: the sketch links and reports it
  *  Runs in every profile that offers attachInterrupt (m5 / wificonnect /
  *  btclassic); minimal has neither attachInterrupt nor pinMode.
