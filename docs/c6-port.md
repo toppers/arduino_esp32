@@ -1309,8 +1309,8 @@ M5NanoC6 が**配布物として**成立した段。`verify_package.py` が 4 �
   `unexpected stage packaged`・rc=1、`esp32c6/wifi-connect` 除去 ->
   `missing stage`・rc=1、いずれも復元後 rc=0）。
 - **Task 2 review**（Approved）: `.journal.txt` サイドカーの真cold 確認が Task 2 では
-  実施されていない（warm 1 回のみ）という指摘。**未解決のまま段6 へ持ち越し**
-  （下記「段6（任意）」）。
+  実施されていない（warm 1 回のみ）という指摘。段5 では未解決のまま段6 へ持ち越し、
+  **段6 の (a) 真cold run で解消**（下記「段6 の記録」AC 6f）。
 
 ### 段4 最終レビューからの持ち越し一覧（`.superpowers/sdd/PLAN-stage5-impl/task-4-brief.md` の (a)-(g)）の処理結果
 
@@ -1328,22 +1328,12 @@ M5NanoC6 が**配布物として**成立した段。`verify_package.py` が 4 �
   （段4）、段5 で DNS を使う例題を増やしていないため再現条件の確認は持ち越し。
 - **台本 `capture_c6_usj.sh` の M-6/M-7**: Task 1 で実装済み（上記）。
 
-### 段6（任意）
+### 段6（当初「任意」、実施済み）
 
-- `attachInterrupt` と RGB LED の例題（未着手。リンクのみの状態は段3 のまま不変）。
-- C3/C5 を板として追加する場合は、D9 のとおり表（`BOARD_PROFILES`・
-  `build_prebuilt_stages.py` の chip 表・`release-allowlist.json` の
-  `prebuiltStages`/`chipToolDependencies`・CI の chip ループ）へ行を足すだけで
-  拡張できる設計になっている（新しい列や分岐ロジックの追加は不要）。
-- **無音の真cold を区別するリブネスチェック**（reset 無しで「アプリは生きているが
-  USJ だけ無音」と「アプリがハング」を区別する手段）の担当をここに割り当てる
-  （段2 (1/10)・段4 (1/6) と 2 段連続で観測、担当未定のまま持ち越されていた）。
-- **`.journal.txt` サイドカーの真cold での実証**（Task 2 review の Important、上記）:
-  段5 でも真cold run を回していないため未実証のまま。段6 で真cold run を 1 回でも
-  回すときに合わせて確認する。
-- **`TOPPERS_C6_NET_DIAG` の ON 経路のリンク・実機検証**: S5-3 で実装した ON 側は
-  stage レベル（object が段4 と byte 同一）でしか確認していない。実際にリンク・
-  実機で動かす（echo サーバへの接続、ping 応答の確認）のは段6 の候補。
+段5 時点でここに挙げていた 4 項目（`attachInterrupt` と RGB LED の例題、無音の真cold を
+区別する liveness 検査、`.journal.txt` の真cold 実証、`TOPPERS_C6_NET_DIAG` ON 経路の
+リンク/実機）は、いずれも段6 で実施した（下記「段6 の記録」節。C3/C5 の板追加だけは
+D9 のとおり行っていない）。
 
 ### 本計画で行っていないリリース手順
 
@@ -1359,6 +1349,208 @@ M5NanoC6 が**配布物として**成立した段。`verify_package.py` が 4 �
 | Windows／Apple Silicon macOS 向けリンクドライバ zip の凍結 | CI on tag（`.github/workflows/build-link-driver.yml`、`v*` タグで自動生成。本機では stub のまま） |
 | M5NanoC6 成果物のホスト間（cross-host）バイト一致の実測 | 未定（上記「S5-8」参照。3 ホストで実際に建てて比較する作業が要る） |
 
+## 段6 の記録（2026-09-15、commit `801c68c`/`4c5bb0f`（Task 1）、`62cb369`（Task 2）、Task 3 はコード変更なし、Task 4 = 本 commit + 台本 fix `59390c7`）
+
+M5NanoC6 で `pinMode`/`digitalWrite`/`digitalRead`/`attachInterrupt`/on-board RGB LED
+（WS2812 系、data G20）が実機で動くところまでを詰め、採取台本に「無音 cold のとき
+reset 無しで JTAG から生存を読む」後処理を足して positive control を取り、
+`.journal.txt` サイドカーの真cold 実証と `TOPPERS_C6_NET_DIAG=ON` のリンク/実機 warm
+1 回を済ませた段。詳細な証跡は本リポジトリ
+`.superpowers/sdd/PLAN-stage6-impl/{task-1,task-2,task-3}-report.md`/
+`task-{1,2,3}-review.md`/`progress.md`（ruling R1-R8）と、開発リポジトリ
+`.steering/20260915-c6-arduino-plan/stage6/{AC.md,logs/}`（57 本、いずれも dev 側で
+未 commit）。Xtensa 側は文字列不変（`git diff --stat main -- ports/m5stack_xtensa src
+third_party` 空、X-check 7/7 が Task 1/2/4 で成立）。
+
+- **Task 1**（commit `801c68c`（feat）/ `4c5bb0f`（レビュー是正 fix））:
+  `ports/m5stack_riscv/runtime/arduino/arduino_gpio.{c,h}`（`hal/gpio_ll.h` のみ、
+  ESP-IDF `gpio_config()` と同じ順で書く。`OUTPUT` は `FUN_IE` も立てて自己読み返しを
+  可能にする。対応 mode は INPUT / INPUT_PULLUP / INPUT_PULLDOWN / OUTPUT、それ以外は
+  書かずに `[C6-GPIO] pinMode: unsupported mode` を出す。USB の G12/G13 と
+  `GPIO_NUM_MAX` 以上は `refused pin`）と `arduino_rgb_led.{c,h}`（RMT TX ch0、
+  `hal/rmt_ll.h` の inline 関数 + `RMTMEM` 直書き、割込みを使わず TX_DONE をポーリング、
+  `rgbLedWrite(pin,r,g,b)`。`ard_gpio_pin_ok()` を共有して pinMode と同じ pin 規則を
+  適用）を **wifi-connect stage にだけ**足し（minimal は不変）、4 板共有の例題
+  `examples/NanoC6Gpio/` を `PROFILES["wificonnect"]` へ 1 行足した（verify 47 -> 51 本）。
+- **Task 2**（commit `62cb369`、`scripts/capture_c6_usj.sh` のみ）: `EXTRA_MARKERS`
+  （固定文字列の追加集計）と JTAG 生存 probe（`C6_JTAG_ON_SILENT`/`C6_JTAG_FORCE`/
+  `OPENOCD`/`ELF`、サイドカー `.jtag.log`/`.jtag.txt`、selftest (16)(17)(18)）。
+- **Task 3**（コード変更なし、commit なし、DONE_WITH_CONCERNS）: 実機 9 run
+  （a, b1, b2, b3, c, c2, d, e, f。電源断 2 回、書込み 5 回、全 run rc=0、redact
+  「masked and checked clean」9/9、`.UNREDACTED` 0）。
+- **Task 4**（本 commit + 台本 fix `59390c7`）: Task 2 レビューの nit N1-N3 と Task 3 の
+  ruling R7 を台本へ反映し（下記 AC 6e）、本節/`README.md`/`BUILDING.md`/例題 README/
+  dev `stage6/AC.md` を書いた。
+
+### 判断 S6-1..S6-6 の結果
+
+| # | 判断 | 決定 | 根拠 | 費用/残り |
+| --- | --- | --- | --- | --- |
+| S6-1 | 例題の置き方 | **4 板共有 `examples/NanoC6Gpio/` + 板ガード `#if defined(ARDUINO_M5STACK_NANO_C6)`**。NanoC6 以外は setup() が `[NanoC6Gpio] this example targets the M5NanoC6; nothing to do on this board` を 1 行出して終わる | 4 板 x wificonnect の verify 20/20 PASS（Xtensa 3 板の NanoC6Gpio は 194976/194976/192160 B で同板の Blink より小さい = no-op 側）。負対照: ガードを `#if 1` にして CoreS3 wificonnect を建てると rc=1、未定義参照は `digitalRead` 3/`digitalWrite` 7/`pinMode` 3/`rgbLedWrite` 2/`GPIO` 1（最後の 1 件は下記「Xtensa 側の既知問題」）。ガードは commit 前に復元済み（`git show 801c68c:examples/NanoC6Gpio/NanoC6Gpio.ino` 30 行目） | verify が +4 行（47 -> 51）。Xtensa 配布物は `examples/` を含まないので X-check 不変。`release-allowlist.json` に例題 1 entry を追加（ruling R5、allowlist のドリフト検査が要求） |
+| S6-2 | `pinMode` 群の置き場 | **C6 runtime `arduino_gpio.c`、wifi-connect のみ**。minimal には入れない。`attachInterrupt` は `pinMode` を呼ばない（ruling R3、例題が先に `pinMode(pin, OUTPUT)` を呼ぶ。ヘッダに明記） | minimal stage は `--clean` 再生成の前後で 50 本中 49 本が sha 同一、差は `objs/banner.o`（`__DATE__/__TIME__`）のみ。`arduino_gpio.o`/`arduino_rgb_led.o` は wifi-connect に 2 本/minimal に 0 本 | Xtensa 側 runtime には `pinMode` 等が無いまま（S6-1 の負対照がそれを示す） |
+| S6-3 | RGB 駆動 | **RMT**（`rmt_ll` ヘッダのみ、ポーリング、cfg に割込み線を足さない）。bit-bang は採らない | `nm -u arduino_rgb_led.o` は `PCR`/`RMT`/`RMTMEM`（`esp32c6.peripherals.ld`）、`esp_rom_delay_us`/`esp_rom_gpio_connect_out_signal`（ROM）、`pinMode`/`ard_gpio_pin_ok`（同 stage）、`syslog_wri_log`/`tt_syslog` のみで、リンク後は全部解決。クロックは PLL_F80M を分周 4 で 20 MHz（50 ns tick）、bit1 = 18/7 tick、bit0 = 7/18 tick、reset = 1000+1000 tick（`.o` の symbol word を objdump で確認: `0x00078012`/`0x00128007`/`0x03e803e8`）。実機: 例題 run 5/5 で `[C6-RGB] tx_done` 8/8、`tx timeout` 0 | **色の目視は未実施**（下記 AC 6d）。タイミング（T1H 0.9 us / T1L 0.35 us）は WS2812B の許容内だが原 WS2812 の縁にあり、色が違えば `ARD_WS_T0H/T0L/T1H/T1L` の 4 define で直す |
+| S6-4 | JTAG 後処理 | **台本内**。`c6_jtag_wanted`（DRYRUN は常に no、`C6_JTAG_FORCE=1` は常に yes、それ以外は `COLD=1 && heartbeat=0 && C6_JTAG_ON_SILENT=1`）。`C6_JTAG_FORCE` は ruling R2（positive control 用に追加） | selftest (17)（判定関数 6 tuple + on_silent=0）/(18)（parser の fixture）。変異対照は Task 2 report の 4 本 + review の 3 本、計 7 本がすべて selftest FAIL。実機 positive control は下記 AC 6e | 本番経路（無音 cold）は段6 の 2 回の電源断では発生せず未発火 |
+| S6-5 | NET_DIAG=ON の host 側 echo 接続 | **やらない**（DUT 側 `ping gateway -> OK` で足りる） | (e) で `ping gateway -> OK` 33 行、`-> timeout` 0 | port 7 echo サーバはリンクされている（`tcpecho_raw_init`/`udpecho_raw_init` が ELF に `T`）が host からは叩いていない |
+| S6-6 | G19（RGB 電源イネーブル） | **1 軸で実測した: HIGH（b1, b3, c, d）と「触らない」（b2）で `tx_done` 8/8 も VERDICT も同一**。M5Unified 0.2.20 にも M5GFX にも G19 の enable は無い（開発リポジトリ `INVESTIGATION-stage6.md` B-1、`grep GPIO_NUM_19` は他機種のみ） | `[C6-RGB] power pin G19 HIGH`（b1/b3/c/d）/ `... G19 left alone`（b2）各 1 行 | **点灯の差は agent には観測できない**（目視待ち）。G19 が要るか要らないかは本段では結論を出さない。例題の `NANOC6_RGB_POWER_ENABLE` は既定 1 のまま |
+
+### AC 6a-6h（判定/根拠は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage6/AC.md` を正本とし、ここには要約と証跡ファイル名のみ）
+
+| # | 基準 | 判定 | 証跡 |
+| --- | --- | --- | --- |
+| 6a | `pinMode(OUTPUT)` が FUN_IE も立て、`digitalRead` が自分の駆動レベルを読み返す（`[C6-GPIO] readback ok`） | **PASS** | `[C6-GPIO] readback ok` = 1 in b1, b2, b3, c, d（`*.log`、`extra:` 行は `*.sha.txt`/`*.stdout.txt`） |
+| 6b | `NanoC6Gpio` が 4 板 x wificonnect でリンク。板ガードを外すと Xtensa でリンクが落ちる負対照 1 回 | **PASS** | Task 1 report 4 節（20/20 PASSED、NanoC6 5/5）/5 節（負対照 rc=1、未定義参照 5 種 16 件） |
+| 6c | 実機 warm: `[C6-INTR] VERDICT` RISING=5 FALLING=5 CHANGE=10 detached=0 dispatch=call=20 orphan=0、`acre_isr` erid>0、`on intno 19 (src 30)` | **PASS** | b1, b2, b3, c, d の各 `.log` に一字一句同じ 1 行 `[C6-INTR] VERDICT PASS rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2`（warm 4 + 真cold 1 = 5/5、`VERDICT FAIL` 0）。`arduino_interrupt: dispatch isr id=2 on intno 19 (src 30)` が例題 run ごとに 1 行 |
+| 6d | RGB: `nm -u` に RMT 未定義 0、実機 `[C6-RGB] tx_done>=3`。色の目視は「ユーザー確認待ち」。G19 Low/High の 1 軸実測 | **PASS（tx_done のみ。色は目視待ち、成立とは書かない）** | `[C6-RGB] tx_done` = 8（赤/緑/青/消灯 x2 の 8 書込みぶん）in b1, b2, b3, c, d、c2 は 5（5 秒窓）。`tx timeout` 0（57 本の合計）。G19 軸: b1/b3/c/d（HIGH）と b2（触らない）で全カウント同一。**LED の色/点灯の差は agent には観測できず、ユーザーの目視待ち** |
+| 6e | 台本 JTAG 後処理: positive control（正常 warm、Wi-Fi 非使用像）で `loop_calls` が 2 回読みで増加、`EP1_CONF` bit1=1 を `.jtag.txt` に記録。selftest の変異対照 PASS。無音 cold が出なければ「本番未発火」と正直に記録 | **PASS（ruling R7 による修正後）**: `loop_calls` の半分は clean な positive control で PASS。**元の `EP1_CONF bit1=1` 副基準は 2 回の probe とも 0 と実測され、前提が誤りだったので基準から外した**（下記「正直な観察」）。本番経路は未発火 | `c-jtag-positive-control.jtag.txt`: `reason=forced serial=9C:13:9E:D3:62:18`、`# openocd rc=0`、生ログ 7 行目 `Info : esp_usb_jtag: serial (9C:13:9E:D3:62:18)`（REFUSED 0）、`pc1=0x42001718 pc2=0x42001718`、`ep1_conf=0x00000000 int_raw=0x0000b00b (data_free=0)`、`loop_calls: 40528 -> 42283 delta=1755`、`verdict: alive`。`c2-jtag-probe-only.jtag.txt`: `pc1=0x42001718 pc2=0x42001714`、`int_raw=0x0000b003 (data_free=0)`、`loop_calls: 6053 -> 7877 delta=1824`、`verdict: alive`。生ログ `.jtag.log` は各 30 行、`Target halted` 4 行（halt / resume の single-step / halt / single-step）、`reset` 0。`mdw` の番地 `0x40800844` = `nm` の `toppers_arduino_loop_calls`。selftest (18) の変異対照 7 本 FAIL（Task 2 report/review）。`d-gpio-cold.stdout.txt`: `probe not run (COLD=1 heartbeat=39 ...)` |
+| 6f | journal: 出荷既定像の真cold 1 回で `.journal.txt` に disconnect 行（窓内）/列挙 1/再列挙 0、同 run の heartbeat 成立 | **PASS** | `a-journal-cold.journal.txt`: `USB disconnect, device number 88` 17:12:11.697（窓は `--since` 17:11:52 から）、`new full-speed USB device number 89` 17:12:25.464 の 1 回、`cdc_acm ... ttyACM0` 1 回、以後 USB 行なし。`a-journal-cold.cold.txt`: `absent at start` 17:12:22.038 -> `appeared` 17:12:25.640。同 run の `markers:` heartbeat=43、`wifi:` connected=1 dhcp=1 dnsok=2 tcp=1 ping=0（NET_DIAG=OFF 像）。`d-gpio-cold.journal.txt` も同型（disconnect device 89 17:21:32.186、列挙 device 90 17:21:45.945 の 1 回） |
+| 6g | NET_DIAG=ON: 別 stage/別 sketchbook で WiFiConnect リンク（`nm -u` 空）、実機 warm 1 回で `ping gateway -> OK`>=1、`ip=`/`gw=` 行あり（マスク済み）。既定 stage/platform の sha 不変。板は既定像へ回復 | **PASS** | `e-netdiag-warm.log`（503 行）: `net: ping gateway -> OK` 33、`-> timeout` 0、`net: DHCP bound ip=<IPv4> gw=<IPv4>` 1 行（57 本中この 1 行だけが `<IPv4>` トークン）、connected=1 dhcp=1 dnsok=2 tcp=1、unexpected 0。`e-elf-checks.txt`: `nm -u` 0、`net_ping_result`/`ping_init`/`tcpecho_raw_init`/`udpecho_raw_init` あり、`strings` `ping gateway` 1/`DHCP bound ip=` 1。`e-separation-before.txt` == `e-separation-after.txt`（4 行すべて同値。下記「正直な観察」の注記あり）。`f-restore-warm.log`（471 行）: `ping gateway` 0、`ip=` 0、`net: DHCP bound` のみ。`f-elf-checks.txt`: 診断記号 0/文字列 0 |
+| 6h | 非退行: minimal stage sha 不変、wificonnect の 4 例題 + 新例題リンク、X-check 7/7、`git diff --stat main -- ports/m5stack_xtensa src third_party` 空 | **PASS** | Task 1 report 6-7 節（minimal 49/50 同一/`banner.o` のみ、X-check `expected=7 compared=7 match=7 diff=0`、diff 空）、Task 2/4 でも X-check 7/7。**射程の注記**: Task 1/2/4 の X-check は Xtensa stage を再ビルドせずに走らせたもの（「ディスク上の Xtensa stage が baseline と同じ」の主張。変更したファイルは Xtensa stage のビルド入力ではない、は推論） |
+
+### 軸表（書込み前に固定、`task-3-report.md` 1 節）
+
+| run | 像（app sha8） | G19 | リセット | creds | 見るもの |
+| --- | --- | --- | --- | --- | --- |
+| (a) journal-cold | flash 上の段5 WiFiConnect NET_DIAG=OFF live 像 `c1283b18`（書かない。段5 `task2-diagoff-warm1.sha.txt` からの推定で、本段で板から測ったものではない） | n/a | 真cold（`COLD=1`、uhubctl off -> 10 s -> 採取 -> 2 s -> on） | live（flash 上） | `.journal.txt`、heartbeat、ping=0 |
+| (b1) gpio-warm-g19hi | `NanoC6Gpio` `f523112b`（`NANOC6_RGB_POWER_ENABLE=1`） | HIGH | warm（書込み + hard reset） | なし | readback / VERDICT / tx_done / heartbeat |
+| (b2) gpio-warm-g19lo | `NanoC6GpioP0` `25b647c3`（`=0`） | 触らない | warm（書込み + hard reset） | なし | 同上。LED の差は目視不可 |
+| (b3) gpio-warm-g19hi-again | `f523112b` | HIGH | warm（書込み + hard reset） | なし | (b2) が残すものが無いこと |
+| (c) jtag-positive-control | flash 上 `f523112b`（`NOFLASH=1 C6_JTAG_FORCE=1`） | HIGH | warm（monitor の hard reset） | なし | `.jtag.txt` alive |
+| (c2) jtag-probe-only | 同（`NOFLASH=1 NORESET=1 C6_JTAG_FORCE=1 CAPTURE_SEC=5`） | HIGH | esptool 識別の hard reset、monitor は no-reset | なし | (c) 後の板の健全性 |
+| (d) gpio-cold | 同（`COLD=1 SKETCH_BUILD=b-NanoC6Gpio`） | HIGH | 真cold | なし | 無音なら probe が本番発火 |
+| (e) netdiag-warm | WiFiConnect 作業コピー + live creds、別 platform（`prebuilt-netdiag`、`TOPPERS_C6_NET_DIAG=ON`） `dacb66b8` | n/a | warm（書込み + hard reset） | live | ping / `ip=` 行（マスク） |
+| (f) restore | 同作業コピー、既定 platform（NET_DIAG=OFF） `76e542a2` | n/a | warm（書込み + hard reset） | live | ping/`ip=` 不在、板の最終状態 |
+
+Wi-Fi run（a, e, f）は `CAPTURE_SEC=45 MARKERS='begin: rejected|LWIP-ASSERT|connection
+timeout'`（失敗時のみ早期終了）、例題 run（b1, b2, b3, c, d）は `CAPTURE_SEC=40
+EXTRA_MARKERS='[C6-INTR] VERDICT PASS|[C6-RGB] tx_done|[C6-GPIO] readback ok|[NanoC6Gpio]
+heartbeat'`。順序は (a) -> (b1) -> (b2) -> (b3) -> (c) -> (c2) -> (d) -> (e) -> (f)。
+
+### 結果表（`.sha.txt` の `markers:`/`extra:`/`wifi:` 行と `.jtag.txt` の `verdict:` 行から転記。レビューが `.log` を独立に数え直して 9/9 一致）
+
+| run | 像（sha8, B） | リセット | 行数 | markers（heartbeat / unexpected） | extra または wifi | VERDICT 行 | jtag verdict | 判定 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| (a) | `c1283b18` 594720（書かず） | 真cold | 451 | 43 / 0 | connected=1 dhcp=1 dnsok=2 tcp=1 ping=0 disc=0 | n/a | 未実行（無音でない） | **OK**（journal 1 disconnect / 1 列挙） |
+| (b1) | `f523112b` 114768（書込み） | warm | 129 | 38 / 0 | VERDICT PASS=1 tx_done=8 readback ok=1 heartbeat=38 | PASS 5/5/10/0 dispatch=20 call=20 orphan=0 acre=2 | 未実行 | **OK**（G19 HIGH） |
+| (b2) | `25b647c3` 114768（書込み） | warm | 129 | 38 / 0 | 同上 | 同上 | 未実行 | **OK**（G19 触らない、目視不可） |
+| (b3) | `f523112b` 114768（書込み） | warm | 129 | 38 / 0 | 同上 | 同上 | 未実行 | **OK**（(b1) と同一カウント） |
+| (c) | `f523112b`（NOFLASH） | warm | 129 | 38 / 0 | 同上 | 同上 | **alive**（40528 -> 42283 delta=1755） | **OK**（serial pinned、data_free=0） |
+| (c2) | `f523112b`（NOFLASH NORESET） | esptool 識別 reset | 23 | 4 / 0 | VERDICT PASS=0 tx_done=5 readback ok=0 heartbeat=4 | （起動先頭は失われる） | **alive**（6053 -> 7877 delta=1824） | **OK**（5 秒窓で heartbeat 4） |
+| (d) | `f523112b`（COLD） | 真cold | 110 | 39 / 0 | VERDICT PASS=1 tx_done=8 readback ok=1 heartbeat=38 | 同上 | 未実行（**本番未発火**、無音でなかった） | **OK**（journal 1 disconnect / 1 列挙） |
+| (e) | `dacb66b8` 596960（書込み、NET_DIAG=ON） | warm | 503 | 43 / 0 | connected=1 dhcp=1 dnsok=2 tcp=1 **ping=33** disc=0 | n/a | 未実行 | **OK**（`ip=`/`gw=` 1 行、マスク済み） |
+| (f) | `76e542a2` 594720（書込み、既定 platform） | warm | 471 | 43 / 0 | connected=1 dhcp=1 dnsok=2 tcp=1 ping=0 disc=0 | n/a | 未実行 | **OK**（`ping gateway` 0、`ip=` 0） |
+
+- `disc=0`、`ssidraw=0` は全 run。Wi-Fi 3 run とも `dnsok=2`、`TCP received=255`
+  （段4/5 と同じ）。
+- `no time event is processed in hrt interrupt on PRC1.` は warm run（b1, b2, b3, c, e, f）
+  で各 1 行、真cold（a, d）と c2 は 0（段2/4/5 と同じ既知の行）。
+- (c) の `Saved PC` は ROM 番地 `0x4002f478`（esptool が識別後 `Staying in bootloader` の
+  まま monitor の reset を受けたため）。b1/b2/b3 は `0x42001714`、(e) `0x42001c7a`、
+  (f) `0x420012aa`（像が違う）。**「warm reset のたびに同じ PC」ではない**。
+
+### 正直な観察
+
+- **`data_free`（USJ `EP1_CONF` bit1）は健全性の基準にならない（ruling R7）**: probe は
+  monitor を kill した後に走るので host 側に reader が無く、アプリが heartbeat を書き
+  続ける IN endpoint は満杯のまま。健全な板（loop_calls が 2 秒で +1755/+1824）でも bit1 は
+  0 と読めた（2/2）。レジスタの定義（`SERIAL_IN_EP_DATA_FREE`: `WR_DONE` 後、host が読むまで
+  0）と整合する説明だが、「reader を付けた状態で 1 を見る」対照は取っていない（台本には
+  そのモードが無い）。したがって **AC 6e の `EP1_CONF bit1=1` は「probe の実行条件では観測
+  できない基準」だったので外し、verdict は `loop_calls` だけで決める**。`ep1_conf`/`int_raw`
+  は無音 run との比較用の生証拠として残す（台本の文言も `59390c7` でそう改めた）。
+  `int_raw` の bit3（`SERIAL_IN_EMPTY`、sticky）が 2 回の probe で `0xb00b`/`0xb003` と
+  違った点は記録のみで解釈していない。
+- **無音 cold は 2 回の電源断で 1 回も出なかった**（段2 1/10、段4 1/6 と違い 0/2）。
+  probe の本番経路（`heartbeat=0 && COLD=1`）は未発火のままで、この段で言えるのは
+  「probe はこの板/この openocd（core 同梱 v0.12.0-esp32-20251215）で動く」（positive
+  control）までである。Task 2 の推測 3 件（RISC-V target の `reg pc` の出力形、halt 中の
+  `mdw` が builtin USB-JTAG で通る、`targets` 無しの `halt` で足りる）は (c) の生ログで
+  肯定された。
+- **(c2) は「probe がアプリを殺していない」の証拠にならない（ruling R8）**: 台本は
+  `COLD=1` 以外では必ず esptool の識別（`flash-id --after hard-reset`）を先に走らせるので、
+  `NOFLASH=1 NORESET=1` でも板は reset され、(c2) が見たのは新しい起動（`loop_calls` 6053
+  から）である。代替証拠は (c) の内部: read 1 -> `resume` -> 2 s -> `halt` -> read 2 の間に
+  `loop_calls` が 1755 進んだ（halt/resume を 1 対またいで instance が生きていた）、最後の
+  `resume`/`shutdown` も同じコマンドで openocd rc=0、(c2) が健全に起動して再び alive を
+  読めた。
+- **USJ の TX は 2 つの writer が競合するとバイトを落とす**: 例題の `target_fput_log`
+  （1 文字ずつ）と runtime の syslog task が同時に書くと、`[C6-INTR] phas` のような接頭辞が
+  消えて `e=CHANGE got=10 want=10` だけが残る（b1 31 行目）、`[NanoC6Gpio] hea[C6-RGB]
+  tx_done=1`（b1 37 行目）、`[Arduino] loop heartbea[C6-RGB] tx_done=4`（b1/b3 50 行目）。
+  並べ替えではなく**バイト欠落**である。数えたマーカー（VERDICT 行、`tx_done`、readback、
+  heartbeat 38 vs `[Arduino] loop heartbeat` 38/39）は全 run で無傷。機序（1 文字書きと
+  log task の flush の競合）は推測で、示してはいない。
+- **NET_DIAG 分離の全 tree ハッシュはレシピ未記録**: `e-separation-before/after.txt` の
+  `build-prebuilt-esp32c6-all-files`/`sketchbook-platform-all-files` は前後で同値だが、
+  レビューは 25 通りの `find | sha256sum` 変種で再現できなかった（絶対値は第三者が
+  再計算できない）。独立の裏付け: `build/prebuilt/esp32c6`/`build/prebuilt-work`/
+  `~/Arduino/hardware/toppers/esp32` の最新 mtime（16:44:04 / 16:44:04 / 16:44:15）は
+  いずれもセッション（17:12-17:27）より前。`link-manifest.json` の sha が ON/OFF で同じ
+  `8d0dd6ce...` なのは manifest が名前だけを持ち内容を持たないためで、分離の証拠には
+  ならない（whole-tree か mtime で見る）。
+- **既定 platform の live 像の sha が段5 と違う**: (f) の `76e542a2` vs 段5 の
+  `c1283b18`（同サイズ 594720 B）。段5 後に fix wave（driver 4）で platform を入れ直し、
+  Task 1 が wifi-connect stage に 2 object を足したためと推定されるが、両者を diff して
+  いない。挙動（markers/wifi 行）は (a) と段5 `task2-diagoff-warm1` に一致。
+- **ログの行数/時刻から言えること以上は書いていない**: uhubctl の電源投入時刻は
+  どのログにも無い（by-id の `appeared` 17:12:25.640 は採取開始 17:12:22.038 から 3.60 s）。
+  (c2) の `loop_calls` 6053 が「reset から約 6 秒」なのは ~1 loop()/ms の解釈で、実測ではない。
+
+### 板の最終状態
+
+最後の書込みは (f)（`f-restore-warm.sha.txt`、`Hash of data verified` x4）で、stock
+bootloader `d8499f43...` @0x0、stock ptable `148b959c...` @0x8000、core `boot_app0.bin`
+`f94c5d78...` @0xe000、**WiFiConnect live 像 `76e542a2...` 594720 B @0x10000（既定 platform、
+NET_DIAG=OFF）**。ユーザーの AP に接続し DHCP/DNS x2/TCP 255 B まで完了、`ping gateway`
+0 行、`ip=` 0 行、monitor は外れ、by-id あり、hub port 2-3.3 p3 通電。**フラッシュには
+live creds が残っている**（段4/5 と同じ標準運用ルール）。`build/prebuilt`/
+`build/prebuilt-work`/`~/Arduino` は本段で書いていない。scratch にのみ
+`prebuilt-netdiag{,-work}`/`sketchbook-netdiag`/`b-live-netdiag`/`b-live-restore`/
+`wificonnect-live`（live creds 入り `.ino`、リポジトリ外）が残る。
+
+### creds の運用（段4 と同じ）
+
+- 作業コピー `<scratch>/wificonnect-live/WiFiConnect/WiFiConnect.ino` にだけ、開発リポジトリの
+  creds ファイルから 1 回の Bash 呼出しで `sed` 注入した（値は一度も表示していない。
+  placeholder 行 1 -> 0/0 を行数で確認）。
+- 57 本のログ + report に対する針 grep（SSID / PASS）は **0 / 0**（レビューが独立に再実行、
+  作業コピーで 1 / 1 の positive control）。`.UNREDACTED` 0、`REDACTED_` 0（スケッチは creds
+  を印字しない）、`<IPv4>` 1（(e) の `ip=`/`gw=` 行）、`<PEER-MAC>` 15、`<HEX32>` 9。
+  DUT 以外の生 MAC 0、未マスク IPv4 0。
+- `git diff --exit-code examples/` rc=0、`git status --porcelain` 0 行（Task 3 終了時、
+  レビューでも再確認）。`examples/WiFiConnect/WiFiConnect.ino` の placeholder は無改変。
+- `.journal.txt`/`.uhub.txt`/`.jtag.*` は DUT 自身の serial `9C:13:9E:D3:62:18` を含む
+  （台本が DUT MAC を残す設計）。
+
+### Xtensa 側の既知問題（段6 で見つかった、段6 では直さない。ruling R4）
+
+**CoreS3 / M5StickS3 / M5Core の `wificonnect` 構成では、`attachInterrupt` を呼ぶスケッチが
+リンクできない**（`objs/arduino_interrupt.o:(.literal+0x0): undefined reference to 'GPIO'`）。
+Task 1 の負対照で `GPIO` が 1 件混じったことから発見し、Task 1 の実装者が 4 行のスケッチ
+（`attachInterrupt(7, isr, RISING)` のみ、`pinMode` 無し）で確認、レビューが manifest と
+`nm -u` で裏付けた: `m5cores3_fmp3:FMP3Runtime=wificonnect` rc=1、
+`m5core_fmp3:FMP3Runtime=wificonnect` rc=1、`m5cores3_fmp3:FMP3Runtime=m5` rc=0。
+原因: `GPIO` は `esp32s3.peripherals.ld`/`esp32.peripherals.ld` が `PROVIDE` するが、Xtensa
+wifi-connect の `link-manifest.json` の `romLinkerScripts` は rom/api/libc/libgcc/newlib/version
+だけで `extraLinkerScripts` は空。`m5-unified`（S3/ESP32）と `bt-classic`（ESP32）は
+`extraLinkerScripts` に peripherals ld を持つのでリンクできる。C6 は `esp32c6_xip.ld` が
+peripherals ld を `INCLUDE` するので影響なし。通常の verify で見えないのは、Xtensa の同梱例題が
+`attachInterrupt` を呼ばず `--gc-sections` が参照を落とすため。**段6 より前から存在する現行
+バグ**で、直すには `ports/m5stack_xtensa/runtime/CMakeLists.txt` の wifi-connect 分岐に
+`XIP_EXTRA_TSCRIPTS` を 1 行足す（または xip ld に `INCLUDE`）だけだが、Xtensa wifi-connect の
+manifest が変わり X-check の baseline が動くため、段6 の不変条件（Xtensa 配布物 byte 同一）と
+両立しない。**次の Xtensa 段の候補**として持ち越す（`README.md` にも 1 文で記載）。
+
+### 段6 で行っていないこと
+
+- RGB LED の**色と点灯の目視**（赤 -> 緑 -> 青 -> 消灯 x2 が実際にその色で光るか、G19 の
+  HIGH / 触らないで差があるか）。`tx_done` 8/8 は RMT の送信完了であって LED の発光では
+  ない。
+- **無音 cold での probe の本番発火**（2 回の電源断とも出力があった）。
+- Xtensa 側 wifi-connect の `attachInterrupt` リンク修正（上記）。
+- C3 / C5 の板追加（D9 のまま）。Open AP / WPA3-SAE（D6 のまま）。
+- `attachInterrupt` の ONLOW / ONHIGH（自己駆動でレベル型を付けると解除できず再入し
+  続けるため、例題は測らない）。
+
 ## 段ごとの到達点
 
 | 段 | ゴール | 実機 | 状態 |
@@ -1369,4 +1561,4 @@ M5NanoC6 が**配布物として**成立した段。`verify_package.py` が 4 �
 | 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | **完了（2026-09-15、`760fce9`/`4448a8d`/`a4c346a`/`45122a5`/`8912a35`）。** AC 3a-3j 全 PASS（`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` の 4 例題、`8912a35` の最終レビュー是正後の値で確定）、記録は「段3 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage3/AC.md` |
 | 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | **完了（2026-09-15、`6602cd7`/`211a067`/`f7da79e`、Task 2 はコード変更なし、記録 `265bfd2` + 最終レビュー是正 fix wave `a251202`/`fafe685`）。** AC 4a-4h 全 PASS（4e は「真cold 3/3（出力のあった run。cold2 は無音 1/6）」、4f の hex アドレス未マスクは fix wave `a251202` で是正済み）。WPA3-SAE/Open は AP が用意できず未実測のまま（D6）。記録は「段4 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/AC.md` |
 | 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | Task 2 のみ要（実機 warm 1 回、AC-5f） | **完了（2026-09-15、`8e556b5`/`b157f76`（Task 1）/`8a09479`（Task 2）、Task 3 はコード変更なし・DONE_WITH_CONCERNS、`aa62fde`/`9e83508`（fix wave）、Task 4 本 commit）。** AC 5a-5h 全 PASS、記録は「段5 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage5/AC.md`。M5NanoC6 は `verify_package.py`（47/47）・`check_release_artifacts.py`・CI・利用者向け文書に収録された。D8 は再評価の結果**維持**（S5-2）。S5-8（イメージのビルドパス非依存化）は並行する fix wave が実装・実測済み（`aa62fde`） |
-| 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |
+| 6 | M5NanoC6 の GPIO API/`attachInterrupt`/RGB LED(RMT) の例題、無音 cold の JTAG 生存確認、`.journal.txt` の真cold 実証、`TOPPERS_C6_NET_DIAG=ON` のリンク/実機 | 要 | **完了（2026-09-15、`801c68c`/`4c5bb0f`（Task 1）、`62cb369`（Task 2）、Task 3 はコード変更なし/DONE_WITH_CONCERNS、Task 4 = 本 commit + 台本 fix `59390c7`）。** AC 6a-6h は 6d が「`tx_done` 8/8 のみ PASS、**LED の色はユーザー目視待ち**（成立とは書かない）」、6e が「ruling R7 による修正後 PASS（`data_free` 基準は前提誤りで撤回、`loop_calls` の positive control は alive）。無音 cold は 0/2 で本番未発火」、他は PASS。記録は「段6 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage6/AC.md`。Xtensa wifi-connect で `attachInterrupt` がリンクできない既知問題（段6 より前から存在、R4 で射程外）は次の Xtensa 段の候補 |

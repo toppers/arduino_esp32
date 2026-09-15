@@ -87,8 +87,10 @@ prebuilt archive、include 配置に依存しています）。
   出ます。実機で確認済みなのは、stock M5Stack bootloader のまま
   minimal（`Blink`）が起動すること（warm 5/5、真cold 9/10）と、
   Wi-Fi STA（**WPA2-PSK のみ**）-> DHCP -> DNS -> TCP がユーザーの実 AP に対して
-  通ること（真cold 3/4、1 回は無音採取で成否判定不能）です。**Open AP・
-  WPA3-SAE は AP が用意できず未実測、BLE は未着手、M5Unified 相当の
+  通ること（真cold 3/4、1 回は無音採取で成否判定不能）、および `WiFi` 構成で
+  `pinMode` / `digitalRead` の読み戻し、`attachInterrupt` の自己駆動試験、RGB LED への
+  RMT 送信完了が通ること（例題 `NanoC6Gpio`、warm 4 + 真cold 1。LED の色は目視未確認）
+  です。**Open AP/WPA3-SAE は AP が用意できず未実測、BLE は未着手、M5Unified 相当の
   profile はありません**（下記「M5NanoC6 の既知の制限」）。判断と到達点は
   [`docs/c6-port.md`](docs/c6-port.md)
 
@@ -106,8 +108,18 @@ prebuilt archive、include 配置に依存しています）。
 - **`WiFiConnect` は、接続前に一度切断イベント（`NO_AP_FOUND` 等）を受けると
   自分からは再接続しません。** これは Xtensa の 3 ボードと同じ製品挙動です
   （adapter のコードは共通）。有界の再試行は現状スケッチ側の責務です。
-- **`attachInterrupt` はリンクできるところまでで、実機での動作確認はまだです**
-  （段6 の候補）。
+- **GPIO API は `WiFi` 構成にだけあり、`Minimal` にはありません。** M5NanoC6 では
+  `pinMode` / `digitalWrite` / `digitalRead` / `attachInterrupt` / `rgbLedWrite` が
+  `WiFi`（wificonnect）ランタイムにリンクされていて、同梱例題 `NanoC6Gpio` で実機
+  確認済みです（G7 を自分で駆動する自己駆動試験: RISING 5 / FALLING 5 / CHANGE 10 /
+  detach 後 0、warm 4 回 + 真cold 1 回すべて `VERDICT PASS`。段6）。`pinMode` が受ける
+  mode は `INPUT` / `INPUT_PULLUP` / `INPUT_PULLDOWN` / `OUTPUT` の 4 つで、それ以外は
+  何も書かずにログを出します。USB の G12 / G13 は拒否します。`attachInterrupt` は
+  `pinMode` を呼ばないので、先に `pinMode` してください。on-board RGB LED（G20、
+  WS2812 系）は `rgbLedWrite` が RMT で駆動し、送信完了（`[C6-RGB] tx_done`）までは
+  実機で確認していますが、**実際に光る色は目視で確かめていません**（G19 の電源
+  イネーブルを HIGH にしても触らなくても送信完了は同じで、点灯の差は未確認）。
+  `delay()` / `Serial` が使えないのは他の構成と同じです。
 - **成果物のホスト間（Windows／Linux／macOS）バイト一致は未計測です。**
   driver 4（S5-8）で「同じホスト内で build path を変えても `.bin` が一致する」
   ことは実測済みですが、cross-host の一致はまだ確認していません。
@@ -143,6 +155,10 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   `delay()` は使えません。** どちらも FreeRTOS を呼ぶためです。ログは
   `target_fput_log()` へ書いてください（同梱例題はすべてそうしています）。
   複数ファイルのスケッチと、独自の `.cpp` を持つライブラリはリンクできます。
+  **Xtensa の 3 ボード（CoreS3 / M5StickS3 / M5Stack Basic）では、`attachInterrupt`
+  を呼ぶスケッチは今のところ `M5Unified + Dual Core` と `Bluetooth Classic (SPP)` の
+  構成でしかリンクできません**（`WiFi` 構成はレジスタ定義の linker script を
+  含んでおらず `GPIO` が未定義になる既知の問題。段6 で見つかり、未修正）。
 - **Intel Mac には対応していません。** ビルドに必要なリンクドライバをホストごとに
   同梱していますが、`x86_64-apple-darwin` 向けは含まれていません。
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の

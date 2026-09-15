@@ -60,6 +60,15 @@ python scripts/build_prebuilt_stages.py --chip esp32c6
 M5Stack Arduino core 3.3.8 が同梱する `esp-rv32` 2601 と `esp32c6-libs`
 3.3.8 で、他の 3 ボードと同じ core から取れます（別途取得は不要）。
 
+`wifi-connect` stage には、Wi-Fi 一式に加えて M5NanoC6 の GPIO API が入ります
+（段6）: `ports/m5stack_riscv/runtime/arduino/arduino_gpio.c`（`pinMode` /
+`digitalWrite` / `digitalRead`、`hal/gpio_ll.h` のみ）と `arduino_rgb_led.c`
+（`rgbLedWrite`、RMT ch0 を `hal/rmt_ll.h` で直接叩き、割込みを使わず TX_DONE を
+ポーリング。`RMT` / `RMTMEM` / `PCR` は `esp32c6.peripherals.ld` が供給）。
+どちらも `runtime/CMakeLists.txt` の `wifi_objects` にだけ並んでいて、**`minimal`
+stage には入りません**（minimal は段6 の前後で `banner.o` 以外 sha 同一）。
+`attachInterrupt`（`arduino_interrupt.c`、段3）も同じく wifi-connect のみです。
+
 診断・対照用の CMake オプションは `--cmake-define` でそのままステージの
 CMake 呼び出しへ渡せます。
 
@@ -339,6 +348,16 @@ PY
   `SELECTED` を条件に入れるのは、この define を持たない古い platform に対して
   ガードが誤って発火しないようにするためです。例題と構成の対応は
   `scripts/verify_package.py` の `PROFILES` が正本です。
+- **特定の板にしか無い API を呼ぶ共有例題には、板ガードを付けてください。**
+  `examples/` は 4 板共有で、`verify_package.py` は `PROFILES` の例題を板ごとに
+  建てます。M5NanoC6 にしか無い `pinMode` / `rgbLedWrite` 等を呼ぶ `NanoC6Gpio` は
+  `#if defined(ARDUINO_M5STACK_NANO_C6)`（arduino-cli が板の `build.board` から
+  付ける define）で本体を囲み、他の板では `setup()` が「この例題は M5NanoC6 向け」の
+  1 行を `target_fput_log` で出して何もしません（`loop()` は空）。**ガードがある
+  からこそ Xtensa 3 板でリンクが通る**ことは負対照で確かめてあります（ガードを
+  `#if 1` にして CoreS3 の wificonnect を建てると `pinMode` / `digitalWrite` /
+  `digitalRead` / `rgbLedWrite` の未定義参照で rc=1。段6 Task 1）。新しい板専用 API を
+  足すときは、同じ形で例題を守り、負対照を 1 回取ってください。
 - **多重定義もリンクでは捕まりません。** リンクは常に
   `-Wl,--allow-multiple-definition` を付けるので、重複があっても通り、
   どちらが生き残るかはオブジェクト名の順序で決まります。
@@ -477,6 +496,33 @@ PY
   （`git ls-files` で追跡ファイルを拒否し、`LOG_DIR` の外のファイルも
   `C6_REDACT_ANYWHERE=1` を明示しない限り拒否する guard 付き）。
   `packaging/release-allowlist.json` にはこの台本のエントリを置いていません。
+  段6 で足した **JTAG 生存 probe** の要点（詳細は台本のヘッダ）:
+  - `EXTRA_MARKERS='a|b|...'` は固定文字列の追加集計で、`extra:` 行に出ます
+    （`grep -F`。ERE ではありません）。
+  - probe は monitor を殺した後に `openocd`（core 同梱の
+    `openocd-esp32/v0.12.0-esp32-20251215`、`OPENOCD=` で差替え、PATH は探さない）を
+    `board/esp32c6-builtin.cfg` で起動し、halt -> `reg pc` / USJ `EP1_CONF` / `INT_RAW` /
+    `toppers_arduino_loop_calls` -> resume -> 2 秒 -> halt -> 再読み -> resume の順で
+    読みます。reset も flash もしません。走る条件は `COLD=1` かつ heartbeat=0
+    （無音 cold、`C6_JTAG_ON_SILENT=1` 既定）か、`C6_JTAG_FORCE=1`（positive
+    control）。`DRYRUN=1` では走りません。
+  - **板の pin は必須**: `adapter serial <DUT の serial>` を最初の `-c` に置き、出力に
+    `esp_usb_jtag: serial (<同じ値>)` が無ければ `verdict: refused` として値を一切
+    信用しません（開発側で別の板を掴んだ事故が根拠）。serial 行が 1 行も無く
+    openocd が非 0 で終わった場合（device 無し）は `not-run (openocd rc=N, no serial
+    line)` で、これは別物です。
+  - `ELF=`（既定 `$SKETCH_BUILD/fmp3-prebuilt-link/link/fmp_xip.elf`）から `nm` で
+    `toppers_arduino_loop_calls` の番地を取ります。`COLD=1` の run は普通
+    `SKETCH_BUILD` が無いので、`loop_calls` が欲しければ `ELF=` を渡してください。
+  - **verdict は `loop_calls` の 2 回読みだけで決めます**（alive / not-advancing /
+    not-run）。`EP1_CONF` の `data_free`（bit1）は健全性の基準では**なく**、生の値を
+    無音 run との比較用に記録するだけです（段6 ruling R7: probe は monitor を殺した
+    後に走るので host 側の reader が無く、健全な板でも bit1 は 0 と読めます。実測:
+    alive delta=1755 で data_free=0）。
+  - **halt 残留の危険**: 30 秒の timeout（rc=124）でも、halt と resume の間で
+    コマンドが失敗して `-c` の連鎖が止まった場合でも、chip は次の reset か電源断まで
+    halt のままです。直後に reset 無しで採取すると、その無音は調べたい無音では
+    ありません。
 - **ライセンスはリポジトリ単一ではありません。** 各ファイルのヘッダと
   `THIRD_PARTY_NOTICES.md` が正で、`LICENSE` はこのリポジトリ向けに書かれた
   部分に適用されます。取り込んだファイルはヘッダを保持してください。

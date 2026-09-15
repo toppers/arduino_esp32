@@ -53,6 +53,20 @@ USB Serial/JTAG のログで、次の行を `grep` で数えられます。
 `[C6-GPIO] pinMode: refused pin` / `unsupported mode` はランタイムが
 設定を拒否したときの行で、この例題では出ないはずです。
 
+## 実測（2026-09-15、段6 Task 3、M5NanoC6 実機）
+
+warm 4 回（うち 1 回は JTAG probe 付き）+ 真cold 1 回の 5 run すべてで、
+`[C6-GPIO] readback ok` 1、`[C6-INTR] VERDICT PASS rising=5 falling=5 change=10
+detached=0 dispatch=20 call=20 orphan=0 acre=2` 1、`[C6-RGB] tx_done` 8（1..8）、
+`tx timeout` 0、`## Unexpected` 0、heartbeat 38-39 / 40 秒でした。
+**LED の色は確認していません**（`tx_done` は RMT の送信完了で、光ったことの
+証拠ではありません。目視は未実施）。
+
+G19（`NANOC6_RGB_POWER_ENABLE`）は 1 と 0 の両方で焼き、ログのカウントは
+全項目で同一でした（`[C6-RGB] power pin G19 HIGH` / `... left alone` の行だけが
+違う）。点灯に差があるかは目視でしか分からず、未確認です。G19 が要るのか
+要らないのかはこの結果からは言えません。
+
 ## 制約
 
 - 例題は `target_fput_log` で 1 文字ずつ出します（`Serial` / `delay()` /
