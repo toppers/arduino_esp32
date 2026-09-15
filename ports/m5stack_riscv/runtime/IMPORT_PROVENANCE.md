@@ -208,6 +208,11 @@ wifi-connect だけが include path に加える（minimal は不変）。
 |---|---|---|
 | `esp/config/esp32/hal_stub_include/README.vendored.txt` と 23 ヘッダ（`assert.h` `driver/gpio.h` `endian.h` `errno.h` `esp_netif.h` `esp_timer.h` `inttypes.h` `machine/endian.h` `nuttx/config.h` `nvs.h` `nvs_flash.h` `platform/os.h` `stdio.h` `stdlib.h` `string.h` `sys/cdefs.h` `sys/lock.h` `sys/param.h` `sys/queue.h` `sys/time.h` `sys/types.h` `time.h` `unistd.h`） | `runtime/wifi/config/hal_stub_include/` 同名 | なし |
 
+**`runtime/wifi/config/hal_stub_include/nuttx/config.h` は shadow 化されている**（Task 1 レビュー
+確認済み、dev 側にも同じ shadow がある）: include 順で `config/esp32c6/hal_stub_include/`
+（段1、上記）が先に来るため、この第2コピーはどの TU からも解決されない。編集するのは
+`runtime/config/esp32c6/hal_stub_include/nuttx/config.h` 側のみでよい。
+
 ### prebuilt `runtime/wifi/prebuilt/`（dev `esp/lib/`、`.a` 4 本 + README 2 本 + ライセンス 5 本）
 
 | dev のパス | arduino のパス | 改変 | 理由 |

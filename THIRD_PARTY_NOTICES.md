@@ -91,6 +91,42 @@ SDK headers, linker scripts and libraries (`esp32c6-libs`) that the M5Stack Ardu
 core 3.3.8 installs; none of those files are copied into this repository or into the
 Release ZIP.
 
+### 段3: wifi-connect profile の追加出典（2026-09-15）
+
+`ports/m5stack_riscv/runtime/wifi/` の Wi-Fi shim は、`ports/m5stack_xtensa/runtime/wifi/shim`
+（公開版由来の fork）とは独立した**第2コピー**であり、開発リポジトリ `c7fef18`（上記と同じ出典）の
+`esp/shim/` をそのまま vendoring したもの（Xtensa 側は無改変のまま）。1 本ごとの出自・改変の
+有無・改変境界は
+[`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md)
+「段3 Task 1」「段3 Task 2」節を正本とし、本notice では再掲しない。
+
+esp-idf 原本の同梱（D8 の逸脱）は、この段でさらに 3 本増えた: `netif_esp32s3.c` が
+`#include` する lwIP contrib のヘッダ 3 本（`ping.h` `tcpecho_raw.h` `udpecho_raw.h`、
+`runtime/wifi/net/lwip_contrib_include/`）。出典は ESP-IDF v5.5.4 submodule に入れ子になっている
+lwIP submodule（`fd432e4ee2`）の `contrib/apps/{ping,tcpecho_raw,udpecho_raw}/`、
+BSD-3-Clause。M5Stack Arduino core 3.3.8 の SDK は lwIP contrib apps のヘッダを含まないため
+（実体は `liblwip.a` の中にある）、ヘッダだけを補って同梱している。D8 の逸脱
+（`BUILDING.md`「ESP-IDF を複製しない」からの逸脱）は、esp-idf 原本 6 本（Apache-2.0:
+`periph_ctrl.c` `modem_clock.c` `modem_clock_hal.c` `efuse_hal.c` `efuse_hal_esp32c6.c`
+`phy_init_data.c`）+ 上記 lwIP contrib ヘッダ 3 本（BSD-3-Clause）の計 9 本。段5 で core の
+`.a` メンバ + `vPort*` シム案へ再評価する方針（`docs/c6-port.md` D8）は不変。
+
+`ports/m5stack_riscv/runtime/wifi/prebuilt/` には ESP-IDF v5.5.4（`735507283d`）由来の
+プリビルトアーカイブ 4 本を同梱する（いずれも開発リポジトリ `c7fef18` 時点で 1 回建てた物）:
+
+- `wpa2/esp32c6/libsupplicant.a` `libmbedcrypto.a` `libmbedtls.a` -- 開発リポジトリの
+  `esp/boot/build_wpa_libs_espidf_esp32c6.sh` / `build_mbedtls_tls_espidf_esp32c6.sh` で
+  ソフトウェア暗号のみで建てた物。WPA supplicant は BSD-3-Clause、mbedTLS は 3.6.5
+  （`components/mbedtls/mbedtls` `ffb280bb63`）で Apache-2.0 OR GPL-2.0-or-later。
+  `libmbedtls.a` は Xtensa 側の同名ディレクトリには無い C6 固有の追加で、supplicant の
+  EAP-TLS 経路が要求する（WPA2-PSK 経路では未使用と実測済み）。
+- `lwip/esp32c6/liblwip.a` -- 開発リポジトリの `build_lwip_lib_espidf_esp32c6.sh` で建てた
+  ESP-IDF の lwIP、BSD-3-Clause。`LWIP_DNS 0` で建っており、名前解決の扱いは段4 で判断する
+  （`docs/c6-port.md`「段3 の記録」「段4 の入口条件」）。
+
+sha256・生成台本・上流ライセンス本文は `wifi/prebuilt/{wpa2,lwip}/README.md` に記録済み
+（`BUILDING.md` の要求どおり、アーカイブと README は同じコミットで更新する）。
+
 ## BlueDroid (ESP-IDF Bluetooth host stack)
 
 `third_party/bluedroid/` — Espressif Systems, Apache License 2.0.

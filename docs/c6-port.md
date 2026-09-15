@@ -39,12 +39,12 @@ wpa2 の `.a`（`ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2/README.md`）�
 | D0 | 出自 | 開発リポジトリ `c7fef18` を直接出自にする。公開 #8 は別途ユーザー操作 | `packaging/release-allowlist.json:3-6`（Xtensa の出自）、同ファイルの `*C6` キー | #8 が出たら出自欄を差し替えるだけ |
 | D1 | bootloader | **確定（stock M5Stack bootloader、同梱なし）**。段2 で条件 A（stock bootloader + stock `default` ptable + boot_app0、160 MHz）warm 5/5・真cold 9/10 を実機実測し成立。B（開発側 seam bootloader）/ C（+開発側 ptable）/ 80 MHz は**未実施**（A が成立したため不要。詳細は「段2 の記録」節） | 本リポジトリは bootloader を出荷していない（`BUILDING.md`・`README.md`・`packaging/README.release.md`・`scripts/install_platform.py` に bootloader の記述なし）。M5Stack platform.txt の prebuild hook を継承 | 同梱経路 = 板別の prebuild hook 上書き |
 | D2 | port ディレクトリ | `ports/m5stack_riscv`。**段1 で確定・実装済み**（`ports/m5stack_xtensa/` は完全に不変。X-check 7/7 で実測） | `ports/m5stack_xtensa/` と並ぶ。`scripts/build_prebuilt_stages.py:161`（runtime）・`:195-198`（app）の固定パスを chip -> port の表にする | 改名は機械的 |
-| D3 | 共有 cmake | `prebuilt_stage.cmake` は共有して chip 分岐、chip 固有（seam 画像検査等）は `prebuilt_stage_c6.cmake` へ分離。**段1 で確定・実装済み、ただし実際には `prebuilt_stage.cmake` 自体は無改変**（chip -> port の表（Task 1）だけで C6 の runtime CMakeLists が自分の `prebuilt_stage_c6.cmake` を呼ぶため、Xtensa 側への白リスト追加も委譲コードも不要だった。委譲は「行を足す」形ではなく「表の port 列」で実現） | `ports/m5stack_xtensa/runtime/cmake/prebuilt_stage.cmake:57-62`（`A1_CHIP` 白リスト）ほか | 二重保守 vs 波及。どちらも X-check が検出 |
+| D3 | 共有 cmake | `prebuilt_stage.cmake` は共有して chip 分岐、chip 固有（seam 画像検査等）は `prebuilt_stage_c6.cmake` へ分離。**段1 で確定・実装済み、ただし実際には `prebuilt_stage.cmake` 自体は無改変**（chip -> port の表（Task 1）だけで C6 の runtime CMakeLists が自分の `prebuilt_stage_c6.cmake` を呼ぶため、Xtensa 側への白リスト追加も委譲コードも不要だった。委譲は「行を足す」形ではなく「表の port 列」で実現）。**段3 で確定**: Task 1/2 とも `runtime/CMakeLists.txt` と自分の `prebuilt_stage_c6.cmake` だけを触り、Xtensa 側の `prebuilt_stage.cmake` は無改変のまま（X-check 7/7 が両 Task で成立） | `ports/m5stack_xtensa/runtime/cmake/prebuilt_stage.cmake:57-62`（`A1_CHIP` 白リスト）ほか | 二重保守 vs 波及。どちらも X-check が検出 |
 | D4 | manifest / driver 版 | **上げる**（`DRIVER_VERSION` 3、schema に `paddrMode` の新値と `linkBaseFlags` を加法で追加）。**段1 で確定・実装済み**（`DRIVER_VERSION="3"`、`MANIFEST_SCHEMA=2`、`SUPPORTED_MANIFEST_SCHEMAS=(1,2)`。schema 1 は literal のまま不変、schema 2 は `linkTailFlags`（任意キー、ledger に無かったが Task 1 が追加）も持つ） | 段1 完了時点（fix wave 1）の `scripts/fmp3_link.py`: `:87`（`DRIVER_VERSION`）・`:92-93`（`MANIFEST_SCHEMA` / `SUPPORTED_MANIFEST_SCHEMAS`）・`:98-99`（`PADDR_MODES`、schema 1 は `runtime-mmu` のみ）・`:105`（`SCHEMA1_LINK_BASE_FLAGS` = `-nostdlib -mlongcalls`）・`:106`（`SCHEMA1_LINK_TAIL_FLAGS` = `-lgcc -lc`）。以後は名前で引くこと | 旧 manifest を読む経路が無いことを確かめて戻せる |
 | D5 | C6 の CPU クロック | **確定（160 MHz）**。段2 で条件 A を 160 MHz のまま warm 5/5・真cold 9/10 を実機実測し成立、80 MHz へのフォールバックは不要（**S1-6 の watch item は解消**） | -- | -- |
-| D6 | OPEN AP の私的 ABI（`g_ic+0x1b4`） | **C6 では表を差し込まない。** 開発側と同じく `esp_wifi_init` に supplicant を任せる（開発側で STA/DHCP/ping 実測済み）。`--wrap=esp_supplicant_init` の経路は Xtensa 側を触らない。C6 の Open AP は**段4 で実測するまで対応を主張しない** | `ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.c:30`（offset）、`BUILDING.md:288-294`（OPEN/WPA 分離） | Open AP が要るなら C6 blob の offset を求め直す（別作業） |
-| D7 | lwIP | **開発側の型（自前 `liblwip.a` + `netif_esp32s3.c` / `port/sys_arch.c`）**で通し、core の `liblwip.a` へ寄せるのは後 | Xtensa 側は core の `liblwip.a` + `ports/m5stack_xtensa/runtime/wifi/net/` の別系統 | 段3 でリンクが通らなければ Xtensa 型へ |
-| D8 | esp-idf 原本 6 本 | **開発側と同じく vendored**（provenance と改変境界を記録）。`BUILDING.md:278`「ESP-IDF を複製しない」からの**逸脱として明記**し、段5 で core の `.a` メンバ + `vPort*` シム案を再評価 | `BUILDING.md:278` | 段5 の再評価で置換 |
+| D6 | OPEN AP の私的 ABI（`g_ic+0x1b4`） | **C6 では表を差し込まない。** 開発側と同じく `esp_wifi_init` に supplicant を任せる（開発側で STA/DHCP/ping 実測済み）。`--wrap=esp_supplicant_init` の経路は Xtensa 側を触らない。C6 の Open AP は**段4 で実測するまで対応を主張しない**。**段3 で実装どおり確定**: `toppers_wifi_core.c`（C6）はコールバック表・`__real_esp_supplicant_init`・`wpa_crypto_funcs` ゼロ化のいずれも持たない（ソース 0 件を実測）。空パスワード要求は NOTICE を出して driver へそのまま渡す。Open AP の可否は段4 の実機まで未確定のまま | `ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.c:30`（offset）、`BUILDING.md:288-294`（OPEN/WPA 分離） | Open AP が要るなら C6 blob の offset を求め直す（別作業） |
+| D7 | lwIP | **開発側の型（自前 `liblwip.a` + `netif_esp32s3.c` / `port/sys_arch.c`）**で通し、core の `liblwip.a` へ寄せるのは後。**段3 で確定・リンク成立**: 「段3 でリンクが通らなければ Xtensa 型へ」の分岐は発生しなかった（AC-3d PASS）。gateway/netmask は `netif_esp32s3.h` が公開しないため、adapter 側で lwIP の `netif_default` を読んで吸収（vendored ファイルは無改変のまま） | Xtensa 側は core の `liblwip.a` + `ports/m5stack_xtensa/runtime/wifi/net/` の別系統 | 段3 でリンクが通らなければ Xtensa 型へ（**不要になった**） |
+| D8 | esp-idf 原本 6 本 | **開発側と同じく vendored**（provenance と改変境界を記録）。`BUILDING.md:278`「ESP-IDF を複製しない」からの**逸脱として明記**し、段5 で core の `.a` メンバ + `vPort*` シム案を再評価。**段3 で対象が 3 本増えた**: `netif_esp32s3.c` が要求する lwIP contrib ヘッダ 3 本（BSD-3、入れ子 submodule `fd432e4ee2`）を同じ逸脱の枠で受理（Task 1 レビュー承認）。D8 の逸脱は計 9 本（esp-idf 原本 6・lwIP contrib ヘッダ 3）に確定 | `BUILDING.md:278` | 段5 の再評価で置換 |
 | D9 | C3 / C5 | 板は足さない。`BOARDS` / `--chip` / `PROFILES` を表駆動にするだけ | `scripts/install_platform.py:66`（`BOARDS`）・`:311`（`--chip`）、`scripts/verify_package.py:77`（`PROFILES`）・`:91`・`:97` | -- |
 | D10 | 板 id / 表示名 | `m5nanoc6_fmp3` / `M5NanoC6 (TOPPERS/FMP3)` | 既存 `m5cores3_fmp3` の型（`scripts/install_platform.py:66-73`） | -- |
 | D11 | C6 の profile | `minimal` + `wifi-connect`（m5-unified / bt-classic 無し。C6 target は `TNUM_PRCID` 1 以外を `#error` にする） | `scripts/install_platform.py:123`（`EXPECTED_PROFILES`）、`ports/m5stack_xtensa/runtime/CMakeLists.txt:287-289`（`FMP3_PRC_NUM`） | -- |
@@ -624,6 +624,215 @@ marker の正規表現に掛からず heartbeat=38（blink 行は 39 のまま�
   複製しない」からの逸脱として明記済み）は上記 D0-D11 表のとおり。段3 ではこれらの決定を
   実装へ落とし込む。
 
+## 段3 の記録（2026-09-15、commit `760fce9` / `4448a8d` / `a4c346a`）
+
+`wifi-connect` stage が建ち、`m5nanoc6_fmp3:FMP3Runtime=wificonnect` で `WiFiScan` /
+`WiFiConnect` / `Blink` / `LibraryInfo` の 4 例題がリンクを通った段。実機は使っていない（登記のみ、
+書込みは段4）。詳細な証跡は本リポジトリ `.superpowers/sdd/PLAN-stage3-impl/
+{task-1-report.md,task-2-report.md,progress.md}` と、開発リポジトリ
+`.steering/20260915-c6-arduino-plan/stage3/{AC.md,logs/}`（`task1-*` が Task 1 の採取、
+`task2-*` が Task 2 の採取。`task2-supply-table.md` が移し漏れ表、`task2-rom-winners.txt` が
+ROM ld 勝者一覧。いずれも dev 側で未 commit）。
+
+- **Task 1**（commit `760fce9` ソース+CMake、`4448a8d` prebuilt `.a`）: dev `c7fef18` の C6
+  Wi-Fi 構成（shim / hal / esp-idf 原本 / net / FreeRTOS スタブ / config / `.a`）を
+  `wifi-connect` profile として vendoring し、コンパイルまで通した。
+- **Task 2**（commit `a4c346a`）: adapter の C6 版（`toppers_wifi_core.{h,c}` / `_connect.c` /
+  `_scan.c` / `_optional_stubs.c`）、`attachInterrupt`（`arduino/arduino_interrupt.{c,cfg,h}`）、
+  `app/wifi_connect/` を足し、stage を建てて 4 例題をリンクした。
+
+### AC 3a-3j
+
+| # | 基準 | 判定 | 根拠 |
+| --- | --- | --- | --- |
+| 3a | `build_prebuilt_stages.py --chip esp32c6 --profiles wifi-connect --clean` rc=0、stage（objs/ld/lib/manifest/rsp）、重複定義監査 PASS、`check_host_paths.py` rc=0 | PASS | `task2-build-wifi-connect-1.txt`（83 objects / 833 strong definitions / 0 duplicated / 0 allowed）、`task2-check-host-paths.txt`（90 files PASS）。commit 後の `--clean` 再ビルドは 90 本中 89 本 sha 同一（差は `objs/banner.o` の `__DATE__`/`__TIME__` のみ、`task2-build-wifi-connect-2-committed.txt`） |
+| 3b | X-check 7/7（scripts/共有 cmake を触った Task ごと）。`git diff --stat main -- ports/m5stack_xtensa src examples third_party` 空 | PASS | `task1-xcheck.txt`（Task 1、`--clean` 再ビルド後）、`task2-xcheck.txt`（Task 2、plain compare。Task 2 が触った共有ファイルは `install_platform.py` の `EXPECTED_PROFILES` だけで stage 生成に無関係） |
+| 3c | platform 再生成で `m5nanoc6_fmp3` の FMP3Runtime に `wificonnect` が出る。Xtensa の boards/platform.txt は不変（cmp） | PASS | `task2-boards-platform-diff.txt`（`boards.txt` の差は `m5nanoc6_fmp3.menu.FMP3Runtime.wificonnect` 3 行の追加のみ、`platform.txt` は cmp 同一）、`task2-install-platform.txt` |
+| 3d | `arduino-cli compile -b toppers:esp32:m5nanoc6_fmp3:FMP3Runtime=wificonnect` で 4 例題 rc=0、C-1..C-8 PASS（C-8 の使用量）、`nm -u` 空 | PASS | `task2-compile-c6-{WiFiScan,WiFiConnect,Blink,LibraryInfo}-wificonnect.txt`。C-8: WiFiScan 520832、WiFiConnect 592416、Blink 111232、LibraryInfo 111280（分母 1310720）。最終 ELF の `nm -u` は 4 本とも 0（`task2-nm-u-elf.txt`） |
+| 3e | 移し漏れ表: dev 供給表の 261 記号それぞれについて arduino 側の供給元を 1 行ずつ。UNRESOLVED 0 | PASS | `task2-supply-table.md`、`task2-nm-u-stage.txt`。内訳は下記「供給表の要約」 |
+| 3f | ROM ld 勝者一覧と、kernel/shim の関数が置換されていないことの確認（stage obj の定義 vs ROM ld 代入の交差） | PASS | `task2-rom-winners.txt`。内訳は下記「ROM ld 勝者」 |
+| 3g | `size`・RAM 余裕（LENGTH 0x6E610）。`.iram1` 群が RAM セグメントに載る（C-6） | PASS | `task2-size.txt`。内訳は下記「size と RAM」 |
+| 3h | R5: 生成 `kernel_cfg.c` に Xtensa 線 0-3 の inthdr が無く、`-DTOPPERS_ESP32C6` を外す対照で cfg が止まる（1 回） | PASS | `task2-r5-kernel_cfg.txt`、`task2-r5-control.txt`。内訳は下記「R5」 |
+| 3i | `IMPORT_PROVENANCE.md` に全件、`THIRD_PARTY_NOTICES.md` に D8 の逸脱と `.a` の由来/ライセンス、`wifi/prebuilt/*/esp32c6/README.md` に sha256 | PASS（本コミット） | `ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`「段3 Task 1」「段3 Task 2」節、`THIRD_PARTY_NOTICES.md`、`wifi/prebuilt/{wpa2,lwip}/README.md`（Task 1 で作成済み） |
+| 3j | minimal の非退行: 段1/2 の 3 例題が引き続きリンクし sha 不変（minimal stage を触らないこと） | PASS | `task2-minimal-sha-compare.txt`（50 本中 49 本 sha 同一、差は `objs/banner.o` のみ）、`task2-compile-c6-{Blink,LibraryInfo}-minimal.txt` |
+
+### 判断 S3-1..S3-6 の結果
+
+| # | 判断 | 結果 |
+| --- | --- | --- |
+| S3-1 | libc 供給 | `newlib_syscalls.c` を wifi-connect でも維持（`esp_shim_libc.c` と同名記号を持たない。probe / 本ビルドとも重複定義監査 0 duplicated）。ただし ROM `rand()` が `syscall_table_ptr` を未初期化のまま辿りうる経路（段1 の M-6 parity gap）は解消していない（下記「ROM ld 勝者」参照、watch item のまま） |
+| S3-2 | lwIP | D7 = 開発側の型（自前 `liblwip.a` + `netif_esp32s3.c` + `port/sys_arch.c`）で通した。`netif_esp32s3.h` は address しか公開しないため、gateway / netmask は lwIP の `netif_default` を adapter 側で読んで補う（vendored ファイルは無改変） |
+| S3-3 | OPEN AP | D6 = 表を差し込まない。`toppers_wifi_core.c`（C6）は `esp_wifi_init()` に supplicant を任せ、空パスワード要求時は NOTICE を出して driver へそのまま渡す |
+| S3-4 | attachInterrupt | 線 19。`arduino_interrupt.c`（C6 版）が GPIO 割込みソース（`ETS_GPIO_INTR_SOURCE`=30）を kernel の `_kernel_esp32c6_intmtx_route` で配線。コンパイル・リンクまで確認、動作確認は段6 |
+| S3-5 | esp-idf 原本 6 本 | D8 = vendored（`periph_ctrl.c` `modem_clock.c` `modem_clock_hal.c` `efuse_hal.c` x2（うち1本は `efuse_hal_esp32c6.c` に改名） `phy_init_data.c`）。段5 で再評価する方針は不変 |
+| S3-6 | APM 解除 | dev と同じ adapter 内（vendored `esp_wifi_adapter.c` の `c6_apm_unblock`、`esp_wifi_init()` 中の osi コールバックから呼ばれる）。adapter 自身は何も足していない。CMake option `TOPPERS_C6_APM_UNBLOCK`（既定 ON）を段4 の対照用に残した |
+
+### vendored inventory の要約（`runtime/wifi/`、計 98 本）
+
+| 出自 | 本数 | 内訳 |
+| --- | --- | --- |
+| dev `c7fef18`（バイト同一） | 82 | shim 26（.c 15 + .cfg 2 + .h 8 + `IMPORT_PROVENANCE_c6.md`）、hal_src 6、freertos_stub 14、net 8、config/hal_stub_include 24、prebuilt `.a` 4 |
+| esp-idf v5.5.4 `735507283d` 原本（D8 の逸脱） | 6 | `idf_src/{periph_ctrl,modem_clock,modem_clock_hal,efuse_hal,efuse_hal_esp32c6,phy_init_data}.c`。Apache-2.0 ヘッダ保持。`efuse_hal_esp32c6.c` は basename 衝突のためファイル名のみ改名（中身はバイト同一） |
+| lwIP contrib ヘッダ（D8 の逸脱の追加分、入れ子 submodule `fd432e4ee2`） | 3 | `net/lwip_contrib_include/{ping,tcpecho_raw,udpecho_raw}.h`。BSD-3-Clause。M5Stack core の SDK が contrib apps を含まないため、`netif_esp32s3.c` の `#include` を満たすヘッダだけを同梱（実体は `liblwip.a` の中） |
+| prebuilt `.a`（sha256・生成台本つき） | 4 | 下記「prebuilt `.a`」表 |
+| README・上流ライセンス本文（新規） | 7 | `prebuilt/{wpa2,lwip}/README.md` 2 本 + ライセンス本文 5 本 |
+
+**合計 82+6+3+4+7 = 98 本。** dev 由来 82 本は `git show c7fef18:<path> | cmp` でバイト同一を
+確認済み（Task 1 実測、集合の導出は dev `build/c6-wifi/build.ninja` の 31 TU と `ninja -t deps`
+のヘッダ閉包から機械列挙）。Task 2 が新規に足した adapter / `attachInterrupt` / app の 11 本
+（vendoring ではなく Xtensa port からの派生）はこの 98 本に含まない。
+
+#### prebuilt `.a`（`runtime/wifi/prebuilt/{wpa2,lwip}/esp32c6/`）
+
+| アーカイブ | sha256 | 生成台本（開発リポジトリ） | 由来 |
+| --- | --- | --- | --- |
+| `libsupplicant.a` | `DEEA3B35...` | `esp/boot/build_wpa_libs_espidf_esp32c6.sh` | ESP-IDF v5.5.4 `735507283d` の WPA supplicant、BSD-3-Clause |
+| `libmbedcrypto.a` | `AB0B175A...` | 同上 | mbedTLS 3.6.5（`ffb280bb63`）、Apache-2.0 OR GPL-2.0-or-later |
+| `libmbedtls.a` | `993C0C95...` | `esp/boot/build_mbedtls_tls_espidf_esp32c6.sh` | 同上。Xtensa 側には無い（C6 の supplicant の EAP-TLS 経路が要求、WPA2-PSK 経路では未使用と実測済み） |
+| `liblwip.a` | `85859F70...` | `esp/boot/build_lwip_lib_espidf_esp32c6.sh` | ESP-IDF v5.5.4 の lwIP（BSD-3-Clause）。`LWIP_DNS 0`（段4 で扱う、下記「段4 の入口条件」） |
+
+いずれも開発リポジトリ `c7fef18` 時点で 1 回建てた物をそのまま持ち込む（sha256 全文と由来は
+`wifi/prebuilt/{wpa2,lwip}/README.md`）。`check_host_paths.py` PASS（ビルド機の絶対パス無し）。
+
+### 供給表の要約（AC-3e、`task2-supply-table.md`）
+
+dev の非 blob 記号 261（供給元表）を WiFiConnect 最終 ELF の link map / `nm` で 1 記号ずつ
+引いた結果:
+
+| arduino 側の供給元 | 件数 |
+| --- | --- |
+| ROM ld（13 本のどれかの代入） | 237 |
+| stage obj | 17 |
+| stage `.a`（`hexstr2bin` = libsupplicant） | 1 |
+| toolchain（`floor` = `libm_nano.a`、`-lm` の本物） | 1 |
+| gc'd（定義は stage obj にあるが `--gc-sections` で落ちた。供給元は在るので移し漏れではない） | 5 |
+| UNRESOLVED | 0 |
+
+237+17+1+1+5 = 261。UNRESOLVED 0 = 移し漏れ無し。stage 単位の `nm -u`（objs 全体の未定義）は
+Task 1 の 108 から Task 2 で 132 に増えたが（adapter・`attachInterrupt` の参照が加わったため）、
+132 本すべてに WiFiConnect / WiFiScan それぞれの最終供給元が付いている（unknown 0、
+`task2-nm-u-stage.txt`）。
+
+### ROM ld 勝者と `{rand, md5_vector}` の交差（AC-3f）
+
+WiFiConnect 最終 ELF で「13 本の ROM ld が代入する名前」かつ実際に `A`（絶対番地）で解決した
+記号は**1129**（pp 353 / rom.ld 307 / phy 224 / libgcc 92 / libc 39 / net80211 37 / newlib 32 /
+coexist 23 / systimer 13 / libc-suboptimal 7 / version 2。うち 66 は `esp32c6.rom.pp.ld` の
+`//name = addr;` 行が作る実害の無い `//` 付き記号）。
+
+- **stage obj との交差 = `rand`**（`esp_shim_libc.o` の定義に `esp32c6.rom.newlib.ld` の
+  `rand = 0x40000590` が黙って勝つ、`--allow-multiple-definition` 下）。
+- **stage `.a` との交差 = `md5_vector`**（`libsupplicant.a(wpa_crypto_mbedtls.o)` の定義に
+  `esp32c6.rom.ld` の `md5_vector = 0x40000748` が勝つ）。
+- **どちらも現在の 4 例題では到達不能**（実測）: `rand` を参照するのは
+  `libmbedcrypto.a(mb_rsa.o)` だけ、`md5_vector` を参照するのは `libsupplicant.a(wpa_chap.o)`
+  だけで、いずれも `--gc-sections` で discard されている（RSA blinding と EAP-CHAP は
+  WPA2-PSK STA の経路に無い）。Task 1 の smoke リンク・dev の C6 ELF と同じ 2 記号で、
+  段1 の minimal（M-6 parity gap）から引き継いだ状態のまま増減は無い。
+- **`syscall_table_ptr`（`0x4087ffd4`）/ `_global_impure_ptr`（`0x4087ffd0`）を張る者は
+  この像に居ない**（Xtensa port の `chip_rom_libc.c` に相当するものを C6 は持たない、S3-1）。
+  ROM `rand()` がこの表を辿るなら NULL 参照になりうるが、**この 4 例題では `rand` を呼ぶ経路が
+  discard されているため顕在化しない**。`random()` 等を呼ぶスケッチを wifi-connect で建てたときに
+  初めて意味を持つ**未解決のハザード**として持ち越す（段4 以降の watch item）。
+- **minimal との違い**: minimal profile は ROM ld を 2 本（`esp32c6.rom.ld` /
+  `esp32c6.rom.api.ld`）に絞ってこの経路自体を避けている（段1）。wifi-connect は
+  phy/pp/net80211/coexist/systimer が要る残り 11 本を意図的に戻し、上記 2 件の既知の衝突を
+  （到達不能であることを確認したうえで）許容している -- 「3/4 例題が通る」を「任意のスケッチが
+  安全」とは読まないこと（段1 と同じ注意）。
+
+### size と RAM 余裕（AC-3g）
+
+| 例題 | image bytes（flash、C-8） | RAM（LOAD MemSiz） | 余裕（LENGTH 0x6E610=452112 に対し） |
+| --- | --- | --- | --- |
+| WiFiConnect | 592416 / 1310720 | 301,264 B | 150,848 B |
+| WiFiScan | 520832 / 1310720 | 264,976 B | 187,136 B |
+| Blink（wificonnect） | 111232 / 1310720 | 43,536 B | 408,576 B |
+| LibraryInfo（wificonnect） | 111280 / 1310720 | 43,536 B | 408,576 B |
+
+dev の `wifi_sta` 像（302,856 B）・Task 1 smoke リンク（300,496 B）と同程度。`.iram1` 群
+（245 input section）はすべて RAM LOAD セグメント（`.data` 出力セクション）に載り、flash 側へは
+落ちない（C-6 PASS）。Blink / LibraryInfo が minimal（83 KB台）より約 28 KB 大きいのは、
+`--gc-sections` が Wi-Fi 本体を落としても cfg が静的に作る shim のタスク・セマフォ・`NET_TSK` と
+kernel 表は残るため。固定値として恒久扱いしないこと（段1 と同じ注意）。
+
+### R5: define が cfg 経路に届いている（AC-3h）
+
+- **正側**: 生成 `kernel_cfg.c` に Xtensa 線 0-3/5,7,8/23,27 の `esp_shim_inthdr_*` は 0 件。
+  `_kernel_inh_table_prc1` は 0x10001..0x1000f（線 1-15 = shim）、0x10011（線17=USJ）、
+  0x10013（線19=attachInterrupt の動的 ISR 枠）。`TNUM_CFG_INTNO 18`。
+- **対照（負対照）**: `chip_stddef.h` の `#define TOPPERS_ESP32C6`（cfg が読む唯一の定義箇所、
+  `-D` ではないので `-U` で消せない）を 1 回だけコメントアウトして scratch でビルドすると
+  **`esp_shim.cfg:163-165: error: E_OBJ: intno '1'/'2'/'3' is duplicated in CFG_INT`** で
+  cfg pass 2 が止まり rc=1。直後に `git checkout` で復元、`git status` clean を確認、
+  `build/prebuilt` には触れていない。
+- 以上により、vendored `esp_shim.cfg` の `#ifndef TOPPERS_ESP32C6` は実際に `-D` が cfg 経路に
+  届いていることに依存した分岐であり、死んだ `#ifdef` ではないことを実証した
+  （`BUILDING.md`「cfg を `#ifdef` で切らない」との整合は `INVESTIGATION.md` 5 節どおり）。
+
+### 正直な失敗の一覧（Low#）
+
+| # | 対象 | 挙動 | 理由 |
+| --- | --- | --- | --- |
+| Low#1 | `toppers_fmp3_wifi_host_by_name()` | 数値表記の IP（`a.b.c.d` 形式の文字列）は `ip4addr_aton` で正しく解決する。**名前解決は 0（失敗）を返す** | `liblwip.a` が `LWIP_DNS 0` で建っており `lwip_getaddrinfo` / `dns_gethostbyname` が存在しない。初回に WARNING、以後毎回 WARNING を出す（下記「adapter が出すマーカー文字列」） |
+| （派生） | `toppers_fmp3_wifi_tcp_request()` | 宛先が名前のとき Low#1 経由で失敗（-1） | 同上 |
+| （設計） | `attachInterrupt()` の未対応モード（mode 0、`>= GPIO_INTR_MAX`、`ONLOW_WE`/`ONHIGH_WE`） | attach せず WARNING（下記） | 黙って「発火しない登録」を作らない |
+| （既知・未検証） | Open AP（空パスワード） | `esp_wifi_init()` に supplicant を任せたまま driver へ渡す。NOTICE を出す（下記） | D6。Xtensa で観測された「常時 supplicant だと `AUTH_EXPIRE`」が C6 でも起きるかは段4 の実機で測るまで不明 |
+| （既存） | `toppers_wifi_optional_stubs.c` の weak 群 | Xtensa と同じ失敗値 + 1 回の WARNING | wifi-connect では全部本体が勝つ（stub は discard、map で確認） |
+
+成功扱いのスタブは足していない。
+
+### `-L@STAGE@/lib` の順序依存（レビュー指摘、要恒久記録）
+
+`runtime/CMakeLists.txt` の `linkLibGroup` は
+`-L@STAGE@/lib -L@SDK_LIBRARY_ROOT@ -L@SDK_LD_ROOT@ --start-group ... --end-group` の順で、
+**stage 側（dev の台本で建てた自前 `.a`）を SDK のライブラリ根より先に探させる**。ld は
+`-l<name>` を検索パスの先勝ちで解決するため、この順序を逆にすると `-lsupplicant` /
+`-lmbedtls` / `-lmbedcrypto` / `-llwip` が SDK 側の同名アーカイブ（存在するなら ESP-IDF/FreeRTOS
+前提の別物）に**リンクエラー無く**すり替わる可能性がある（`BUILDING.md`「多重定義もリンクでは
+捕まらない」と同型の罠）。Task 1 レビューが指摘した Minor 項目で、恒久的な注記としてここに記録する。
+
+### 段4 の入口条件
+
+- **creds はスケッチに書く**（`examples/WiFiConnect/WiFiConnect.ino` の `WIFI_SSID` /
+  `WIFI_PASSWORD`。stage は creds を持たない、Task 1 の決定どおり）。手順:
+  1. 採取直前にスケッチをローカルで編集し実値を入れる。
+  2. **実値を commit しない**（差分レビューしてから `git add`。`CLAUDE.md`「出してはいけないもの」・
+     本リポジトリ `BUILDING.md` と同じ規律）。
+  3. 採取は `scripts/capture_c6_usj.sh`（段2 の台本）だけで行う。その EXIT トラップの redact は、
+     開発リポジトリの creds ファイル（`esp/boot/wifi_credentials.sh`）が存在すればそれを針として
+     読み、ログに混入した実値を伏字化する。
+  4. 採取後、commit 前にスケッチの値をダミーへ戻す。
+- **APM 制御オプションを 0-AP 対照に使う**: `runtime/CMakeLists.txt` の `TOPPERS_C6_APM_UNBLOCK`
+  （既定 ON）を `OFF` にした build を段4 の 0-AP 対照とする（開発側は OFF で scan が 0 AP に
+  なることを実測済みだが、本リポジトリ側の build ではまだ回していない -- 段4 で行う）。
+- **DNS**: 段4 Task 0 で、開発リポジトリの `build_lwip_lib_espidf_esp32c6.sh` を使い
+  `LWIP_DNS=1` の arduino 専用 `liblwip.a` を**別の出力先**で建て直す（dev の `seam-c6-wifi`
+  golden の `liblwip.a` には触れない、dev 側の小変更で golden は不変）。新しいアーカイブの
+  sha256 を `wifi/prebuilt/lwip/esp32c6/README.md` に記録すること（段3 のレビュー ruling、未実施）。
+
+### adapter が出すマーカー文字列（実ソース確認、2026-09-15）
+
+段4 の実機ログを読むときの手がかり。文言は変更されうるため正本は各ソースファイル
+（`ports/m5stack_riscv/runtime/wifi/adapter/`、`runtime/arduino/arduino_interrupt.c`）。
+
+| 文脈 | 文字列 |
+| --- | --- |
+| Wi-Fi 初期化・停止 | `"%s esp_wifi_init=%d"` / `"%s esp_wifi_start=%d"` / `"%s esp_wifi_stop=%d"`（`toppers_wifi_core.c`、LOG_NOTICE） |
+| Open AP 未検証 | `"init: open AP requested - unverified on ESP32-C6 (supplicant is initialized regardless; stage 4)"`（`toppers_wifi_core.c`） |
+| 接続・DHCP | `"[WiFiConnect] esp_wifi_set_config=%d"` / `"[WiFiConnect] esp_wifi_connect=%d"` / `"[WiFiConnect] DHCP address=0x%08x"`（`toppers_wifi_connect.c`） |
+| DNS 失敗（Low#1） | 初回のみ `"[WiFiConnect] DNS is not built into this runtime (LWIP_DNS 0); ..."`（LOG_WARNING）、毎回 `"[WiFiConnect] DNS failed host=%s error=%d"` |
+| TCP | `"[WiFiConnect] socket creation failed"` / `"[WiFiConnect] TCP connect failed host=%s port=%d"` / `"[WiFiConnect] TCP send failed"` |
+| attachInterrupt 拒否 | `"arduino_interrupt: attach refused pin=%u fn=%s"` / `"arduino_interrupt: attach refused pin=%u mode=%d (unsupported on this port)"` |
+
+### Xtensa の切り分け順を C6 にも適用する
+
+`CLAUDE.md`「実機の単発失敗を実装のせいにしない」の表（`NO_AP_FOUND` = AP がまだ上がっていない、
+`AUTH_FAIL` = 一時的な拒否、`4WAY_HANDSHAKE_TIMEOUT` = パスワードが違う）は Wi-Fi ドライバ blob と
+supplicant が Xtensa と C6 で共通（同じ ESP-IDF v5.5.4 系列）なので、**C6 の段4 の切り分けにも
+そのまま適用する**: scan で見えるか確認 -> 再試行する -> 変更を `git stash` して基準側でも
+再現するか確かめる、の順。本段はリンク時点で実機ログが無いため、上記マーカー文字列の存在確認
+までが本段の射程。
+
 ## 段ごとの到達点
 
 | 段 | ゴール | 実機 | 状態 |
@@ -631,7 +840,7 @@ marker の正規表現に掛からず heartbeat=38（blink 行は 39 のまま�
 | 0 | X-check の道具と baseline、本文書、C6 の出自宣言 | 不要 | **完了（2026-09-15）。** AC 0a-0h の記録は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage0/logs/` |
 | 1 | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` が stage を出し、`m5nanoc6_fmp3:FMP3Runtime=minimal` で `Blink` / `LibraryInfo` / `TwoFileSketch` がリンクを通る。X-check で Xtensa 不変 | 不要 | **完了（2026-09-15、`07b239b`/`709b36a`/`ffefc52`/`5dbb8d1`/`f40490e` + 最終レビュー是正 fix wave 1）。** AC 1a-1h 全 PASS、記録は「段1 の記録」節 |
 | 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | **完了（2026-09-15、`639331a`）。** 条件 A（stock bootloader）で warm 5/5・真cold 9/10（成立（条件付き）、cold5 無音 1 回・再試行後 5 連続）、D1/D5 確定。B/C/80 MHz は未実施（A が成立したため不要）。記録は「段2 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage2/AC.md` |
-| 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | 次に着手。入口条件は「段2 の記録」節「段3 の入口条件」 |
-| 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | 未着手 |
+| 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | **完了（2026-09-15、`760fce9`/`4448a8d`/`a4c346a`）。** AC 3a-3j 全 PASS（`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` の 4 例題）、記録は「段3 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage3/AC.md` |
+| 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | 次に着手。入口条件は「段3 の記録」節「段4 の入口条件」（creds はスケッチに書く、APM OFF 対照、DNS は `LWIP_DNS=1` の再生成が Task 0） |
 | 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 未着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ |
 | 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |
