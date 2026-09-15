@@ -948,7 +948,7 @@ supplicant が Xtensa と C6 で共通（同じ ESP-IDF v5.5.4 系列）なの�
 再現するか確かめる、の順。本段はリンク時点で実機ログが無いため、上記マーカー文字列の存在確認
 までが本段の射程。
 
-## 段4 の記録（2026-09-15、commit `6602cd7`（Task 0）/ `211a067`・`f7da79e`（Task 1）、Task 2 はコード変更なし）
+## 段4 の記録（2026-09-15、commit `6602cd7`（Task 0）/ `211a067`・`f7da79e`（Task 1）、Task 2 はコード変更なし、記録 `265bfd2`、最終レビュー是正 fix wave `a251202`（台本）・`fafe685`（本節））
 
 M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS -> TCP）を、ユーザーの
 実 AP（WPA2-PSK）に対して回した段。詳細な証跡は本リポジトリ
@@ -1191,6 +1191,6 @@ ptable/`boot_app0` は不変。
 | 1 | `build_prebuilt_stages.py --chip esp32c6 --profiles minimal` が stage を出し、`m5nanoc6_fmp3:FMP3Runtime=minimal` で `Blink` / `LibraryInfo` / `TwoFileSketch` がリンクを通る。X-check で Xtensa 不変 | 不要 | **完了（2026-09-15、`07b239b`/`709b36a`/`ffefc52`/`5dbb8d1`/`f40490e` + 最終レビュー是正 fix wave 1）。** AC 1a-1h 全 PASS、記録は「段1 の記録」節 |
 | 2 | M5NanoC6 で `Blink` が起動（USJ に banner・`[Arduino] setup complete`・heartbeat）。真cold 5/5・warm 5/5。bootloader 3 通りの表（D1） | 要 | **完了（2026-09-15、`639331a`）。** 条件 A（stock bootloader）で warm 5/5・真cold 9/10（成立（条件付き）、cold5 無音 1 回・再試行後 5 連続）、D1/D5 確定。B/C/80 MHz は未実施（A が成立したため不要）。記録は「段2 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage2/AC.md` |
 | 3 | `wifi-connect` stage が建ち、`WiFiScan` / `WiFiConnect` がリンク。`nm -u` 空、ROM ld 勝者一覧 | 不要 | **完了（2026-09-15、`760fce9`/`4448a8d`/`a4c346a`/`45122a5`/`8912a35`）。** AC 3a-3j 全 PASS（`WiFiScan`/`WiFiConnect`/`Blink`/`LibraryInfo` の 4 例題、`8912a35` の最終レビュー是正後の値で確定）、記録は「段3 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage3/AC.md` |
-| 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | **完了（2026-09-15、`6602cd7`/`211a067`/`f7da79e`、Task 2 はコード変更なし）。** AC 4a-4h 全 PASS（4e は「真cold 3/3（出力のあった run。cold2 は無音 1/6）」、4f は残存する軽微な懸念 1 件（hex アドレス未マスク、公開対象外）付き PASS）。WPA3-SAE/Open は AP が用意できず未実測のまま（D6）。記録は「段4 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/AC.md` |
+| 4 | M5NanoC6 で scan -> STA（WPA2）-> DHCP -> DNS -> TCP。真cold 3/3 | 要 | **完了（2026-09-15、`6602cd7`/`211a067`/`f7da79e`、Task 2 はコード変更なし、記録 `265bfd2` + 最終レビュー是正 fix wave `a251202`/`fafe685`）。** AC 4a-4h 全 PASS（4e は「真cold 3/3（出力のあった run。cold2 は無音 1/6）」、4f の hex アドレス未マスクは fix wave `a251202` で是正済み）。WPA3-SAE/Open は AP が用意できず未実測のまま（D6）。記録は「段4 の記録」節、AC は開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/AC.md` |
 | 5 | `verify_package.py` 4 板、`check_release_artifacts.py`、CI、文書、D8 の再評価 | 不要 | 次に着手。**段1 から持ち越し（owner: 段5）**: (1) `scripts/verify_package.py` の `BOARDS` / `PROFILES` に `m5nanoc6_fmp3` / C6 の profile を足す（段1 では未改変、C6 は verify の対象外）、(2) CI（`.github/workflows/verify-package.yml` の `for chip in esp32s3 esp32` 2 箇所）に esp32c6 を足す、(3) `packaging/release-allowlist.json` の C6 向け entry（例題を C6 で出荷するときの `boardsManager` / 板ガード）、(4) `scripts/xcheck_compare.py` の `CHIPS` が Xtensa 固定である点の扱い（C6 の golden を持つかどうか）。fix wave 1 で先に済ませたのは `make_package_index.py` の C6 tool 依存の gate（stage の有無で切替え）と `tests.yml` への `test_xcheck.py` 追加のみ。**段4 から持ち越し**: 「段4 の記録」節「段5 の入口条件」（利用者向け文書の更新、D8 再評価、IDE size 分母上書き、`capture_c6_usj.sh` の Minor 是正 2 件、`MEMP_NUM_SYS_TIMEOUT`/`ERANGE` の恒久化） |
 | 6（任意） | `attachInterrupt` と RGB LED の例題 | 要 | 未着手 |
