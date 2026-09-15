@@ -1575,7 +1575,7 @@ C6 と同じ理由で測っていない。両板の flash にはこの試験ス�
 `gpio_ll_pullup_en`/`pulldown_en` だけ表を引くので `IO_MUX_GPIO0_REG + 4n` へ直書き）。`arduino_interrupt.c` と
 同じ 3 profile（m5-unified / wifi-connect / bt-classic）に配置、minimal は不変。4 板共通の例題
 `examples/GpioInterrupt`（自己駆動試験を `pinMode`/`digitalWrite`/`digitalRead` 経由で行う。板ごとのピン: NanoC6 G7、
-CoreS3 G8、Basic G16、StickS3 は未割当でリンクのみ）を `PROFILES` の m5 / wificonnect / btclassic に足し、verify は
+CoreS3 G8、Basic G16、StickS3 G9 = Grove SDA（M5Unified のピン表から。同日に割当、実機未確認））を `PROFILES` の m5 / wificonnect / btclassic に足し、verify は
 51 -> 59 本。既存例題のイメージは m5-unified / bt-classic / wifi-connect の 4 組で修正前後を比較し、バナーの
 ビルド時刻 + checksum + image sha 以外バイト不変（`--gc-sections` で未参照の `arduino_gpio.o` は落ちる）。X-check は
 Xtensa の 5 stage が想定どおり DIFF（新 object と `banner.o`）で baseline を取り直した。**実機**: `GpioInterrupt` を

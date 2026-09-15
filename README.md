@@ -162,7 +162,7 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   `GPIO` が未定義になる問題も同日に修正）。同梱例題 `GpioInterrupt`（自己駆動の
   割込み試験: RISING 5 / FALLING 5 / CHANGE 10 / detach 後 0）を CoreS3（G8）・
   M5Stack Basic（G16）・M5NanoC6（G7）の `WiFi` 構成で実機確認済み。M5StickS3 は
-  試験ピン未割当（リンクのみ）。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
+  G9（Grove の SDA）を割り当ててありますが実機未確認です。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
   `INPUT_PULLDOWN` / `OUTPUT` の 4 つ。拒否するピン: CoreS3 / M5StickS3 は USB の
   G19 / G20 と flash の G26-32、M5Stack Basic は UART0 の G1 / G3、flash の G6-11、
   GPIO でないパッド（20, 24, 28-31）。`attachInterrupt` は `pinMode` を呼ばないので

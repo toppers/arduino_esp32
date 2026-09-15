@@ -11,7 +11,10 @@
  *    M5NanoC6      G7  (the blue LED, so the pulses are visible)
  *    M5Stack CoreS3 G8 (Grove Port B p1)
  *    M5Stack Basic  G16 (Grove Port C p1; G8-11 are the flash)
- *    M5StickS3      no pin assigned yet: the sketch links and reports it
+ *    M5StickS3      G9  (Grove port SDA; M5Unified's Ex_I2C SDA for this
+ *                       board. Not yet run on hardware: assigned 2026-09-15
+ *                       from M5Unified's pin table, link-checked only)
+ *    other boards   no pin assigned: the sketch links and reports it
  *  Runs in every profile that offers attachInterrupt (m5 / wificonnect /
  *  btclassic); minimal has neither attachInterrupt nor pinMode.
  *  delay()/Serial are not linked in this package; loop() is called about
@@ -33,8 +36,10 @@ extern "C" volatile int32_t ard_intr_acre_ercd;
 #define PROBE_PIN 8
 #elif defined(ARDUINO_M5STACK_CORE)
 #define PROBE_PIN 16
+#elif defined(ARDUINO_M5STACK_STICKS3)
+#define PROBE_PIN 9
 #else
-#define PROBE_PIN -1   /* M5StickS3 and unknown boards: link only */
+#define PROBE_PIN -1   /* unknown boards: link only */
 #endif
 
 namespace {
