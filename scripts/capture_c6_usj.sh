@@ -64,7 +64,9 @@
 #    OUT           capture log path (default LOG_DIR/c6-capture-<stamp>.log).
 #                  Sidecars are written next to it: .ident.log (flash-id),
 #                  .flash.log (write-flash), .cold.txt (COLD=1 by-id timeline),
-#                  .sha.txt (sha256 of what this run wrote).
+#                  .journal.txt (COLD=1: the kernel journal's USB lines for the
+#                  capture window, so the power-cycle evidence is
+#                  self-contained), .sha.txt (sha256 of what this run wrote).
 #    LOG_DIR       default directory for OUT
 #                  (default $HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/.steering/
 #                   20260915-c6-arduino-plan/stage2/logs).
@@ -99,6 +101,12 @@
 #                  idf*_py3.*_env or $HOME/.espressif/python_env/... by sort -V).
 #    C6_MASK_SELFTEST=1  run the redact/mask self-test and the marker-count
 #                  self-test on fixtures and exit. Touches no hardware.
+#    C6_REDACT_ONLY=1  `C6_REDACT_ONLY=1 bash capture_c6_usj.sh <file>...`
+#                  runs the redact stage (needles from WIFI_CREDS, peer-MAC,
+#                  IPv4, hex address) over existing files in place and checks
+#                  them, exactly as the EXIT trap does after a capture. For
+#                  logs captured before a mask rule existed. Touches no
+#                  hardware; rc 93 (and *.UNREDACTED) on residue.
 #
 #  Markers counted at the end (strings from src/bridge/ArduinoSketchBridge.cpp,
 #  third_party/fmp3_core/syssvc/banner.c and arch/riscv_gcc/common):
@@ -174,6 +182,10 @@ DUT_PORT="${DUT_PORT:-/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit
 #                    <PEER-MAC>, except the DUT's own MAC (and its EUI-64
 #                    spelling hh:hh:hh:ff:fe:hh:hh:hh, which esptool prints)
 #    (c) IPv4     -- every dotted quad -> <IPv4>
+#    (d) hex word -- "address=0x" + 8 hex digits -> address=<HEX32> (the
+#                    adapter prints the DHCP lease and DNS answers as
+#                    "address=0x%08x"; a LAN address in hex is still an
+#                    address. Found by the Task 2 review: 9 unmasked lines)
 #  The transformer is sed; the checker is a separate implementation (normalize
 #  then fixed-string / grep -E count). Both are exercised by
 #  C6_MASK_SELFTEST=1. The checker's silence is never taken as success: if a
@@ -258,16 +270,18 @@ c6_redact_transform() {
         -e 's/[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}/<PEER-MAC>/g' \
         -e 's/TAHI:0x[0-9A-Fa-f]+/TAHI:<PEER-MAC>/gI' -e 's/TALO:0x[0-9A-Fa-f]+/TALO:<PEER-MAC>/gI' \
         -e 's/\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b/<IPv4>/g' \
+        -e 's/address=0x[0-9A-Fa-f]{8}/address=<HEX32>/g' \
         -e "s/__C6_DUT_EUI_LC__/${eui:-}/g" -e "s/__C6_DUT_EUI_UC__/${euiU:-}/g" \
         -e "s/__C6_DUT_MAC_LC__/${lc:-}/g"  -e "s/__C6_DUT_MAC_UC__/${lcU:-}/g" "$f" || return 1
     return 0
 }
 
 #  Checker (separate implementation). Prints ONE integer: residue lines
-#  (peer MAC / TAHI-TALO / IPv4, DUT spellings removed first) plus the number
+#  (peer MAC / TAHI-TALO / IPv4 / address=0x<8 hex>, DUT spellings removed
+#  first) plus the number
 #  of needles still found (normalized, fixed-string). Prints nothing and
 #  returns non-zero if any stage fails -- the caller reads "nothing" as residue.
-_c6_peer_re='[0-9a-f][0-9a-f](:[0-9a-f][0-9a-f]){5}|ta(hi|lo):0x[0-9a-f]|\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b'
+_c6_peer_re='[0-9a-f][0-9a-f](:[0-9a-f][0-9a-f]){5}|ta(hi|lo):0x[0-9a-f]|\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b|address=0x[0-9a-f]{8}'
 c6_residue_count() {
     local f="$1" lc eui out i needle n=0 found
     lc="$(_dut_forms_lc | sed -n 1p)"; eui="$(_dut_forms_lc | sed -n 2p)"
@@ -386,7 +400,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     _fail() { echo "selftest FAIL: $*" >&2; chmod -R u+w "$_sd" 2>/dev/null; rm -rf "$_sd"; exit 1; }
     _count() { $GREP -o "$1" "$2" | wc -l; }
     _fix_mask() {
-        printf 'port _%s-if00\nBASE MAC: %s\nMAC: %s\nCCMP mgmt frame from 12:34:56:ab:cd:ef used\n<ba-add> TAHI:0xabcd, TALO:0x12345678, x\ngot ip 192.168.4.23 mask 255.255.255.0\npeer eui64 12:34:56:ff:fe:ab:cd:ef seen\n' \
+        printf 'port _%s-if00\nBASE MAC: %s\nMAC: %s\nCCMP mgmt frame from 12:34:56:ab:cd:ef used\n<ba-add> TAHI:0xabcd, TALO:0x12345678, x\ngot ip 192.168.4.23 mask 255.255.255.0\npeer eui64 12:34:56:ff:fe:ab:cd:ef seen\n[WiFiConnect] DHCP address=0x0A00020F then DNS resolved host=x address=0x5db8d822\n' \
             "$dut_uc" "$dut_lc" "${dut_lc:0:8}:ff:fe:${dut_lc:9}" > "$_st"
     }
     #  --- (1)-(6): no needles (credentials file absent) ---
@@ -395,7 +409,7 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     [ "${#NEEDLE_VALUES[@]}" -eq 0 ] || _fail "(0) needles loaded from a missing file"
     _fix_mask
     _pre="$(c6_residue_count "$_st")" || _fail "(1) checker returned non-zero on the fixture"
-    [ "$_pre" = "4" ] || _fail "(1) residue before masking is not 4 lines ($_pre)"
+    [ "$_pre" = "5" ] || _fail "(1) residue before masking is not 5 lines ($_pre)"
     c6_redact_check "$_st" 2>/dev/null && _fail "(2) quarantine branch returned zero"
     [ ! -e "$_st" ] && [ -f "$_st.UNREDACTED" ] || _fail "(2) fixture was not renamed to .UNREDACTED"
     mv -f -- "$_st.UNREDACTED" "$_st"
@@ -405,7 +419,8 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     chmod 755 "$_ro"
     [ "$_rc" -eq 93 ] || _fail "(3) c6_redact_on_exit rc is not 93 ($_rc)"
     #  (4) transform: residue 0, DUT spellings kept, 4 peer masks (one of them
-    #  a whole 8-octet EUI-64, no ":hh:hh" tail left), 2 IPv4 masks
+    #  a whole 8-octet EUI-64, no ":hh:hh" tail left), 2 IPv4 masks, 2 hex
+    #  address masks (upper and lower case digits, two on one line)
     c6_redact_file "$_st" || _fail "(4) residue after transform"
     $GREP -qF "_${dut_uc}-if00" "$_st" || _fail "(4) DUT MAC (upper case) was masked"
     $GREP -qF "BASE MAC: ${dut_lc}" "$_st" || _fail "(4) DUT MAC (lower case) was masked"
@@ -414,6 +429,8 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     [ "$(_count '<PEER-MAC>:[0-9A-Fa-f]' "$_st")" -eq 0 ] || _fail "(4) a peer EUI-64 left a tail after <PEER-MAC>"
     $GREP -qF "peer eui64 <PEER-MAC> seen" "$_st" || _fail "(4) the peer EUI-64 line is not masked whole"
     [ "$(_count '<IPv4>' "$_st")" -eq 2 ] || _fail "(4) IPv4 masks are not 2"
+    [ "$(_count 'address=<HEX32>' "$_st")" -eq 2 ] || _fail "(4) hex address masks are not 2 ($(_count 'address=<HEX32>' "$_st"))"
+    [ "$(_count 'address=0x' "$_st")" -eq 0 ] || _fail "(4) an address=0x word survived the transform"
     #  (5) DUT_MAC unset: everything MAC-shaped is masked, still clean
     _fix_mask
     ( DUT_MAC=""; c6_redact_file "$_st" ) || _fail "(5) transform with DUT_MAC unset failed"
@@ -441,6 +458,20 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     printf 'x SELFTESTEXTRA y\n' > "$_st"
     _pre="$(c6_residue_count "$_st")" || _fail "(9) checker failed"
     [ "$_pre" = "1" ] || _fail "(9) checker does not see the extra needle ($_pre)"
+    #  (9b) mutation control for the hex-address rule: a file that only the
+    #  transformer's address rule would clean must be counted as residue by
+    #  the checker (1 line), be quarantined by c6_redact_check when NOT
+    #  transformed, and be clean (0) once transformed. A 7-digit hex word is
+    #  not an address and must be left alone (the rule is exactly 8 digits).
+    NEEDLE_VALUES=(); NEEDLE_TOKENS=(); NEEDLE_KINDS=()
+    printf 'DHCP address=0xC0A80105 lease\nreg address=0x1234567 short\n' > "$_st"
+    _pre="$(c6_residue_count "$_st")" || _fail "(9b) checker failed on the hex-address fixture"
+    [ "$_pre" = "1" ] || _fail "(9b) checker does not count an unmasked address=0x<8 hex> as residue ($_pre)"
+    c6_redact_check "$_st" 2>/dev/null && _fail "(9b) an unmasked address=0x<8 hex> was not quarantined"
+    mv -f -- "$_st.UNREDACTED" "$_st"
+    c6_redact_file "$_st" || _fail "(9b) residue after the hex-address transform"
+    [ "$(_count 'address=<HEX32>' "$_st")" -eq 1 ] || _fail "(9b) hex address mask is not 1"
+    $GREP -qF 'address=0x1234567 short' "$_st" || _fail "(9b) the 7-digit hex word was altered"
     #  --- (10)-(12): marker counting on a fixture ---
     #  (10) a Wi-Fi capture with placeholders only: every counter non-zero
     #  where the fixture has the line, ssidraw 0, unexpected 0, scan = LAST N.
@@ -488,8 +519,18 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     [ "$(printf '%s\n' "$_ml" | sed -n 1p)" = 'markers: banner=0 setup=0 heartbeat=0 unexpected=0 smark=0 blink=0' ] || _fail "(12) markers line on empty: $(printf '%s\n' "$_ml" | sed -n 1p)"
     [ "$(printf '%s\n' "$_ml" | sed -n 2p)" = 'wifi: scan=-1 scanap=0 ssidraw=0 connected=0 dhcp=0 dhcpdone=0 ping=0 dnsok=0 dnsfail=0 tcp=0 disc=0 beginrej=0 apm=0' ] || _fail "(12) wifi line on empty: $(printf '%s\n' "$_ml" | sed -n 2p)"
     rm -rf "$_sd"
-    echo "c6 redact selftest PASS: (1) residue 4 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (10) markers: fixture counts exact, scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1"
+    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact, scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1"
     exit 0
+fi
+
+#  ---------------------------------------------------------------- redact-only
+if [ "${C6_REDACT_ONLY:-0}" = "1" ]; then
+    [ "$#" -ge 1 ] || die "C6_REDACT_ONLY=1 needs the files to redact as arguments"
+    for f in "$@"; do [ -f "$f" ] || die "not a file: $f"; done
+    c6_load_needles
+    C6_FILES=("$@")
+    c6_redact_on_exit
+    exit "$?"
 fi
 
 trap 'c6_redact_on_exit' EXIT
@@ -624,6 +665,7 @@ LOG_DIR="${LOG_DIR:-$HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/.steering/20260915-c6-a
 OUT="${OUT:-$LOG_DIR/c6-capture-$(date +%Y%m%d-%H%M%S).log}"
 BASE="${OUT%.log}"
 IDENT_LOG="$BASE.ident.log"; FLASH_LOG="$BASE.flash.log"; COLD_TXT="$BASE.cold.txt"; SHA_TXT="$BASE.sha.txt"
+JOURNAL_TXT="$BASE.journal.txt"
 
 #  ---------------------------------------------------------------- 3. capture prerequisites
 #  Checked BEFORE anything touches the board: a write followed by a monitor
@@ -746,7 +788,8 @@ if [ "$COLD" = "1" ]; then
         fi
     } > "$COLD_TXT"
     say "COLD=1: waiting for $DUT_PORT to disappear and reappear (power-cycle the DUT now; up to ${COLD_WAIT_SEC}s)"
-    _deadline=$(( $(date +%s) + COLD_WAIT_SEC ))
+    COLD_T0="$(date +%s)"
+    _deadline=$(( COLD_T0 + COLD_WAIT_SEC ))
     if [ -e "$DUT_PORT" ]; then
         while [ -e "$DUT_PORT" ]; do
             [ "$(date +%s)" -lt "$_deadline" ] || die "COLD: by-id did not disappear within ${COLD_WAIT_SEC}s (no power cycle observed); nothing captured"
@@ -782,6 +825,22 @@ sleep 1
 #  Strip ANSI colour so the counts below see plain text.
 sed -i 's/\x1b\[[0-9;]*m//g' "$OUT" 2>/dev/null || true
 say "captured $(wc -l < "$OUT") lines -> $OUT"
+
+#  COLD=1: the kernel journal's USB lines for the window (from the start of
+#  the by-id wait to now), so the power-cycle evidence (disconnect, one
+#  enumeration, no re-enumeration during the capture) is next to the log
+#  instead of in a journal that rotates. Passes through the redact stage like
+#  every sidecar (the DUT's own serial spelling is kept, peers masked).
+if [ "$COLD" = "1" ]; then
+    C6_FILES+=("$JOURNAL_TXT")
+    {
+        echo "# journalctl -k --since @$COLD_T0 (USB lines only) for $DUT_PORT; window start = the by-id wait"
+        if ! journalctl -k --since "@$COLD_T0" --no-pager -o short-precise 2>&1 | $GREP -iE 'usb|cdc_acm|ttyACM'; then
+            echo "# (no USB lines, or journalctl not readable by this user -- the by-id timeline in .cold.txt is the only evidence)"
+        fi
+    } > "$JOURNAL_TXT"
+    say "COLD=1: kernel journal USB lines -> $JOURNAL_TXT"
+fi
 
 #  ---------------------------------------------------------------- 7. markers
 MARKER_LINES="$(c6_count_markers "$OUT")"
