@@ -864,7 +864,7 @@ kernel 表は残るため。
 | Open AP 未検証 | `"[WiFiConnect] begin: open AP requested - unverified on ESP32-C6 (supplicant is initialized regardless; stage 4)"`（`toppers_wifi_connect.c`、空パスワードの `begin()` のたび。fix wave で `toppers_wifi_core.c` の初回 init から移した -- scan-first のスケッチでも出るように） |
 | tcpip 起動前の link 通知（fix wave） | `"[WiFiConnect] link %s before tcpip start: not forwarded to lwIP"`（`toppers_wifi_connect.c`、`netif_esp32s3_start()` 前に STA_CONNECTED/DISCONNECTED が来たとき。lwIP へは渡さない） |
 | 接続・DHCP | `"[WiFiConnect] esp_wifi_set_config=%d"` / `"[WiFiConnect] esp_wifi_connect=%d"` / `"[WiFiConnect] DHCP address=0x%08x"`（`toppers_wifi_connect.c`） |
-| DNS 失敗（Low#1） | 初回のみ `"[WiFiConnect] DNS is not built into this runtime (LWIP_DNS 0); ..."`（LOG_WARNING）、毎回 `"[WiFiConnect] DNS failed host=%s error=%d"` |
+| DNS（段4 Task 0 で Low#1 を実装に置換） | 成功 `"[WiFiConnect] DNS resolved host=%s address=0x%08x"`（LOG_NOTICE）、失敗は 1 行 `"[WiFiConnect] DNS failed host=%s error=%d (%s)"`（LOG_WARNING、`%s` = `timeout` / `unresolved` / `not connected` / `name too long` / `request in progress` / `tcpip mailbox`）。段3 の `"DNS is not built into this runtime"` 行は無くなった |
 | TCP | `"[WiFiConnect] socket creation failed"` / `"[WiFiConnect] TCP connect failed host=%s port=%d"` / `"[WiFiConnect] TCP send failed"` |
 | attachInterrupt 拒否 | `"arduino_interrupt: attach refused pin=%u fn=%s"` / `"arduino_interrupt: attach refused pin=%u mode=%d (unsupported on this port)"` |
 

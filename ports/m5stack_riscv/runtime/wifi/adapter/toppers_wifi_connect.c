@@ -12,9 +12,10 @@
  *       wifi/net/port/include/lwipopts.h) glued by wifi/net/netif_esp32s3.c
  *       and port/sys_arch.c, not the Xtensa port's toppers_netif.c. The
  *       toppers_fmp3_wifi_* API is connected to that netif here.
- *       That liblwip.a is built with LWIP_DNS 0, so there is no resolver:
- *       hostByName() resolves numeric addresses only and reports failure
- *       for a name (see toppers_fmp3_wifi_host_by_name).
+ *       Since stage 4 Task 0 that liblwip.a is this repository's own build
+ *       with LWIP_DNS 1 (wifi/prebuilt/lwip/README.md), and hostByName()
+ *       resolves names through lwIP's resolver
+ *       (see toppers_fmp3_wifi_host_by_name).
  */
 #include <kernel.h>
 #include <t_syslog.h>
@@ -27,9 +28,11 @@
 #include "esp_event.h"
 #include "esp_shim.h"
 #include "esp_wifi.h"
+#include "lwip/dns.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/netif.h"
 #include "lwip/sockets.h"
+#include "lwip/tcpip.h"
 #include "netif_esp32s3.h"
 #include "toppers_wifi_core.h"
 
@@ -297,32 +300,158 @@ uint32_t toppers_fmp3_wifi_subnet_mask(void)
 }
 
 /*
- * Low#1 (stage 3): the C6 liblwip.a is built with LWIP_DNS 0, so
- * lwip_getaddrinfo()/dns_gethostbyname() do not exist in this runtime.
- * A dotted-quad host is converted locally (that is a real answer, not a
- * stand-in); anything else is a FAILURE (return 0) with a one-time WARNING
- * naming the cause. Nothing here pretends to have resolved a name. Whether
- * the archive is regenerated with LWIP_DNS 1 is a stage-4 decision
- * (docs/c6-port.md).
+ * Name resolution (stage 4 Task 0; replaces the stage 3 Low#1 stand-in).
+ *
+ * lwIP's resolver is not thread safe: dns_gethostbyname() must run in the
+ * tcpip thread. This runtime uses the raw/callback netif glue with
+ * LWIP_TCPIP_CORE_LOCKING 0, so the request is handed to that thread with
+ * tcpip_callback() and the answer comes back through the dns_found_callback,
+ * also in the tcpip thread. The caller (the sketch task) polls a flag with
+ * dly_tsk(), the same pattern as the scan adapter, with a bounded wait of
+ * TOPPERS_DNS_TIMEOUT_MS. There is no lwIP semaphore involved: the port's
+ * sys_sem pool (NET_SEM1..8) is shared with every netconn, and a resolver
+ * must not be the thing that empties it.
+ *
+ * Ordering: NET_TSK (priority 4) preempts the sketch task (priority 10) and
+ * is never preempted by it, so the callback's writes to dns_request are
+ * complete before the poller can observe the state change; the single core
+ * keeps the volatile stores in program order. A callback that arrives after
+ * the caller gave up (timeout) finds a different generation and is ignored;
+ * a request that is still pending in lwIP when the next one is issued is
+ * likewise stale. Requests are serialized: one at a time, callers from two
+ * tasks at once get a failure, not a mixed answer.
+ *
+ * The DNS server list is filled by the DHCP client (LWIP_DHCP_PROVIDE_DNS_
+ * SERVERS, dhcp.c) when the lease is bound; before that, or if the lease
+ * carried no option 6, lwIP fails the query at once (ERR_VAL from
+ * dns_gethostbyname) and that is reported as such - no fallback server is
+ * invented here.
  */
+#ifndef TOPPERS_DNS_TIMEOUT_MS
+#define TOPPERS_DNS_TIMEOUT_MS 5000U
+#endif
+#define TOPPERS_DNS_POLL_US 10000U
+
+enum { DNS_REQUEST_IDLE = 0, DNS_REQUEST_WAITING = 1,
+       DNS_REQUEST_DONE = 2, DNS_REQUEST_FAILED = 3 };
+
+static struct {
+    volatile uint32_t generation;   /* the request the callback belongs to */
+    volatile uint8_t state;         /* DNS_REQUEST_* */
+    volatile err_t error;           /* lwIP err_t when FAILED */
+    ip_addr_t result;               /* valid when DONE */
+    char name[DNS_MAX_NAME_LENGTH];
+} dns_request;
+
+/* tcpip thread: lwIP's answer, immediate or after the query round trips. */
+static void dns_found(const char *name, const ip_addr_t *ipaddr, void *arg)
+{
+    (void)name;
+    if ((uint32_t)(uintptr_t)arg != dns_request.generation ||
+        dns_request.state != DNS_REQUEST_WAITING)
+        return;                     /* stale: the caller already gave up */
+    if (ipaddr != NULL && !ip_addr_isany(ipaddr)) {
+        ip_addr_copy(dns_request.result, *ipaddr);
+        dns_request.state = DNS_REQUEST_DONE;
+    }
+    else {
+        dns_request.error = ERR_VAL;   /* NXDOMAIN or retries exhausted */
+        dns_request.state = DNS_REQUEST_FAILED;
+    }
+}
+
+/* tcpip thread: issue the query (tcpip_callback target). */
+static void dns_request_start(void *arg)
+{
+    ip_addr_t address;
+    err_t error;
+
+    if ((uint32_t)(uintptr_t)arg != dns_request.generation ||
+        dns_request.state != DNS_REQUEST_WAITING)
+        return;
+    error = dns_gethostbyname(dns_request.name, &address, dns_found, arg);
+    if (error == ERR_OK) {          /* cached, or a numeric name */
+        ip_addr_copy(dns_request.result, address);
+        dns_request.state = DNS_REQUEST_DONE;
+    }
+    else if (error != ERR_INPROGRESS) {  /* ERR_VAL: no server / bad name */
+        dns_request.error = error;
+        dns_request.state = DNS_REQUEST_FAILED;
+    }
+    /* ERR_INPROGRESS: dns_found() will finish it. */
+}
+
 int toppers_fmp3_wifi_host_by_name(const char *host, uint32_t *address)
 {
-    static bool dns_absence_reported;
     ip4_addr_t numeric;
+    uint32_t generation, waited_ms;
+    const char *reason;
+    int error;
 
     if (host == NULL || address == NULL) return 0;
+    /* A dotted quad is answered locally, without a query. */
     if (ip4addr_aton(host, &numeric) != 0) {
         *address = ip4_addr_get_u32(&numeric);
         return 1;
     }
-    if (!dns_absence_reported) {
-        dns_absence_reported = true;
+    if (!netif_started) {
+        /* tcpip_callback() before tcpip_init() asserts on the mailbox. */
         syslog(LOG_WARNING,
-               "[WiFiConnect] DNS is not built into this runtime (LWIP_DNS 0); "
-               "only numeric hosts resolve");
+               "[WiFiConnect] DNS failed host=%s error=%d (not connected)",
+               host, (int_t)ERR_CONN);
+        return 0;
     }
-    syslog(LOG_WARNING, "[WiFiConnect] DNS failed host=%s error=%d",
-           host, (int_t)-1);
+    if (strlen(host) >= sizeof(dns_request.name)) {
+        syslog(LOG_WARNING,
+               "[WiFiConnect] DNS failed host=%s error=%d (name too long)",
+               host, (int_t)ERR_ARG);
+        return 0;
+    }
+    if (dns_request.state == DNS_REQUEST_WAITING) {
+        syslog(LOG_WARNING,
+               "[WiFiConnect] DNS failed host=%s error=%d (request in progress)",
+               host, (int_t)ERR_INPROGRESS);
+        return 0;
+    }
+    generation = dns_request.generation + 1U;
+    dns_request.generation = generation;
+    dns_request.error = ERR_OK;
+    strncpy(dns_request.name, host, sizeof(dns_request.name) - 1U);
+    dns_request.name[sizeof(dns_request.name) - 1U] = '\0';
+    dns_request.state = DNS_REQUEST_WAITING;
+    if (tcpip_callback(dns_request_start, (void *)(uintptr_t)generation)
+        != ERR_OK) {
+        dns_request.state = DNS_REQUEST_IDLE;
+        syslog(LOG_WARNING,
+               "[WiFiConnect] DNS failed host=%s error=%d (tcpip mailbox)",
+               host, (int_t)ERR_MEM);
+        return 0;
+    }
+    for (waited_ms = 0U; waited_ms < TOPPERS_DNS_TIMEOUT_MS;
+         waited_ms += TOPPERS_DNS_POLL_US / 1000U) {
+        if (dns_request.state != DNS_REQUEST_WAITING) break;
+        (void)dly_tsk(TOPPERS_DNS_POLL_US);
+    }
+    if (dns_request.state == DNS_REQUEST_DONE) {
+        *address = ip4_addr_get_u32(ip_2_ip4(&dns_request.result));
+        dns_request.state = DNS_REQUEST_IDLE;
+        syslog(LOG_NOTICE, "[WiFiConnect] DNS resolved host=%s address=0x%08x",
+               host, (uint_t)*address);
+        return 1;
+    }
+    if (dns_request.state == DNS_REQUEST_WAITING) {
+        /* Give up; a late dns_found() sees the new generation and drops it. */
+        dns_request.generation = generation + 1U;
+        reason = "timeout";
+        error = ERR_TIMEOUT;
+    }
+    else {
+        reason = "unresolved";
+        error = dns_request.error;
+    }
+    dns_request.state = DNS_REQUEST_IDLE;
+    syslog(LOG_WARNING, "[WiFiConnect] DNS failed host=%s error=%d (%s)",
+           host, (int_t)error, reason);
     return 0;
 }
 

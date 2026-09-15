@@ -75,6 +75,22 @@
  *  仕組みを利用．詳細はerrno.h先頭コメント参照）
  */
 #define LWIP_ERRNO_STDINCLUDE       1
+/*
+ *  arduino_esp32 (2026-09-15, stage 4 Task 0): ERANGE for netdb.c.
+ *  With LWIP_DNS 1 (and LWIP_SOCKET 1) lwip/src/api/netdb.c compiles
+ *  lwip_gethostbyname_r(), which uses ERANGE. The flat errno.h stub that
+ *  <errno.h> resolves to here (hal_stub_include/errno.h, "add missing
+ *  values when needed") does not define it, and the dev build script's
+ *  include path is not ours to change from this repository, so the value
+ *  is supplied from the one file both the archive build and the stage
+ *  TUs read. 34 is the Linux/newlib number, the same numbering the stub
+ *  uses for its other values. The guard keeps a real <errno.h> in charge
+ *  wherever one is on the include path (the stage's stub is included
+ *  first there and lacks ERANGE, so the guard is not taken today).
+ */
+#ifndef ERANGE
+#define ERANGE                      34  /* Math result not representable */
+#endif
 
 /*
  *  ヒープ・プール
@@ -99,7 +115,17 @@
  *  余裕。2だとDHCP+udpechoで満杯になりアプリのlwip_socket(SOCK_DGRAM)が
  *  ENOBUFS(errno=105)で失敗する（実機確認）。 */
 #define MEMP_NUM_UDP_PCB            5
-#define MEMP_NUM_SYS_TIMEOUT        8
+/*
+ *  sys_timeout pool. arduino_esp32 (2026-09-15, stage 4 Task 0): 8 -> 9.
+ *  The dev value 8 covered the 6 cyclic timers this configuration had with
+ *  LWIP_DNS 0 (tcp, ip_reass, etharp, dhcp coarse/fine, acd; timeouts.c
+ *  lwip_num_cyclic_timers = 6) plus the ping chain that netif_esp32s3.c
+ *  starts once, with one slot to spare. LWIP_DNS 1 adds dns_tmr as a 7th
+ *  cyclic timer; 9 keeps the same one-slot margin. Exhausting this pool is
+ *  an LWIP_ASSERT in sys_timeout() (the port's assert handler parks the
+ *  tcpip thread), so the margin is not optional.
+ */
+#define MEMP_NUM_SYS_TIMEOUT        9
 
 #define LWIP_ARP                    1
 #define LWIP_ETHERNET               1
@@ -132,7 +158,21 @@
 #define LWIP_DHCP                   1
 #define LWIP_AUTOIP                 0
 #define LWIP_IGMP                   0
-#define LWIP_DNS                    0
+/*
+ *  arduino_esp32 (2026-09-15, stage 4 Task 0): LWIP_DNS 0 -> 1. This is the
+ *  one deviation from the dev repository's lwipopts.h (R12 exception in
+ *  IMPORT_PROVENANCE.md). The same file configures both the prebuilt
+ *  liblwip.a (dev build_lwip_lib_espidf_esp32c6.sh with PORT_EXTRA pointing
+ *  here) and the stage TUs that include lwip headers; the two must not
+ *  disagree (docs/c6-port.md, stage 3 "entry conditions for stage 4").
+ *  DNS_TABLE_SIZE (4), DNS_MAX_SERVERS (2), DNS_MAX_RETRIES (4) and
+ *  LWIP_DNS_SECURE (random XID + random source port + no multiple
+ *  outstanding queries per name) stay at the lwIP defaults. LWIP_RAND is
+ *  esp_shim_random() (arch/cc.h), not the ROM rand(). With LWIP_DHCP 1 the
+ *  DHCP client requests option 6 and calls dns_setserver() itself
+ *  (dhcp.c, LWIP_DHCP_PROVIDE_DNS_SERVERS), so no manual server setup.
+ */
+#define LWIP_DNS                    1
 
 /*
  *  ソフトウェアチェックサム（esp_wifiはホストスタック向けの

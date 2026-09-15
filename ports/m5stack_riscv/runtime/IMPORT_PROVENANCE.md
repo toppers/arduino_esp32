@@ -52,6 +52,21 @@
    `hal/esp32c6/efuse_hal.c` は同名で、stage は全オブジェクトを 1 つのディレクトリに
    basename で置く（`prebuilt_stage_c6.cmake` が衝突を fatal にする）ため、チップ側を改名した。
    中身はバイト同一。
+8. **`lwipopts.h` の DNS 化（段4 Task 0、2026-09-15。R12 の例外）**
+   （`runtime/wifi/net/port/include/lwipopts.h`、`runtime/wifi/prebuilt/lwip/esp32c6/liblwip.a`）:
+   dev 由来ファイルはバイト同一で持ち込むという方針（R12）からの逸脱。`LWIP_DNS 0 -> 1`
+   （名前解決 = `hostByName` のため）、それに伴い `MEMP_NUM_SYS_TIMEOUT 8 -> 9`（`dns_tmr` が
+   周期タイマを 1 本足す。`lwip_num_cyclic_timers` 6 -> 7 を実測。8 のままだと ping 鎖と合わせて
+   プールが満杯 = 次の `sys_timeout()` が assert で tcpip_thread を止める）、`#ifndef ERANGE`
+   ガードつきの `ERANGE 34`（`LWIP_DNS 1` で初めてコンパイルされる `netdb.c` の
+   `lwip_gethostbyname_r()` が参照するが、hal_stub の flat `errno.h` に無い。dev の台本の include
+   path は本リポジトリから変えられないので、両方が読む唯一のファイルから供給する）。それ以外は
+   dev と同一。`liblwip.a` は dev の台本 `build_lwip_lib_espidf_esp32c6.sh` を **`PORT_EXTRA`=
+   本リポジトリの `net/port/include`、`OUT_DIR`=scratch** で走らせた生成物（dev の
+   `esp/lib/` と golden は不変。同日、既定引数の生成物が dev golden とバイト同一であることを
+   sha256 で確認）。`lwipopts.h` は `liblwip.a` と stage の TU の両方を決めるので、
+   **`lwipopts.h`・`liblwip.a`・`prebuilt/lwip/README.md` は同じ commit で動かす**
+   （`docs/c6-port.md` 段3「段4 の入口条件」DNS）。
 
 ## ファイル一覧
 
@@ -192,7 +207,8 @@ M5Stack core の SDK（`esp32c6-libs/3.3.8/include/lwip/`）は contrib apps を
 |---|---|---|---|
 | `esp/wifi/net/netif_esp32s3.c` `netif_esp32s3.h` | 同名 | なし | Wi-Fi driver と lwIP を結ぶ netif（名前は S3 由来だがチップ共通） |
 | `esp/wifi/net/net.cfg` `net_cfg.h` | 同名 | なし | `NET_SEM1..8` / `NET_MBOX1..10` / `NET_TSK`。アプリ cfg が `INCLUDE("net.cfg")` する（Task 2） |
-| `esp/wifi/net/port/sys_arch.c` `port/include/arch/cc.h` `port/include/arch/sys_arch.h` `port/include/lwipopts.h` | 同名 | なし | lwIP の OS ポート。`lwipopts.h` は `liblwip.a` を建てたときの物と同一でなければならない（`LWIP_DNS 0`） |
+| `esp/wifi/net/port/sys_arch.c` `port/include/arch/cc.h` `port/include/arch/sys_arch.h` | 同名 | なし | lwIP の OS ポート |
+| `esp/wifi/net/port/include/lwipopts.h` | 同名 | **あり（段4 Task 0、方針 8）** | 段3 時点はバイト同一（`LWIP_DNS 0`）。2026-09-15 に `LWIP_DNS 1` / `MEMP_NUM_SYS_TIMEOUT 9` / `ERANGE` を加えた。`liblwip.a` を建てたときの物と同一でなければならない（本リポジトリの `liblwip.a` はこのファイルで建てた） |
 | `esp/wifi/net/https_client.c` `mbedtls_user_config.h` | （持ち込まない） | - | dev のデモ（TLS クライアント）と `.a` ビルド時の mbedTLS 設定。`.a` の再生成は dev の台本で行う（`prebuilt/wpa2/README.md`） |
 
 ### libc スタブヘッダ `runtime/wifi/config/hal_stub_include/`（dev `esp/config/esp32/hal_stub_include/`、24 本）
@@ -218,7 +234,7 @@ wifi-connect だけが include path に加える（minimal は不変）。
 | dev のパス | arduino のパス | 改変 | 理由 |
 |---|---|---|---|
 | `esp/lib/wpa_esp32c6_espidf/libsupplicant.a` `libmbedtls.a` `libmbedcrypto.a` | `runtime/wifi/prebuilt/wpa2/esp32c6/` 同名 | なし（バイト同一、sha256 は README） | dev 台本 `build_{wpa_libs,mbedtls_tls}_espidf_esp32c6.sh` の生成物。Git 管理対象（`BUILDING.md`） |
-| `esp/lib/lwip_esp32c6_espidf/liblwip.a` | `runtime/wifi/prebuilt/lwip/esp32c6/liblwip.a` | なし（同上） | dev 台本 `build_lwip_lib_espidf_esp32c6.sh`（fix round 1 後）の生成物 |
+| `esp/lib/lwip_esp32c6_espidf/liblwip.a` | `runtime/wifi/prebuilt/lwip/esp32c6/liblwip.a` | **あり（段4 Task 0、方針 8）** | 段3 時点はバイト同一（sha256 `85859F70...`）。2026-09-15 から dev 台本 `build_lwip_lib_espidf_esp32c6.sh` を `PORT_EXTRA`=本リポジトリの `lwipopts.h`（`LWIP_DNS 1`）・`OUT_DIR`=scratch で走らせた生成物（sha256 `5BFBC3EF...`、`prebuilt/lwip/README.md`）。dev golden との差は `lwipopts.h` の差だけ |
 | （esp-idf `components/wpa_supplicant/COPYING`、`components/mbedtls/mbedtls/LICENSE`、`LICENSE`、`components/lwip/lwip/COPYING`） | `prebuilt/wpa2/{WPA_SUPPLICANT_COPYING,MBEDTLS_LICENSE,ESP_IDF_LICENSE}.txt`、`prebuilt/lwip/{LWIP_COPYING,ESP_IDF_LICENSE}.txt` | なし | 上流のライセンス本文（Xtensa の `wifi/prebuilt/wpa2/` と同じ 3 本 + lwIP） |
 | （新規） | `prebuilt/wpa2/README.md` `prebuilt/lwip/README.md` | -（新規） | 由来 commit・台本・sha256・ライセンス |
 
@@ -247,7 +263,7 @@ wifi-connect だけが include path に加える（minimal は不変）。
 | 元（arduino Xtensa port） | arduino のパス | 改変 | 理由 |
 |---|---|---|---|
 | `runtime/wifi/adapter/toppers_wifi_core.{h,c}` | `runtime/wifi/adapter/toppers_wifi_core.{h,c}` | **あり** | D6: `g_ic+0x1b4` の WPA コールバック表・`__real_esp_supplicant_init` 経由の auth backend 選択・OPEN 用の `wpa_crypto_funcs` ゼロ化を**持たない**（supplicant は `esp_wifi_init` に任せる。Open AP は段4 まで未検証と明記）。初期化順は dev `esp/app/wifi_sta.c` の C6 経路（`esp_shim_initialize` -> handler -> `esp_shim_coex_adapter_register` -> `wifi_module_enable` -> `esp_wifi_init`）。`sar_periph_ctrl_init` / `esp_bbpll_enable_480m` / `esp_wifi_clock_init_pll`（S3/LX6 専用）を呼ばない。`toppers_wifi_core_has_supplicant()` は定数 true |
-| `runtime/wifi/adapter/toppers_wifi_connect.c` | `runtime/wifi/adapter/toppers_wifi_connect.c` | **あり** | D6: `__wrap_esp_supplicant_init` を持たない。D7: `toppers_netif.h`（Xtensa 型）ではなく dev 型 `netif_esp32s3.h`（`netif_esp32s3_start` / `_notify_link` / `_get_ipaddr`）へ接続。gateway / netmask は lwIP の `netif_default` から読む。`toppers_fmp3_wifi_host_by_name` は `lwip_getaddrinfo` が無い（`liblwip.a` は `LWIP_DNS 0`）ため、数値表記だけ `ip4addr_aton` で解決し名前は失敗値 0 を返す（Low#1）。`SO_RCVTIMEO` は `LWIP_SO_SNDRCVTIMEO_NONSTANDARD=1`（int ms）で渡す |
+| `runtime/wifi/adapter/toppers_wifi_connect.c` | `runtime/wifi/adapter/toppers_wifi_connect.c` | **あり** | D6: `__wrap_esp_supplicant_init` を持たない。D7: `toppers_netif.h`（Xtensa 型）ではなく dev 型 `netif_esp32s3.h`（`netif_esp32s3_start` / `_notify_link` / `_get_ipaddr`）へ接続。gateway / netmask は lwIP の `netif_default` から読む。`toppers_fmp3_wifi_host_by_name` は段3 では `lwip_getaddrinfo` が無い（`liblwip.a` は `LWIP_DNS 0`）ため数値表記だけ `ip4addr_aton` で解決し名前は失敗値 0 を返していた（Low#1）が、段4 Task 0（方針 8）で `tcpip_callback` + `dns_gethostbyname`（tcpip_thread 文脈）+ 5 秒の有限待ちに置き換えた。`SO_RCVTIMEO` は `LWIP_SO_SNDRCVTIMEO_NONSTANDARD=1`（int ms）で渡す |
 | `runtime/wifi/adapter/toppers_wifi_scan.c` | `runtime/wifi/adapter/toppers_wifi_scan.c` | コメントのみ | scan の手順は dev `wifi_sta_c6_scan_run` と同じ。C6 では backend 選択が無いことをコメントに |
 | `runtime/wifi/adapter/toppers_wifi_optional_stubs.c` | `runtime/wifi/adapter/toppers_wifi_optional_stubs.c` | コメントのみ（英訳） | weak な失敗値スタブ（`BUILDING.md`）。記号・戻り値は同一 |
 | `runtime/arduino/arduino_interrupt.{c,cfg,h}` | `runtime/arduino/arduino_interrupt.{c,cfg,h}` | **あり** | S3-4: 線 19、GPIO ソース `ETS_GPIO_INTR_SOURCE`（30）を kernel の `_kernel_esp32c6_intmtx_route` で配線（MAP レジスタ直書きではない）。`hal/gpio_ll.h` の esp32c6 版（`status_high` 系は無い = 32 本未満）。衝突検査は `INTNO_TIMER` / `INTNO_SIO` / `esp_shim_intr_intmtx_lines.h` の範囲 / 18,20,21。未対応モードは失敗（WARNING + attach しない）。段3 はリンクまで、動作は段6 |
