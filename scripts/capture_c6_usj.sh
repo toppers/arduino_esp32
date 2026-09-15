@@ -65,8 +65,10 @@
 #                  Sidecars are written next to it: .ident.log (flash-id),
 #                  .flash.log (write-flash), .cold.txt (COLD=1 by-id timeline),
 #                  .journal.txt (COLD=1: the kernel journal's USB lines for the
-#                  capture window, so the power-cycle evidence is
-#                  self-contained), .sha.txt (sha256 of what this run wrote).
+#                  capture window, starting JOURNAL_LEAD_SEC = 30 s before the
+#                  by-id wait so the power-off line is inside it, so the
+#                  power-cycle evidence is self-contained), .sha.txt (sha256
+#                  of what this run wrote).
 #    LOG_DIR       default directory for OUT
 #                  (default $HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/.steering/
 #                   20260915-c6-arduino-plan/stage2/logs).
@@ -107,6 +109,12 @@
 #                  them, exactly as the EXIT trap does after a capture. For
 #                  logs captured before a mask rule existed. Touches no
 #                  hardware; rc 93 (and *.UNREDACTED) on residue.
+#                  Guarded (stage 4 review M-6): it rewrites files in place,
+#                  so it refuses a file that git tracks or that lies outside
+#                  LOG_DIR - a source file or a document handed to it by
+#                  mistake would be masked into nonsense with no way back.
+#                  C6_REDACT_ANYWHERE=1 lifts the LOG_DIR bound (never the
+#                  git-tracked one) for a log kept elsewhere.
 #
 #  Markers counted at the end (strings from src/bridge/ArduinoSketchBridge.cpp,
 #  third_party/fmp3_core/syssvc/banner.c and arch/riscv_gcc/common):
@@ -518,15 +526,64 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     _ml="$(c6_count_markers "$_mk")" || _fail "(12) c6_count_markers returned non-zero on an empty file"
     [ "$(printf '%s\n' "$_ml" | sed -n 1p)" = 'markers: banner=0 setup=0 heartbeat=0 unexpected=0 smark=0 blink=0' ] || _fail "(12) markers line on empty: $(printf '%s\n' "$_ml" | sed -n 1p)"
     [ "$(printf '%s\n' "$_ml" | sed -n 2p)" = 'wifi: scan=-1 scanap=0 ssidraw=0 connected=0 dhcp=0 dhcpdone=0 ping=0 dnsok=0 dnsfail=0 tcp=0 disc=0 beginrej=0 apm=0' ] || _fail "(12) wifi line on empty: $(printf '%s\n' "$_ml" | sed -n 2p)"
+    #  (13)-(15) the redact-only guard (M-6), through the script itself so
+    #  the entry path is what is tested. (13) a git-tracked file (this
+    #  script) is refused and untouched; (14) a file outside LOG_DIR is
+    #  refused and untouched; (15) the same file with C6_REDACT_ANYWHERE=1,
+    #  and a file inside LOG_DIR without it, are masked (positive control:
+    #  the refusals are not a broken entry path).
+    _self="$0"
+    git -C "$(dirname -- "$_self")" ls-files --error-unmatch -- "$(basename -- "$_self")" >/dev/null 2>&1 \
+        || _fail "(13) selftest needs \$0 to be a git-tracked file ($_self)"
+    _sha_before="$(sha256sum -- "$_self" | cut -c1-64)"
+    ( C6_MASK_SELFTEST=0 C6_REDACT_ONLY=1 LOG_DIR="$_sd/logs" bash "$_self" "$_self" >/dev/null 2>"$_sd/g13.err" ) && _fail "(13) a git-tracked file was accepted"
+    $GREP -q 'refuses a git-tracked file' "$_sd/g13.err" || _fail "(13) refusal reason not stated: $(cat "$_sd/g13.err")"
+    [ "$(sha256sum -- "$_self" | cut -c1-64)" = "$_sha_before" ] || _fail "(13) the tracked file was modified"
+    #  the git-tracked rule is not lifted by C6_REDACT_ANYWHERE
+    ( C6_MASK_SELFTEST=0 C6_REDACT_ONLY=1 C6_REDACT_ANYWHERE=1 LOG_DIR="$_sd/logs" bash "$_self" "$_self" >/dev/null 2>&1 ) && _fail "(13b) C6_REDACT_ANYWHERE lifted the git-tracked rule"
+    [ "$(sha256sum -- "$_self" | cut -c1-64)" = "$_sha_before" ] || _fail "(13b) the tracked file was modified"
+    mkdir -p "$_sd/logs" "$_sd/elsewhere"
+    printf 'got ip 192.168.4.23\n' > "$_sd/elsewhere/x.log"
+    ( C6_MASK_SELFTEST=0 C6_REDACT_ONLY=1 LOG_DIR="$_sd/logs" WIFI_CREDS="$_sd/no-such-creds.sh" bash "$_self" "$_sd/elsewhere/x.log" >/dev/null 2>"$_sd/g14.err" ) && _fail "(14) a file outside LOG_DIR was accepted"
+    $GREP -q 'refuses a file outside LOG_DIR' "$_sd/g14.err" || _fail "(14) refusal reason not stated: $(cat "$_sd/g14.err")"
+    $GREP -q '192.168.4.23' "$_sd/elsewhere/x.log" || _fail "(14) the refused file was modified"
+    ( C6_MASK_SELFTEST=0 C6_REDACT_ONLY=1 C6_REDACT_ANYWHERE=1 LOG_DIR="$_sd/logs" WIFI_CREDS="$_sd/no-such-creds.sh" bash "$_self" "$_sd/elsewhere/x.log" >/dev/null 2>&1 ) || _fail "(15) C6_REDACT_ANYWHERE=1 did not accept a file outside LOG_DIR"
+    [ "$(cat "$_sd/elsewhere/x.log")" = 'got ip <IPv4>' ] || _fail "(15) the file was not masked: $(cat "$_sd/elsewhere/x.log")"
+    printf 'got ip 192.168.4.23\n' > "$_sd/logs/y.log"
+    ( C6_MASK_SELFTEST=0 C6_REDACT_ONLY=1 LOG_DIR="$_sd/logs" WIFI_CREDS="$_sd/no-such-creds.sh" bash "$_self" "$_sd/logs/y.log" >/dev/null 2>&1 ) || _fail "(15b) a file inside LOG_DIR was refused"
+    [ "$(cat "$_sd/logs/y.log")" = 'got ip <IPv4>' ] || _fail "(15b) the file inside LOG_DIR was not masked: $(cat "$_sd/logs/y.log")"
     rm -rf "$_sd"
-    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact, scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1"
+    echo "c6 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact, scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C6_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C6_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked"
     exit 0
 fi
 
 #  ---------------------------------------------------------------- redact-only
+#  LOG_DIR is set here rather than with the other output paths below because
+#  the redact-only guard needs it; the value is the same.
+LOG_DIR="${LOG_DIR:-$HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/.steering/20260915-c6-arduino-plan/stage2/logs}"
+
+#  The M-6 guard. Rewriting in place is fine for a capture this script
+#  wrote; it is not fine for anything else, and the only difference between
+#  the two on the command line is where the file lives. Two rules, checked
+#  before anything is touched: a file git tracks is never masked (masked
+#  source is still source, and would be committed as such), and a file
+#  outside LOG_DIR is masked only with C6_REDACT_ANYWHERE=1 said out loud.
+c6_redact_guard() {
+    local f="$1" abs dir_abs
+    if git -C "$(dirname -- "$f")" ls-files --error-unmatch -- "$(basename -- "$f")" >/dev/null 2>&1; then
+        die "C6_REDACT_ONLY refuses a git-tracked file: $f (a masked source or document is not a redacted log)"
+    fi
+    abs="$(realpath -m -- "$f")"; dir_abs="$(realpath -m -- "$LOG_DIR")"
+    case "$abs" in
+        "$dir_abs"/*) ;;
+        *) [ "${C6_REDACT_ANYWHERE:-0}" = "1" ] \
+               || die "C6_REDACT_ONLY refuses a file outside LOG_DIR ($LOG_DIR): $f (set C6_REDACT_ANYWHERE=1 for a log kept elsewhere)" ;;
+    esac
+}
 if [ "${C6_REDACT_ONLY:-0}" = "1" ]; then
     [ "$#" -ge 1 ] || die "C6_REDACT_ONLY=1 needs the files to redact as arguments"
     for f in "$@"; do [ -f "$f" ] || die "not a file: $f"; done
+    for f in "$@"; do c6_redact_guard "$f"; done
     c6_load_needles
     C6_FILES=("$@")
     c6_redact_on_exit
@@ -661,7 +718,7 @@ print_write_plan() {
 }
 
 #  ---------------------------------------------------------------- 2. output paths
-LOG_DIR="${LOG_DIR:-$HOME/TOPPERS/ESP32/fmp3_esp_idf_dev/.steering/20260915-c6-arduino-plan/stage2/logs}"
+#  LOG_DIR: set above the redact-only block.
 OUT="${OUT:-$LOG_DIR/c6-capture-$(date +%Y%m%d-%H%M%S).log}"
 BASE="${OUT%.log}"
 IDENT_LOG="$BASE.ident.log"; FLASH_LOG="$BASE.flash.log"; COLD_TXT="$BASE.cold.txt"; SHA_TXT="$BASE.sha.txt"
@@ -826,16 +883,22 @@ sleep 1
 sed -i 's/\x1b\[[0-9;]*m//g' "$OUT" 2>/dev/null || true
 say "captured $(wc -l < "$OUT") lines -> $OUT"
 
-#  COLD=1: the kernel journal's USB lines for the window (from the start of
-#  the by-id wait to now), so the power-cycle evidence (disconnect, one
-#  enumeration, no re-enumeration during the capture) is next to the log
-#  instead of in a journal that rotates. Passes through the redact stage like
+#  COLD=1: the kernel journal's USB lines for the window, so the power-cycle
+#  evidence (disconnect, one enumeration, no re-enumeration during the
+#  capture) is next to the log instead of in a journal that rotates. The
+#  window opens JOURNAL_LEAD_SEC before the by-id wait began, not at it
+#  (stage 4 review M-7): the operator pulls the power at about the moment
+#  the script says to, and a disconnect a second or two BEFORE COLD_T0 was
+#  outside the old window, which then showed the enumeration and not the
+#  power-off it is meant to prove. Passes through the redact stage like
 #  every sidecar (the DUT's own serial spelling is kept, peers masked).
+JOURNAL_LEAD_SEC=30
 if [ "$COLD" = "1" ]; then
     C6_FILES+=("$JOURNAL_TXT")
+    _journal_since=$(( COLD_T0 - JOURNAL_LEAD_SEC ))
     {
-        echo "# journalctl -k --since @$COLD_T0 (USB lines only) for $DUT_PORT; window start = the by-id wait"
-        if ! journalctl -k --since "@$COLD_T0" --no-pager -o short-precise 2>&1 | $GREP -iE 'usb|cdc_acm|ttyACM'; then
+        echo "# journalctl -k --since @$_journal_since (USB lines only) for $DUT_PORT; window start = the by-id wait (@$COLD_T0) - ${JOURNAL_LEAD_SEC}s"
+        if ! journalctl -k --since "@$_journal_since" --no-pager -o short-precise 2>&1 | $GREP -iE 'usb|cdc_acm|ttyACM'; then
             echo "# (no USB lines, or journalctl not readable by this user -- the by-id timeline in .cold.txt is the only evidence)"
         fi
     } > "$JOURNAL_TXT"

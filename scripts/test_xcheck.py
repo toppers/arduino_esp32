@@ -29,6 +29,12 @@ Cases (AC-0e of the stage 0 plan):
                                              while a new profile under a
                                              chip the baseline covers is
                                              still a DIFF (only in current)
+  8. a baseline that covers esp32c6      -> its two stages (minimal,
+                                             wifi-connect; the C6 port's
+                                             table) are compared and can
+                                             DIFF; without a record the
+                                             expectation is still the
+                                             Xtensa pair (stage 5, S5-6)
 plus guards: objects.rsp differing is a DIFF; an empty comparison (no
 stages) exits 1 rather than passing on nothing; an expected stage absent
 from both sides (per BASELINE.json, or per the profile tables when there is
@@ -339,6 +345,58 @@ def main() -> int:
                f"expected={expected_n} compared=2" in out, out)
         expect(failures, "7d no record", "esp32c6/minimal" not in out, out)
 
+        #  8. a C6 baseline (stage 5, S5-6): when BASELINE.json covers
+        #  esp32c6 its stages are compared like any other, a C6 difference
+        #  is a DIFF, and the chip's profile table is the C6 port's two
+        #  (no m5-unified: the board has no display). The DEFAULT expectation
+        #  - no record - stays the Xtensa pair, which 5d and 7d hold.
+        c6_stages = (("esp32c6", "minimal"), ("esp32c6", "wifi-connect"))
+        expect(failures, "8 c6 table",
+               xcheck_compare.profiles_for("esp32c6") == ["minimal", "wifi-connect"],
+               str(xcheck_compare.profiles_for("esp32c6")))
+        expect(failures, "8 c6 table",
+               xcheck_compare.expected_stages_from_tables(["esp32c6"])
+               == ["esp32c6/minimal", "esp32c6/wifi-connect"],
+               str(xcheck_compare.expected_stages_from_tables(["esp32c6"])))
+        expect(failures, "8 c6 table default unchanged",
+               xcheck_compare.expected_stages_from_tables()
+               == xcheck_compare.expected_stages_from_tables(["esp32s3", "esp32"])
+               and not any(s.startswith("esp32c6/")
+                           for s in xcheck_compare.expected_stages_from_tables()),
+               str(xcheck_compare.expected_stages_from_tables()))
+        expect(failures, "8 c6 table",
+               xcheck_compare.CHIPS[:2] == xcheck_compare.DEFAULT_CHIPS
+               == ["esp32s3", "esp32"] and "esp32c6" in xcheck_compare.CHIPS,
+               str(xcheck_compare.CHIPS))
+        base, cur = make_pair(work / "c8", stages=c6_stages)
+        rc, out = run(base, cur)
+        expect(failures, "8 c6 identical", rc == 0, f"rc={rc}\n{out}")
+        expect(failures, "8 c6 identical",
+               "esp32c6/minimal: MATCH (7 files, 1 skipped)" in out
+               and "esp32c6/wifi-connect: MATCH (7 files, 1 skipped)" in out,
+               out)
+        expect(failures, "8 c6 identical",
+               "expected=2 compared=2 match=2 diff=0" in out
+               and "ignored" not in out, out)
+        (cur / "esp32c6" / "wifi-connect" / "lib" / "libsupplicant.a").write_bytes(
+            b"!<arch>\n" + b"c" * 32)
+        rc, out = run(base, cur)
+        expect(failures, "8 c6 lib differs", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "8 c6 lib differs",
+               "esp32c6/wifi-connect: DIFF (1 files)" in out
+               and "lib/libsupplicant.a: bytes differ" in out, out)
+        #  8b. a record covering all three chips compares all nine stages,
+        #  and an Xtensa stage beside them is still judged (no chip hides
+        #  another)
+        base, cur = make_pair(work / "c8b", stages=PAIR_STAGES + c6_stages)
+        (cur / "esp32" / "minimal" / "objs" / "task.o").write_bytes(b"\x7fELF x")
+        rc, out = run(base, cur)
+        expect(failures, "8b three chips", rc == 1, f"rc={rc}\n{out}")
+        expect(failures, "8b three chips",
+               "expected=4 compared=4 match=3 diff=1" in out
+               and "esp32/minimal: DIFF (1 files)" in out
+               and "esp32c6/minimal: MATCH" in out, out)
+
         #  provenance warnings: a baseline taken at another commit, or on a
         #  dirty tree, is reported but does not fail the comparison. The
         #  HEAD warning needs git to answer for this repository; when it
@@ -397,8 +455,9 @@ def main() -> int:
           "expected stage absent (record / no record),\n       "
           "banner (default / --strict / nested lib/banner.o), "
           "chip not in baseline (ignored / new profile\n       "
-          "under a covered chip / baseline-side / no record), objects.rsp, "
-          "empty, absent dir, host path")
+          "under a covered chip / baseline-side / no record), "
+          "C6 baseline (table / identical / lib differs / three chips),\n"
+          "       objects.rsp, empty, absent dir, host path")
     if failures:
         print(f"\nFAILED, {len(failures)} check(s):")
         for failure in failures:

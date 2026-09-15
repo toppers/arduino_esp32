@@ -13,6 +13,7 @@ the release uses - once per chip, with every profile that chip ships:
 
     esp32s3   minimal  m5-unified  wifi-connect
     esp32     minimal  m5-unified  wifi-connect  bt-classic
+    esp32c6   minimal  wifi-connect              (only with --chips esp32c6)
 
 The profile sets are taken from build_prebuilt_stages.py itself
 (SHIPPED_PROFILES plus CHIP_ONLY_PROFILES), so adding a shipped profile
@@ -38,6 +39,10 @@ are edited; so an existing baseline is never overwritten silently - pass
     python scripts/xcheck_baseline.py
     python scripts/xcheck_baseline.py --clean          # from scratch
     python scripts/xcheck_baseline.py --chips esp32s3  # one chip only
+    python scripts/xcheck_baseline.py --chips esp32c6 \
+        --baseline-directory build/xcheck-baseline-c6   # a C6 baseline,
+                                                        # kept apart from
+                                                        # the Xtensa one
     python scripts/xcheck_baseline.py --force          # replace an old one
 
 Every option build_prebuilt_stages.py takes for locating tools and sources
@@ -64,8 +69,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 #  The chip list, the per-chip profile table (derived from
 #  build_prebuilt_stages.py), the record name and the git helper are shared
 #  with the comparer so the two cannot disagree about what a baseline holds.
-from xcheck_compare import (BASELINE_RECORD, CHIPS, MANIFEST_NAME,  # noqa: E402
-                            git_head, profiles_for)
+from xcheck_compare import (BASELINE_RECORD, CHIPS, DEFAULT_CHIPS,  # noqa: E402
+                            MANIFEST_NAME, git_head, profiles_for)
 
 DEFAULT_BASELINE = Path("build") / "xcheck-baseline"
 
@@ -111,8 +116,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--baseline-directory", default="",
                         help="where to keep the copy (default: "
                              "build/xcheck-baseline under the repository)")
-    parser.add_argument("--chips", nargs="+", choices=CHIPS, default=CHIPS,
-                        help="chips to build (default: both)")
+    parser.add_argument("--chips", nargs="+", choices=CHIPS,
+                        default=DEFAULT_CHIPS,
+                        help="chips to build (default: the two Xtensa chips; "
+                             "esp32c6 only when named, so the Xtensa "
+                             "baseline stays about the Xtensa boards)")
     parser.add_argument("--clean", action="store_true",
                         help="pass --clean to build_prebuilt_stages.py "
                              "(rebuild the stages from scratch)")
@@ -140,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     baseline_root = Path(args.baseline_directory).resolve() \
         if args.baseline_directory else library_root / DEFAULT_BASELINE
 
+    #  Every chip the tool knows, not only the ones asked for: a stale
+    #  esp32c6 beside a fresh Xtensa pair would otherwise survive --force.
     existing = [p for p in (baseline_root / BASELINE_RECORD,
                             *(baseline_root / chip for chip in CHIPS))
                 if p.exists()]

@@ -156,6 +156,26 @@ SIZE_REGEX_OVERRIDES = {
                 r"^(?:\.data|\.bss|\.tbss)\s+([0-9]+).*"),
 }
 
+#  upload.maximum_size / upload.maximum_data_size per chip: the denominators
+#  of the IDE's "Sketch uses N bytes (P%)" lines. The inherited board lines
+#  carry the M5Stack core's values, which describe an ESP-IDF/FreeRTOS image
+#  and not what the FMP3 linker script allows, so the percentage misleads.
+#  Rewritten in place on the board's own lines (the key is the same one the
+#  source board sets), so a chip without a row here keeps the inherited
+#  values byte for byte; the Xtensa boards have no row.
+#
+#  esp32c6 (stage 5, S5-1): the C6 port's esp32c6_xip.ld gives RAM
+#  LENGTH = 0x4086E610 - 0x40800000 = 0x6E610 = 452112 bytes, against the
+#  inherited 327680 (with which a Blink build read "91% used" while the
+#  linker had 26 KB more than that in hand - docs/c6-port.md, stage 3/4).
+#  upload.maximum_size stays the stock app0 partition, 0x140000 = 1310720,
+#  which is what the board's default partition scheme gives the image;
+#  stated here so the pair is explicit rather than half inherited.
+UPLOAD_SIZE_OVERRIDES = {
+    "esp32c6": {"upload.maximum_size": "1310720",
+                "upload.maximum_data_size": "452112"},
+}
+
 
 def warn_if_boards_manager_shadowed(arduino_data: Path) -> None:
     """Say so when a Boards Manager copy occupies the same packager:arch.
@@ -269,6 +289,23 @@ def board_lines(source_boards: Path, board_id: str,
         raise SystemExit(
             f"{source_boards} has no board '{source_id}' to derive from")
 
+    #  Board-level denominators (UPLOAD_SIZE_OVERRIDES): replace the inherited
+    #  line of the same key, in place, so the board keeps one definition per
+    #  key and the menu.PartitionScheme lines that follow still override
+    #  upload.maximum_size for the schemes that set it, as they do upstream.
+    #  A key the source board does not set is appended; a key it does set
+    #  must be found exactly once, or the override would silently not apply.
+    for key, value in UPLOAD_SIZE_OVERRIDES.get(chip, {}).items():
+        marker = f"{prefix}{key}="
+        hits = [i for i, line in enumerate(board) if line.startswith(marker)]
+        if len(hits) > 1:
+            raise SystemExit(
+                f"{source_boards} sets {marker} {len(hits)} times for "
+                f"'{source_id}'; cannot tell which line to override")
+        if hits:
+            board[hits[0]] = f"{marker}{value}"
+        else:
+            board.append(f"{marker}{value}")
     lines = board + [
         #  Which chip's stages this board links against; the layout is
         #  fmp3-prebuilt/<chip>/<profile>.

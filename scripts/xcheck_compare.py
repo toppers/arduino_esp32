@@ -101,21 +101,35 @@ TIME_KEYS = frozenset({
     "built_at", "timestamp", "date", "time",
 })
 
-#  The chips a baseline covers, in the order the report lists them. The
+#  The chips a baseline can cover, in the order the report lists them. The
 #  profiles per chip come from build_prebuilt_stages.py's own tables, so a
 #  profile added there is expected here without a second edit.
-CHIPS = ["esp32s3", "esp32"]
+#
+#  The two Xtensa chips first, and they are the DEFAULT: the check exists to
+#  say whether the Xtensa boards' bytes moved while the C6 port was worked
+#  on, and a default that quietly grew to include the C6 stages would make
+#  every C6 change a DIFF in a report meant to be read as "Xtensa unchanged".
+#  esp32c6 is in the list so that a C6 baseline can be taken and compared
+#  (xcheck_baseline.py --chips esp32c6) once the C6 stages are something to
+#  guard as well (stage 5, S5-6); which chips a given comparison covers is
+#  whatever its BASELINE.json records.
+CHIPS = ["esp32s3", "esp32", "esp32c6"]
+DEFAULT_CHIPS = ["esp32s3", "esp32"]
 
 
 def profiles_for(chip: str) -> list[str]:
-    """Every profile a chip ships: the common set plus its chip-only ones."""
-    shipped = list(build_prebuilt_stages.SHIPPED_PROFILES)
+    """Every profile a chip ships: the common set plus its chip-only ones,
+    narrowed to what the chip's port can stage at all (the C6 port has no
+    m5-unified: the M5NanoC6 has no display)."""
+    stageable = build_prebuilt_stages.CHIPS[chip].profiles
+    shipped = [name for name in build_prebuilt_stages.SHIPPED_PROFILES
+               if name in stageable]
     only = [name for name, owner in build_prebuilt_stages.CHIP_ONLY_PROFILES.items()
-            if owner == chip]
+            if owner == chip and name in stageable]
     return shipped + sorted(only)
 
 
-def expected_stages_from_tables(chips=CHIPS) -> list[str]:
+def expected_stages_from_tables(chips=DEFAULT_CHIPS) -> list[str]:
     return [f"{chip}/{profile}" for chip in chips for profile in profiles_for(chip)]
 
 
