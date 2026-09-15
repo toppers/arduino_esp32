@@ -55,7 +55,7 @@ M5Stack Arduino core 3.3.8 を入れた利用者が、`ToppersFMP3` パッケー
 | 段 | ゴール | 実機 | 状態 |
 | --- | --- | --- | --- |
 | 0 | X-check 4 系統（baseline + positive control）、本文書の骨子、allowlist の C5 出自 | 不要 | 完了（下記「段0 の記録」） |
-| 1 | runtime の chip 表化（C6 値不変）、C5 層の並置（arch / target / config / seam / prebuilt_stage_c5 / toolchain / arduino_*_c5）、scripts の表に C5 行、`--chip esp32c5 --profiles minimal` の stage、`m5stampc5_fmp3:FMP3Runtime=minimal` で Blink / LibraryInfo / TwoFile リンク、重複定義監査、X-check 9/9 | 不要 | 未着手 |
+| 1 | runtime の chip 表化（C6 値不変）、C5 層の並置（arch / target / config / seam / prebuilt_stage_c5 / toolchain / arduino_*_c5）、scripts の表に C5 行、`--chip esp32c5 --profiles minimal` の stage、`m5stampc5_fmp3:FMP3Runtime=minimal` で Blink / LibraryInfo / TwoFile リンク、重複定義監査、X-check 9/9 | 不要 | 完了（下記「段1 の記録」） |
 | 2 | M5Stamp-C5 で Blink（stock bootloader @0x2000）、warm 5/5・真cold 5/5、`capture_c5_usj.sh` | 要 | 未着手 |
 | 3 | wifi-connect stage（shim C5 分岐 + clic shim、`.a` x4 vendored、idf_src C5 原本、DNS liblwip）、`nm -u` 空、ROM ld 勝者、移し漏れ表 | 不要 | 未着手 |
 | 4 | WiFiScan（2.4 / 5 GHz 可視）/ WiFiConnect（STA -> DHCP -> DNS -> TCP）真cold 3/3、APM OFF 対照 0 AP、GpioInterrupt（G1） | 要 | 未着手 |
@@ -141,22 +141,81 @@ python3 scripts/test_xcheck.py                # 判定器の自己テスト
   **段1 の途中で採り直さない。**
 - 段1 は `feature/c5-arduino-stage1` で続ける（段0 と同じブランチ）。
 
-## 段1 の記録（2026-09-16、branch `feature/c5-arduino-stage1`、段0 commit `1d9caec` から）
+## 段1 の記録（2026-09-16、branch `feature/c5-arduino-stage1`、commit `146e6db` / `79596cd` / `4e67891` / `523d4b9` + 記録）
 
 C5 の `minimal` stage が建ち、`m5stampc5_fmp3:FMP3Runtime=minimal` で 3 例題スケッチが
-リンクを通る段。実機は使わない。AC は段の頭で固定し（この表）、判定は Task ごとに埋める。
-証跡は開発リポジトリ `.steering/20260916-c5-arduino-plan/stage1/{AC.md,logs/}`。
+リンクを通り、C-1..C-9 を満たした段。実機は使っていない。証跡は開発リポジトリ
+`.steering/20260916-c5-arduino-plan/stage1/{AC.md,logs/}`（本節の丸括弧はそこのログ名。
+`task<N>-*.txt` = Task N の採取）。
 
-### AC 1a-1i（判定は段1 末尾で埋める）
+### AC 1a-1i
 
 | # | 基準 | 判定 | 根拠 |
 | --- | --- | --- | --- |
-| 1a | `build_prebuilt_stages.py --chip esp32c5 --profiles minimal --clean` rc=0、stage 一式あり、重複定義監査 PASS、manifest の `romLinkerScripts` は 2 本 | (未) | |
-| 1b | X-check 9/9 MATCH（段0 baseline）、`ports/m5stack_xtensa` / `src` / `examples` / `third_party` の `git diff --stat` が空 | (未) | |
-| 1c | `install_platform.py` で 5 板が組め、`arduino-cli board listall` に `m5stampc5_fmp3` が出る。既存 4 板の `boards.txt` 行と `platform.txt` は不変 | (未) | |
-| 1d | 3 例題（Blink / LibraryInfo / TwoFileSketch）が compile rc=0、C-1..C-8 + C-9 PASS | (未) | |
-| 1e | `check_host_paths.py` rc=0、`scripts/test_*.py` 全 PASS（C-9 のケース込み）、Xtensa 板と C6 板の Blink も同じドライバで rc=0 | (未) | |
-| 1f | リンク前 `nm -u` の一覧と勝者一覧の記録、実リンク後 `nm -u` は空 | (未) | |
-| 1g | `IMPORT_PROVENANCE.md` に C5 の dev 由来ファイル全件、本文書に段1 の記録 | (未) | |
-| 1h | `--show-properties` の `recipe.size.regex` が C5 のセクション名を含み、`upload.maximum_size=1310720` / `upload.maximum_data_size=320928`、`bootloader_addr` は継承値 `0x2000` | (未) | |
-| 1i | chip 表化の commit 単独で C6 の 2 stage を `--clean` で建て直して X-check 9/9 MATCH（C6 の値は 1 バイトも動いていない） | (未) | |
+| 1a | `build_prebuilt_stages.py --chip esp32c5 --profiles minimal --clean` rc=0、stage 一式あり、重複定義監査 PASS、manifest の `romLinkerScripts` は 2 本 | PASS | `task3-build-c5-minimal-first.txt`（48 objects / 414 strong definitions / 0 duplicated、`romLinkerScripts` = `esp32c5.rom.ld` / `esp32c5.rom.api.ld`、`chip` = `esp32c5`、`paddrMode` = `fixed-vma`、`linkBaseFlags` 末尾に `-Wl,-e,seam_c5_entry_boost`。C6 の 47 objects との差は `clic_kernel_impl.o`（共通 CLIC 層）の 1 本） |
+| 1b | X-check 9/9 MATCH、`ports/m5stack_xtensa` / `src` / `examples` / `third_party` の `git diff --stat` が空 | PASS | `task4-xcheck-all.txt`（Xtensa 7 + C6 2 を `--clean` で建て直し `expected=9 compared=9 match=9 diff=0`、`ignored (not in baseline): esp32c5`。`--strict` の差は 9 stage とも `banner.o` のみ）、`task4-tests.txt`（`git diff --stat 1d9caec -- ports/m5stack_xtensa src examples third_party` が空） |
+| 1c | `install_platform.py` で 5 板が組め、`arduino-cli board listall` に `m5stampc5_fmp3` が出る。既存 4 板の `boards.txt` 行と `platform.txt` は不変 | PASS | `task4-install-platform.txt`（5 板・10 stage、`m5stampc5_fmp3.*` 182 行）、`task4-install-platform-cmp.txt`（段0 commit の installer との比較: `platform.txt` / `programmers.txt` / `tools/` はバイト同一、`boards.txt` の差は `m5stampc5_fmp3.*` の追加だけ） |
+| 1d | 3 例題（Blink / LibraryInfo / TwoFileSketch）が compile rc=0、C-1..C-8 + C-9 PASS | PASS | `task4-compile-c5-{Blink,LibraryInfo,TwoFileSketch}.txt`（`mapped=2 ram=1 pad=1`、`C-8 OK: image 83536 / 83824 / 83552 / 1310720`、`C-9 OK: chip_id=0x0017 min_chip_rev_full=0 <= board rev 100 <= max_chip_rev_full=65535`、`C-1 to C-9 satisfied`） |
+| 1e | `check_host_paths.py` rc=0、`scripts/test_*.py` 全 PASS（C-9 ケース込み）、Xtensa 板と C6 板の Blink も同じドライバで rc=0 | PASS | `task4-check-host-paths.txt`（982 files、0 件）、`task4-tests.txt`（4 本 PASS。`test_check_release_artifacts.py` は 13 tests）、`task4-xtensa-c6-blink-same-driver.txt`（CoreS3 29720/19036 bytes・NanoC6 83360 bytes = C6 段1 の値と同一、NanoC6 は `C-1 to C-8 satisfied` のまま = C-9 は C5 だけ） |
+| 1f | リンク前 `nm -u` の一覧と勝者一覧の記録、実リンク後 `nm -u` は空 | PASS | `task4-nm-u-stage.txt`（stage 単体、未定義 22 記号 = ld 定義 17 + peripherals.ld 2 + ROM api ld 1 + スケッチ供給 1 + newlib 2（`__errno` / `_impure_ptr`、`newlib_syscalls.o` が参照））、`task4-link-winners.txt`（3 例題とも実リンク後 `nm -u` 空。ROM ld 由来の勝者は `esp_rom_set_cpu_ticks_per_us` = `0x40000044` だけ。stage 側定義の置換は 0 件）。詳細は下記「ROM linker script の勝者」 |
+| 1g | `IMPORT_PROVENANCE.md` に C5 の dev 由来ファイル全件、本文書に段1 の記録 | PASS | `ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md` の C5 節（chip 23 + target 29 + seam 4 + config 1、改変 2 ファイルの内容）、`THIRD_PARTY_NOTICES.md` の C5 節、本節 |
+| 1h | `--show-properties` の `recipe.size.regex` が C5 のセクション名を含み、`upload.maximum_size=1310720` / `upload.maximum_data_size=320928`、`bootloader_addr` は継承値 `0x2000` | PASS | `task4-show-properties.txt`（`build.bootloader_addr=0x2000`、`build.f_cpu=240000000L`、`build.toppers_chip=esp32c5`、`compiler.sdk.path` = `esp32c5-libs/3.3.8`。C6 は `0x0` / `452112` のまま） |
+| 1i | chip 表化の commit 単独で C6 の 2 stage を `--clean` で建て直して X-check 9/9 MATCH | PASS | `task2-xcheck-chip-table.txt`（commit `79596cd` の状態で esp32c6 を `--clean` 再ビルド、9/9 MATCH = manifest / objs / rsp とも同一）、`task2-c6-80mhz-fallback.txt`（`--cmake-define A1_C6_CPU_FREQ_MHZ=80` が表化後も効く: CMakeCache 80、47 objs とも `CORE_CLK_MHZ=80`、`SEAM_C6_CLK_BOOST` 無し） |
+
+### 判断 S1-C5-1..S1-C5-6（段1 で確定）
+
+| # | 判断 | 結果 |
+| --- | --- | --- |
+| S1-C5-1 | `ports/m5stack_riscv/runtime/CMakeLists.txt` を `A1_CHIP`（esp32c6 / esp32c5）の chip 表にする | 実装どおり。表の行 = target / arch / xip ld / ROM ld 一覧 / USJ HAL / seam ソース / prebuilt script / CPU クロック変数（`A1_<TAG>_CPU_FREQ_MHZ`、選択肢、既定、boost 値）/ `A1_CHIP_WIFI`。C6 行は従来の文字列のまま（AC-1i）。wifi-connect ブロック（include 一覧・shim・idf_src・prebuilt archives）は C6 名のままで、C5 は `A1_CHIP_WIFI OFF` により `FATAL_ERROR`（段3 で表に載せる） |
+| S1-C5-2 | minimal の ROM ld は dev と同じ 2 本 | 実装どおり（C6 段1 ruling (a) の教訓。wifi-connect の 13 本、eco3 無しは段3） |
+| S1-C5-3 | CPU クロック 240 MHz 既定、entry は `-Wl,-e` で manifest から | 実装どおり。`A1_C5_CPU_FREQ_MHZ` 既定 240（`SEAM_C5_CLK_BOOST=1`、entry `seam_c5_entry_boost` = `0x42000140`）、80 は `--cmake-define A1_C5_CPU_FREQ_MHZ=80`（entry `seam_c5_entry`）。dev の報告タスク `seam_c5_clk.cfg` は持ち込まない（配布 stage にタスクを足さない）。結果 `g_seam_c5_clk_result` は `.data`（`0x40800004`）に残るので、段2 で証跡が要れば probe スケッチが `extern "C"` で読める。**240 MHz の実機起動は未検証**（段2 の watch item。dev は seam-c5-wifi の 240 で実測、min は 80） |
+| S1-C5-4 | C-9 をドライバへ | 実装どおり。`ImageLayout` に `chip_id` / `board_rev_full`（既定 None = 検査しない）を足し、`FIXED_VMA_LAYOUTS["esp32c5"]` だけ `0x0017` / `100`。C6 行は None で C-1..C-8 の挙動不変（`task4-xtensa-c6-blink-same-driver.txt`）。`test_fmp3_link_objects.py` に 7 ケース（他チップの chip_id、chip_id 0、rev 窓の下 / 上、窓の両端、片方だけの layout）。arduino 側の esptool 5.2.0 は `min/max_chip_rev_full` を `0 / 65535` で書く（dev の esptool 4.12 と違う既定値。どちらも rev 100 を含む） |
+| S1-C5-5 | `arduino_interrupt_c5` の CLIC 線 | 23（dev の線表で shim が使わない空き線。19 は C5 のテスト用 `INTNO_UNOPTED` として空けておく）。段1 では stage に入らず `-fsyntax-only` と負対照のみ（`task3-syntax-check-arduino-c5.txt`: C6 版は `#error`、線 30 / 19 / 16 / 42 はそれぞれ該当の `#error`） |
+| S1-C5-6 | profile 表は段1 では `minimal` のみ | 実装どおり。`CHIPS["esp32c5"].profiles` / `EXPECTED_PROFILES` / allowlist `prebuiltStages` / `test_check_release_artifacts.py` の `STAGES` / CI yml の 5 表が `minimal` で一致（ドリフト検査 PASS）。**`verify_package.py BOARD_PROFILES` だけは `{minimal, wificonnect}`**（A10 の 68 本を `--list-builds` が出す）。帰結: 段3 まで `verify_package.py` を C5 の全 profile で走らせると wificonnect の 6 本は FQBN 解決で落ちる（stage が無い）。C5 を検証するときは `--boards m5stampc5_fmp3 --profiles minimal` |
+
+### ROM linker script の勝者（AC-1f）
+
+C6 段1 と同じ 2 本（`esp32c5.rom.ld` / `esp32c5.rom.api.ld`）なので結論も同じ。3 例題とも
+リンク前に未定義かつ絶対番地に解決した記号のうち ROM ld 由来は
+**`esp_rom_set_cpu_ticks_per_us`（`esp32c5.rom.api.ld` の PROVIDE -> `ets_update_cpu_frequency`
+`0x40000044`）だけ**。他の絶対記号は `esp32c5_xip.ld`（`__init_array_*` / `__ctors_*` / `__idata_*`）と
+`esp32c5.peripherals.ld`（`SYSTIMER` / `USB_SERIAL_JTAG`）。stage の定義を ROM 代入が置き換えた
+ものは 0 件。`libc_nano.a` から引かれるのは `impure.o` / `errno.o`（`newlib_syscalls.o` が参照）と
+LibraryInfo の `memcpy.o`（C6 と同じ）。C6 段1 の M-6 parity gap（`chip_rom_libc.c` 相当が無く、
+`String` / `printf` / `rand` 等は `_sbrk` 未定義でリンク時に落ちる）は C5 でも同じで、段3 で
+libc 供給の決定と一緒に扱う。
+
+### 像サイズと RAM（AC-1d、2026-09-16 実測）
+
+C5 xip ld の `RAM` は `0x4084E5A0 - 0x40800000` = 320928 bytes（stock bootloader 4 変種とも
+`.iram_loader.text` が `0x4084e5a0`、`task4-stock-bootloader-readelf.txt`）。C-8 の分母は
+stock `default` partition table の app0 = `0x140000` = 1310720。
+
+| スケッチ | image bytes（C-8） | RAM（`.data` + `.bss`） | RAM 余裕 |
+| --- | --- | --- | --- |
+| Blink | 83536 / 1310720 | 432 + 21056 = 21488 | 299440 bytes（93.3%） |
+| LibraryInfo | 83824 / 1310720 | 21488 | 299440 bytes |
+| TwoFileSketch | 83552 / 1310720 | 21488 | 299440 bytes |
+
+C6 の Blink（17760 bytes）より RAM が 3.7 KB 多いのは主に `_kernel_istack_prc1` が 8 KB
+（C6 は 4 KB。C5 の target 層の値、dev のまま）。`size` が bss に数える 68 KB は
+`.flash_rodata_dummy`（NOLOAD の隙間）で、IDE の表示（`recipe.size.regex.data`）は除いている。
+固定値として恒久扱いしないこと。
+
+### 段2 への watch item
+
+- **240 MHz は実機未検証**（S1-C5-3）。段2 の最初の書込みで `'S'` -> banner を確認。240 で
+  黙ったら `--cmake-define A1_C5_CPU_FREQ_MHZ=80` の像（entry `seam_c5_entry`、昇圧無し）を
+  1 軸で試す。`seam_c5_entry_boost` は昇圧がマークより先なので、`'S'` すら出なければ昇圧側。
+- **stock M5Stack bootloader は未検証**（A1）。stock は `bootloader_qio_80m.elf`（`@0x2000`）、
+  `CONFIG_BOOTLOADER_WDT_ENABLE=y` 9000 ms、QIO、`CONFIG_ESP_CONSOLE_UART_DEFAULT=y` +
+  USJ secondary、rev 窓 100..199（`task4-stock-bootloader-readelf.txt`）。C6 段1 の同名節の
+  読み方がそのまま当てはまる。
+- **`esp_rom_set_cpu_ticks_per_us`** は `hardware_init_hook`（`CORE_CLK_MHZ` = 240）と
+  `seam_c5_clk_set()` の両方が呼ぶ（dev と同じ、無害）。
+- 焼く物: `fmp_xip.bin` 相当 + stock bootloader（`0x2000`）+ stock `default` ptable + `boot_app0`。
+  `arduino-cli compile` の `merged.bin` 構成は実測で `0x2000 Blink.ino.bootloader.bin`
+  （`bin/bootloader_qio_80m.elf` から elf2image）/ `0x8000 partitions` / `0xe000 boot_app0` /
+  `0x10000 app`（C6 の `0x0` と違う。`stage1/logs` の `Blink.full.log` は scratch にのみ残る）。
+  採取台本は A12（`0x0-0x1FFF` 消去）。
+- `arduino_interrupt_c5` / `arduino_gpio_c5` はどの stage にも入っていない（段3）。
