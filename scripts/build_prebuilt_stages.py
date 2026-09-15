@@ -110,16 +110,15 @@ CHIPS = {
     #  ESP32-C6 (RISC-V, single core). The tool and SDK names are the M5Stack
     #  core's (esp-rv32 2601, esp32c6-libs 3.3.8); the port directory and the
     #  toolchain file are what the C6 port adds under ports/m5stack_riscv.
-    #  No M5Unified profile: the M5NanoC6 has no display. minimal only until
-    #  stage 3 adds wifi-connect (the port's CMakeLists refuses any other
-    #  profile today, and install_platform.py's EXPECTED_PROFILES says the
-    #  same); a row that promised more than the port can stage would turn
-    #  "no such profile" into a CMake error further down.
+    #  No M5Unified profile: the M5NanoC6 has no display. minimal and
+    #  wifi-connect, the two the port's CMakeLists stages (D11); a row that
+    #  promised more than the port can stage would turn "no such profile"
+    #  into a CMake error further down.
     "esp32c6": Chip(tool="esp-rv32", gcc="riscv32-esp-elf-gcc",
                     port="m5stack_riscv",
                     toolchain="toolchain-riscv-esp32c6.cmake",
                     sdk_headers_always=True,
-                    profiles=frozenset({"minimal"})),
+                    profiles=frozenset({"minimal", "wifi-connect"})),
 }
 
 

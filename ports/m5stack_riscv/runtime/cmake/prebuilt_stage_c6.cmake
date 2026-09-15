@@ -39,12 +39,15 @@ cmake_minimum_required(VERSION 3.23)
 #      @SDK_LD_ROOT@        the M5Stack core's ld/ directory (ROM scripts)
 #      @SDK_LIBRARY_ROOT@   its lib/ directory
 #      @SDK_PERIPHERALS_LD@ <chip>.peripherals.ld when a profile adds it
-#      @STAGE@              this stage (for archives shipped inside it)
+#      @STAGE@              this stage (for archives shipped inside it; every
+#                           .a of the STAGE_LIB_DIRS directories is copied to
+#                           lib/, and -L<that directory> becomes -L@STAGE@/lib)
 #
 #  Called from CMakeLists.txt with
 #    cmake -DSTAGE_DIR=... -DAR=... -DGCC=... -DLIBFMP3=... -DCONSUMER_OBJS_FILE=...
 #          -DPROFILE=minimal -DA1_CHIP=esp32c6 -DXIP_LD=... -DROMLD_ROOT=...
-#          -DROM_LDS=a.ld@@b.ld... -DSDK_LIBRARY_ROOT=... -DOBJCOPY=... -DSTRIP_DEBUG=ON
+#          -DROM_LDS=a.ld@@b.ld... -DSDK_LIBRARY_ROOT=... -DSTAGE_LIB_DIRS=dir@@dir...
+#          -DOBJCOPY=... -DSTRIP_DEBUG=ON
 #          -DLINK_BASE_FLAGS=... -DLINK_UFLAGS=... -DLINK_LIBGROUP=...
 #          -DLINK_TAIL_FLAGS=... -DEXTRA_TSCRIPTS=... -DARDUINO_OBJECT_NAMES=...
 #          -P cmake/prebuilt_stage_c6.cmake
@@ -224,11 +227,19 @@ list(LENGTH _order _order_count)
 #  separator is '@@', so replacing first turns '-L<root>@@-Wl,...' into
 #  '@SDK_LIBRARY_ROOT@' + '@@' = '@@@' and the split goes wrong.
 #
+#  The stage-shipped archive directories are a '@@' list too (wifi-connect
+#  has the WPA2 set and lwIP in two directories); each is replaced.
+set(_stage_lib_dirs "")
+if(DEFINED STAGE_LIB_DIRS AND NOT STAGE_LIB_DIRS STREQUAL "")
+  string(REPLACE "@@" ";" _stage_lib_dirs "${STAGE_LIB_DIRS}")
+  list(REMOVE_ITEM _stage_lib_dirs "")
+endif()
+
 function(templatize_item raw out)
   set(_s "${raw}")
-  if(DEFINED WPA_LIB_DIR AND NOT WPA_LIB_DIR STREQUAL "")
-    string(REPLACE "${WPA_LIB_DIR}" "@STAGE@/lib" _s "${_s}")
-  endif()
+  foreach(_d ${_stage_lib_dirs})
+    string(REPLACE "${_d}" "@STAGE@/lib" _s "${_s}")
+  endforeach()
   if(DEFINED PERIPHERALS_LD AND NOT PERIPHERALS_LD STREQUAL "")
     string(REPLACE "${PERIPHERALS_LD}" "@SDK_PERIPHERALS_LD@" _s "${_s}")
   endif()
@@ -241,15 +252,21 @@ function(templatize_item raw out)
   set(${out} "${_s}" PARENT_SCOPE)
 endfunction()
 
-#  '@@'-joined list -> JSON array, one placeholder pass per item
+#  '@@'-joined list -> JSON array, one placeholder pass per item. An item
+#  that comes out equal to the one before it is dropped: two -L entries for
+#  two STAGE_LIB_DIRS directories both become -L@STAGE@/lib.
 function(to_json_array raw out)
   set(_items "")
+  set(_prev "")
   if(NOT raw STREQUAL "")
     string(REPLACE "@@" ";" _list "${raw}")
     foreach(i ${_list})
       if(NOT i STREQUAL "")
         templatize_item("${i}" _t)
-        list(APPEND _items "    \"${_t}\"")
+        if(NOT _t STREQUAL _prev)
+          list(APPEND _items "    \"${_t}\"")
+        endif()
+        set(_prev "${_t}")
       endif()
     endforeach()
   endif()
@@ -262,20 +279,31 @@ function(to_json_array raw out)
 endfunction()
 
 #  ---- (6a) archives shipped inside the stage (none for minimal) ----
-if(DEFINED WPA_LIB_DIR AND NOT WPA_LIB_DIR STREQUAL "")
-  if(NOT IS_DIRECTORY "${WPA_LIB_DIR}")
-    message(FATAL_ERROR "prebuilt_stage_c6: WPA_LIB_DIR does not exist: ${WPA_LIB_DIR}")
+#
+#  Every directory's .a files land in one lib/; a basename that two
+#  directories both hold would be one archive on the link line for two
+#  different files, so that is fatal.
+#
+set(_staged_archives "")
+foreach(_d ${_stage_lib_dirs})
+  if(NOT IS_DIRECTORY "${_d}")
+    message(FATAL_ERROR "prebuilt_stage_c6: STAGE_LIB_DIRS entry does not exist: ${_d}")
   endif()
   file(MAKE_DIRECTORY "${STAGE_DIR}/lib")
-  file(GLOB _wpa_archives "${WPA_LIB_DIR}/*.a")
-  if(_wpa_archives STREQUAL "")
-    message(FATAL_ERROR "prebuilt_stage_c6: no .a in ${WPA_LIB_DIR}")
+  file(GLOB _dir_archives "${_d}/*.a")
+  if(_dir_archives STREQUAL "")
+    message(FATAL_ERROR "prebuilt_stage_c6: no .a in ${_d}")
   endif()
-  foreach(a ${_wpa_archives})
+  foreach(a ${_dir_archives})
     get_filename_component(_an "${a}" NAME)
+    if("${_an}" IN_LIST _staged_archives)
+      message(FATAL_ERROR
+        "prebuilt_stage_c6: archive basename collision in lib/: ${_an} (from ${_d})")
+    endif()
+    list(APPEND _staged_archives "${_an}")
     file(COPY_FILE "${a}" "${STAGE_DIR}/lib/${_an}")
   endforeach()
-endif()
+endforeach()
 
 #  ---- ROM linker scripts: names relative to the SDK ld/, all must exist ----
 string(REPLACE "@@" ";" _romld_list "${ROM_LDS}")

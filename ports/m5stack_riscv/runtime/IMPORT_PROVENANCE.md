@@ -22,8 +22,9 @@
 
 ## 改変の方針
 
-改変は次の 5 種だけで、いずれも下表に理由を書く（3 と 5 は Task 2 の逸脱として
-reviewer が受理したもの。`docs/c6-port.md`「逸脱の受理」）。
+改変は次の 5 種（段1）＋ 段3 の 2 種だけで、いずれも下表に理由を書く（3 と 5 は
+段1 Task 2 の逸脱として reviewer が受理したもの。`docs/c6-port.md`「逸脱の受理」。
+6 と 7 は段3 Task 1 の逸脱で、`docs/c6-port.md` 段3 節に記録する）。
 
 1. **SDK パスの写像**（`target.cmake`）: dev は esp-idf submodule の
    `components/<comp>/...` を include / link するが、arduino_esp32 は「ESP-IDF を
@@ -42,6 +43,15 @@ reviewer が受理したもの。`docs/c6-port.md`「逸脱の受理」）。
 5. **`TOPPERS_XIP_PADDR_PROBE` ブロックの削除**（`app/phase3/phase3_arduino_app.c`、
    Xtensa 側アプリからの派生）: Xtensa の `flash_cache_init.c` の診断で、固定 VMA の
    C6 には対象が無い（死コード）。
+6. **esp-idf 原本の同梱（D8）**（`runtime/wifi/idf_src/`、`runtime/wifi/net/lwip_contrib_include/`）:
+   `BUILDING.md`「ESP-IDF を複製しない」からの逸脱。dev の C6 Wi-Fi 構成が esp-idf submodule
+   から直接コンパイルする 6 本（`.c`）と、`netif_esp32s3.c` が include する lwIP contrib の
+   ヘッダ 3 本（M5Stack core の SDK には含まれない）。内容は無改変、Apache-2.0 / BSD-3 の
+   ヘッダを保持。段5 で core の `.a` メンバ + シム案を再評価する（`docs/c6-port.md` D8）。
+7. **ファイル名の変更のみ**（`idf_src/efuse_hal_esp32c6.c`）: esp-idf の `hal/efuse_hal.c` と
+   `hal/esp32c6/efuse_hal.c` は同名で、stage は全オブジェクトを 1 つのディレクトリに
+   basename で置く（`prebuilt_stage_c6.cmake` が衝突を fatal にする）ため、チップ側を改名した。
+   中身はバイト同一。
 
 ## ファイル一覧
 
@@ -107,3 +117,119 @@ reviewer が受理したもの。`docs/c6-port.md`「逸脱の受理」）。
   `esp-rv32/2601` を PATH 先頭に置く）。
 - `runtime/cmake/prebuilt_stage_c6.cmake` -- Xtensa の `prebuilt_stage.cmake` の C6 版
   （`flash_cache_init.o` 無し、manifest schema 2 / `paddrMode fixed-vma`、`flashSize 4MB`）。
+
+## 段3 Task 1（2026-09-15）: `runtime/wifi/` -- wifi-connect の shim / hal / stub / net / config / prebuilt
+
+dev `c7fef18` の C6 Wi-Fi 構成（`cmake/a1_c6_stage1.cmake` の `if(A1_C6_WIFI)` ブロック）が
+`fmp` にリンクする集合を、dev `build/c6-wifi/build.ninja`（コンパイルされる 31 TU）と
+`ninja -t deps`（各 TU が実際に include したリポジトリ内ヘッダ）から機械列挙して写した。
+**esp/shim は Xtensa port（`ports/m5stack_xtensa/runtime/wifi/shim`、公開版由来の fork）とは
+別系統の第 2 コピー**で、Xtensa 側は無改変（R12。以後の shim 修正は 2 系統に分かれる）。
+dev 由来 82 本（ソース・ヘッダ 78 + `.a` 4）はすべてバイト同一
+（照合: 上記 `git show c7fef18:<dev path> | cmp - <arduino path>`、`.a` は dev 作業ツリーの
+`esp/lib/` と `cmp`、sha256 は dev `.steering/20260913-c6-stage4/README.md` の fix round 後の表と一致）。
+
+### shim `runtime/wifi/shim/`（dev `esp/shim/`、26 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/shim/esp_shim.c` `esp_shim_mtx.c` `esp_shim_sem.c` `esp_shim_tsk.c` `esp_wifi_adapter.c` `esp_shim_libc.c` `esp_shim_blobglue.c` `esp_event_shim.c` `esp_timer_shim.c` `wifi_stubs.c` `esp_coex_adapter.c` `esp_shim_isr_ctx.c` `esp_shim_ring.c` `esp_shim_intr_intmtx.c` `esp_shim_bt_crit_wifi.c`（15 本、dev が `fmp` へ `target_sources` する集合そのまま） | `runtime/wifi/shim/` 同名 | なし | `wifi_objects`（`runtime/CMakeLists.txt`）がこの順でコンパイルする。C6 分岐は `#if defined(TOPPERS_ESP32C6)`（`chip_stddef.h` が定義） |
+| `esp/shim/esp_shim.cfg` `esp_shim_intr_intmtx.cfg` | 同名 | なし | 前者はアプリ cfg が `INCLUDE("esp_shim.cfg")` する（`#ifndef TOPPERS_ESP32C6` で S3/LX6 の線 0-3/23/27 を外す。BUILDING.md の「cfg を `#ifdef` で切らない」との関係は段3 R5 で実証する）。後者は `FMP3_CFG_FILES` に CMake が足す（線 1..15 の `CFG_INT`/`DEF_INH`） |
+| `esp/shim/esp_shim.h` `esp_shim_cfg.h` `esp_shim_isr_ctx.h` `esp_shim_ring.h` `esp_shim_intr_intmtx.h` `esp_shim_intr_intmtx_lines.h` | 同名 | なし | dev の 31 TU が実際に include する 6 本（deps で確認） |
+| `esp/shim/esp_shim_public.h` `esp_shim_xcore_crit.h` | 同名 | なし | C6 の TU は include しない（前者は外部コンシューマ向け集約ヘッダで Task 2 の adapter が使う候補、後者は `esp_shim_bt_crit_wifi.c` の `TNUM_PRCID >= 2` 分岐だけが include）。テキスト上の参照先を欠かさないために同梱 |
+| `esp/shim/IMPORT_PROVENANCE_c6.md` | 同名 | なし | asp3_esp_idf -> dev の C6 分岐の出典と改変の記録。同梱 |
+| `esp/shim/esp_shim_apll_stub_lx6.c` `esp_shim_intr.c` `esp_shim_intr_clic.*` `esp_shim_intr_lines.h` `esp_shim_audio_names.h` `m5_idf_containerof.h` `app/**` | （持ち込まない） | - | Xtensa（LX6/S3）・P4・M5 専用で C6 の build.ninja に無い |
+
+### hal `runtime/wifi/hal_src/`（dev `esp/wifi/hal_src/`、6 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/wifi/hal_src/phy_common.c` `phy_init.c` `esp_wifi_regulatory.c` `wifi_init.c` `wifi_lib_printf.c` `phy_lib_printf.c` | 同名 | なし | dev の C6 構成が使う 6 本 |
+| `esp/wifi/hal_src/periph_ctrl.c` `phy_init_data.c` `esp_sha_hwcrypto_glue.c` | （持ち込まない） | - | 前 2 者は S3/LX6 改造版で C6 は esp-idf 原本を使う（下記 idf_src）。後者は S3 の HW crypto 検証用 |
+
+### esp-idf 原本 `runtime/wifi/idf_src/`（D8 の逸脱。esp-idf v5.5.4 `735507283d`、6 本、Apache-2.0）
+
+dev はこれらを esp-idf submodule から直接 `target_sources` する。本リポジトリは submodule を
+持たず「ESP-IDF を複製しない」（`BUILDING.md`）が原則なので、**逸脱として**同梱する（D8、段5 で
+再評価）。出典は dev の submodule（`git -C esp-idf show HEAD:<path>` = v5.5.4 タグ）、内容は
+無改変（`efuse_hal_esp32c6.c` はファイル名のみ変更、改変方針 7）。
+
+| esp-idf のパス（`components/`） | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp_hw_support/periph_ctrl.c` | `runtime/wifi/idf_src/periph_ctrl.c` | なし | `periph_module_enable` 等。`shared_periph_module_t=periph_module_t` の `-D` を要する |
+| `esp_hw_support/modem_clock.c` | `runtime/wifi/idf_src/modem_clock.c` | なし | modem クロック（`freertos/FreeRTOS.h` スタブの `portENTER_CRITICAL_SAFE` を使う） |
+| `hal/esp32c6/modem_clock_hal.c` | `runtime/wifi/idf_src/modem_clock_hal.c` | なし | 同上の hal |
+| `hal/efuse_hal.c` | `runtime/wifi/idf_src/efuse_hal.c` | なし | efuse 読出し（MAC） |
+| `hal/esp32c6/efuse_hal.c` | `runtime/wifi/idf_src/efuse_hal_esp32c6.c` | **ファイル名のみ** | 上と basename が衝突するため改名（改変方針 7）。中身はバイト同一 |
+| `esp_phy/esp32c6/phy_init_data.c` | `runtime/wifi/idf_src/phy_init_data.c` | なし | C6 の PHY 初期化データ（dev 段4 Task 5 で S3 値の `hal_src/phy_init_data.c` から切替え） |
+
+### lwIP contrib ヘッダ `runtime/wifi/net/lwip_contrib_include/`（D8 の逸脱の追加分。lwIP `fd432e4ee2`、3 本、BSD-3）
+
+`netif_esp32s3.c` が `#include "ping.h"` / `"tcpecho_raw.h"` / `"udpecho_raw.h"` する。dev では
+`-I esp-idf/components/lwip/lwip/contrib/apps/{ping,tcpecho_raw,udpecho_raw}` で解決するが、
+M5Stack core の SDK（`esp32c6-libs/3.3.8/include/lwip/`）は contrib apps を含まない
+（`-I` の写像で存在しない 3 ディレクトリ）。実体（`lw_ping.o` 等）は `prebuilt/lwip/esp32c6/liblwip.a`
+の中にあるので、ヘッダだけを同梱する。出典は dev の esp-idf submodule の nested submodule
+`components/lwip/lwip`（`git -C components/lwip/lwip show HEAD:contrib/apps/<app>/<h>`）。
+**Task 1 の brief に無い追加であり、reviewer の受理待ち**（`task-1-report.md`）。
+
+| lwIP のパス | arduino のパス | 改変 |
+|---|---|---|
+| `contrib/apps/ping/ping.h` | `runtime/wifi/net/lwip_contrib_include/ping.h` | なし |
+| `contrib/apps/tcpecho_raw/tcpecho_raw.h` | `runtime/wifi/net/lwip_contrib_include/tcpecho_raw.h` | なし |
+| `contrib/apps/udpecho_raw/udpecho_raw.h` | `runtime/wifi/net/lwip_contrib_include/udpecho_raw.h` | なし |
+
+### FreeRTOS スタブ `runtime/wifi/freertos_stub/`（dev `esp/bt/stub/include/`、14 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/bt/stub/include/freertos/{FreeRTOS,queue,semphr,task}.h` | `runtime/wifi/freertos_stub/freertos/` 同名 | なし | C6 の TU（esp-idf 原本 `modem_clock.c`、hal、shim の 8 TU）が実際に include する 4 本 |
+| `esp/bt/stub/include/freertos/{FreeRTOSConfig,event_groups,portable,portmacro,ringbuf,timers}.h`、`esp/bt/stub/include/{bt_nimble_config,esp_partition,esp_vfs,esp_vfs_dev}.h` | 同名 | なし | C6 の TU は include しないが、ディレクトリを丸ごと写す方針（段1 の target 層と同じ。Xtensa port の `wifi/freertos_stub` も同じ 14 本） |
+
+### net `runtime/wifi/net/`（dev `esp/wifi/net/`、8 本。D7 = dev 型）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/wifi/net/netif_esp32s3.c` `netif_esp32s3.h` | 同名 | なし | Wi-Fi driver と lwIP を結ぶ netif（名前は S3 由来だがチップ共通） |
+| `esp/wifi/net/net.cfg` `net_cfg.h` | 同名 | なし | `NET_SEM1..8` / `NET_MBOX1..10` / `NET_TSK`。アプリ cfg が `INCLUDE("net.cfg")` する（Task 2） |
+| `esp/wifi/net/port/sys_arch.c` `port/include/arch/cc.h` `port/include/arch/sys_arch.h` `port/include/lwipopts.h` | 同名 | なし | lwIP の OS ポート。`lwipopts.h` は `liblwip.a` を建てたときの物と同一でなければならない（`LWIP_DNS 0`） |
+| `esp/wifi/net/https_client.c` `mbedtls_user_config.h` | （持ち込まない） | - | dev のデモ（TLS クライアント）と `.a` ビルド時の mbedTLS 設定。`.a` の再生成は dev の台本で行う（`prebuilt/wpa2/README.md`） |
+
+### libc スタブヘッダ `runtime/wifi/config/hal_stub_include/`（dev `esp/config/esp32/hal_stub_include/`、24 本）
+
+dev の `build_incflags_esp32c6_espidf.txt` は `-I esp/config/esp32/hal_stub_include`
+（名前は LX6 だがチップ共有、同梱の `README.vendored.txt` 参照）を全 TU に渡し、`string.h` /
+`stdio.h` / `stdlib.h` / `assert.h` / `errno.h` / `inttypes.h` / `sys/*.h` / `platform/os.h` /
+`esp_netif.h` / `nvs*.h` / `driver/gpio.h` / `esp_timer.h` の**最小スタブが newlib のヘッダより
+先に見える**。段1 の `config/esp32c6/`（`sdkconfig.h`、`nuttx/config.h`）とは別のディレクトリで、
+wifi-connect だけが include path に加える（minimal は不変）。
+
+| dev のパス | arduino のパス | 改変 |
+|---|---|---|
+| `esp/config/esp32/hal_stub_include/README.vendored.txt` と 23 ヘッダ（`assert.h` `driver/gpio.h` `endian.h` `errno.h` `esp_netif.h` `esp_timer.h` `inttypes.h` `machine/endian.h` `nuttx/config.h` `nvs.h` `nvs_flash.h` `platform/os.h` `stdio.h` `stdlib.h` `string.h` `sys/cdefs.h` `sys/lock.h` `sys/param.h` `sys/queue.h` `sys/time.h` `sys/types.h` `time.h` `unistd.h`） | `runtime/wifi/config/hal_stub_include/` 同名 | なし |
+
+### prebuilt `runtime/wifi/prebuilt/`（dev `esp/lib/`、`.a` 4 本 + README 2 本 + ライセンス 5 本）
+
+| dev のパス | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `esp/lib/wpa_esp32c6_espidf/libsupplicant.a` `libmbedtls.a` `libmbedcrypto.a` | `runtime/wifi/prebuilt/wpa2/esp32c6/` 同名 | なし（バイト同一、sha256 は README） | dev 台本 `build_{wpa_libs,mbedtls_tls}_espidf_esp32c6.sh` の生成物。Git 管理対象（`BUILDING.md`） |
+| `esp/lib/lwip_esp32c6_espidf/liblwip.a` | `runtime/wifi/prebuilt/lwip/esp32c6/liblwip.a` | なし（同上） | dev 台本 `build_lwip_lib_espidf_esp32c6.sh`（fix round 1 後）の生成物 |
+| （esp-idf `components/wpa_supplicant/COPYING`、`components/mbedtls/mbedtls/LICENSE`、`LICENSE`、`components/lwip/lwip/COPYING`） | `prebuilt/wpa2/{WPA_SUPPLICANT_COPYING,MBEDTLS_LICENSE,ESP_IDF_LICENSE}.txt`、`prebuilt/lwip/{LWIP_COPYING,ESP_IDF_LICENSE}.txt` | なし | 上流のライセンス本文（Xtensa の `wifi/prebuilt/wpa2/` と同じ 3 本 + lwIP） |
+| （新規） | `prebuilt/wpa2/README.md` `prebuilt/lwip/README.md` | -（新規） | 由来 commit・台本・sha256・ライセンス |
+
+### 持ち込まなかった dev の入力（wifi-connect の CMake が写像で置き換えたもの）
+
+- `esp/boot/build_incflags_esp32c6_espidf.txt`: `-I@ESPIDF@/components/X/...` 37 本を
+  `ARDUINO_SDK_INCLUDE_ROOT/X/...` に写像した表を `runtime/CMakeLists.txt` の
+  `WIFI_SDK_INCLUDE_DIRS` に持つ（configure 時に全ディレクトリの存在を検査）。SDK に無い
+  `esp_hw_support/port/include` と `esp_wifi/wifi_apps/roaming_app/include` は、dev の deps に
+  よればどの TU も include しないので落とした。`lwip/lwip/contrib/apps/*` 3 本は上記ヘッダの同梱で置換。
+  `-D` は `TOPPERS_ESP32C6` を除いてそのまま（dev も落とす）。
+- `cmake/a1_creds.cmake` の `-include a1_wifi_credentials.h`: 資格情報はスケッチが持つ（stage は creds を
+  持たない）。vendoring した TU のうち `WIFI_STA_*` を参照するものは無い（コメントを除く）。
+- dev のデモアプリ `esp/app/wifi_sta.{c,cfg,h}` と、それだけが読む `-D`（`A1_C6_WIFI_SCAN`、
+  `TOPPERS_APP_HEAP_REPORT`、`A1_C6_WIFI_BOOT_DELAY_MS`、`A1_C6_USJ_REARM_PROBE`）、および診断用
+  `A1_C6_BOOT_TRACE`: 持ち込まない。arduino のアプリは Task 2 の `app/wifi_connect/`。
+- `fmp3/target/m5nanoc6_gcc/diag_recorder.c` `target_hrt64.c`: 段1 で target 層ごと同梱済み。
+  wifi-connect の `wifi_objects` がコンパイルする（dev と同じ）。
+
