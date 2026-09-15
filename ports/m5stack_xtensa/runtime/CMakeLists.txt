@@ -1049,6 +1049,15 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
     endif()
     string(JOIN "" XIP_LINK_LIBGROUP ${XIP_LINK_LIBGROUP})
     list(APPEND XIP_EXTRA_DEPENDS ${WIFI_ARCHIVES})
+    #  arduino_interrupt.c が参照する GPIO 等のレジスタ番地定義（bt-classic と
+    #  同じ）。無いと attachInterrupt() を呼ぶスケッチだけが `GPIO` 未定義で
+    #  リンクに落ちる（4 例題はどれも呼ばないので verify では見えなかった。
+    #  2026-09-15 C6 段6 のレビューで発見）。PROVIDE 記号なので、参照しない
+    #  スケッチのイメージはバイト不変。
+    if(XIP_EXTRA_TSCRIPTS STREQUAL "")
+        set(XIP_EXTRA_TSCRIPTS
+            "${ARDUINO_SDK_LD_ROOT}/${A1_CHIP_ARCH_NAME}.peripherals.ld")
+    endif()
 endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
     set(M5_SOC_ARCHIVE "${ARDUINO_SDK_LIBRARY_ROOT}/libsoc.a")

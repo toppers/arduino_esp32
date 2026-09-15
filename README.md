@@ -156,10 +156,9 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   `delay()` は使えません。** どちらも FreeRTOS を呼ぶためです。ログは
   `target_fput_log()` へ書いてください（同梱例題はすべてそうしています）。
   複数ファイルのスケッチと、独自の `.cpp` を持つライブラリはリンクできます。
-  **Xtensa の 3 ボード（CoreS3 / M5StickS3 / M5Stack Basic）では、`attachInterrupt`
-  を呼ぶスケッチは今のところ `M5Unified + Dual Core` と `Bluetooth Classic (SPP)` の
-  構成でしかリンクできません**（`WiFi` 構成はレジスタ定義の linker script を
-  含んでおらず `GPIO` が未定義になる既知の問題。段6 で見つかり、未修正）。
+  `attachInterrupt` は `minimal` 以外の構成（`M5Unified + Dual Core` / `WiFi` /
+  `Bluetooth Classic (SPP)`）で使えます（`WiFi` 構成で `GPIO` が未定義になる
+  問題は 2026-09-15 に修正済み）。
 - **Intel Mac には対応していません。** ビルドに必要なリンクドライバをホストごとに
   同梱していますが、`x86_64-apple-darwin` 向けは含まれていません。
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の

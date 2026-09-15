@@ -1521,7 +1521,7 @@ live creds が残っている**（段4/5 と同じ標準運用ルール）。`bu
 - `.journal.txt`/`.uhub.txt`/`.jtag.*` は DUT 自身の serial `9C:13:9E:D3:62:18` を含む
   （台本が DUT MAC を残す設計）。
 
-### Xtensa 側の既知問題（段6 で見つかった、段6 では直さない。ruling R4）
+### Xtensa 側の既知問題（段6 で見つかった、段6 では直さない。ruling R4）-> **段6 完了後の同日に修正済み（下記）**
 
 **CoreS3 / M5StickS3 / M5Core の `wificonnect` 構成では、`attachInterrupt` を呼ぶスケッチが
 リンクできない**（`objs/arduino_interrupt.o:(.literal+0x0): undefined reference to 'GPIO'`）。
@@ -1539,6 +1539,21 @@ peripherals ld を `INCLUDE` するので影響なし。通常の verify で見�
 `XIP_EXTRA_TSCRIPTS` を 1 行足す（または xip ld に `INCLUDE`）だけだが、Xtensa wifi-connect の
 manifest が変わり X-check の baseline が動くため、段6 の不変条件（Xtensa 配布物 byte 同一）と
 両立しない。**次の Xtensa 段の候補**として持ち越す（`README.md` にも 1 文で記載）。
+
+**修正（同日、ユーザー指示、段6 の枠外）**: `ports/m5stack_xtensa/runtime/CMakeLists.txt` の
+wifi-connect 分岐に `XIP_EXTRA_TSCRIPTS = <sdk ld>/<chip>.peripherals.ld`（bt-classic と同じ形、
+未設定のときだけ）を足した。Xtensa の `wifi-connect` stage 2 本を `--clean` で建て直し、
+manifest の `extraLinkerScripts` が `['@SDK_LD_ROOT@/esp32s3.peripherals.ld']` /
+`['@SDK_LD_ROOT@/esp32.peripherals.ld']` になった（X-check は想定どおりこの 2 stage だけ
+DIFF: `link-manifest.json` の `extraLinkerScripts` と `banner.o`。baseline は修正 commit で
+取り直した）。**既存スケッチのイメージはバイト不変**: 3 板 x {WiFiConnect, WiFiScan} の
+`.ino.bin` を修正前後で比較し、差は 38 バイトのみ = バナーのビルド時刻 5 バイト
+（`Kernel Release ... (Sep 15 2026, hh:mm:ss)`）と末尾の image sha256 32 バイト
+（`PROVIDE` 記号は参照されなければ出力に現れない）。**正対照**: 4 行の attach-only スケッチが
+`m5cores3_fmp3` / `m5core_fmp3` / `m5sticks3_fmp3` / `m5nanoc6_fmp3` の `wificonnect` で
+すべてリンク（`undefined reference` 0、C-1..C-8）。**負対照**: 同スケッチは `minimal` では
+`attachInterrupt` 自体が未定義で落ちる（minimal は `arduino_interrupt.o` を持たない設計、
+従来どおり）。スクリプトのテスト 4 本 PASS。
 
 ### 段6 で行っていないこと
 
