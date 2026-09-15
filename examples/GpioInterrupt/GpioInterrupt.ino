@@ -47,7 +47,8 @@ void logU(uint32_t v)
 {
     /* static, not a stack array: the SDK compiles sketches with
      * -fstack-protector, and a stack char array pulls __stack_chk_fail ->
-     * _exit, which the ESP32's m5 profile does not provide (known gap). */
+     * _exit; packages before 2026-09-15 lacked _exit in the ESP32's m5
+     * profile, and keeping this example buildable there costs nothing. */
     static char b[12];
     int i = 11; b[i] = '\0';
     do { b[--i] = static_cast<char>('0' + v % 10U); v /= 10U; } while (v != 0U);

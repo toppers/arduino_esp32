@@ -1584,7 +1584,14 @@ CoreS3 `wificonnect` 2/2、M5Stack Basic `wificonnect` 2/2、M5NanoC6 `wificonne
 `readback ok`（ログ `stage6/logs/gpio-api-*.log`）。**発見した別の既存問題（未修正）**: ESP32 の m5-unified stage には
 `_exit` / `__stack_chk_fail` の供給が無く（S3 は `chip_rom_libc.o`、ESP32 の wifi-connect は `toppers_lwip_compat.o`、
 bt-classic は `bt_idf_stubs.o` が持つ）、SDK の `-fstack-protector` でスタック上の `char` 配列を持つ関数が
-`__stack_chk_fail` -> `_exit` を引いてリンクに落ちる。例題は静的バッファで回避し、README に既知の制限として記載。
+`__stack_chk_fail` -> `_exit` を引いてリンクに落ちる。例題は静的バッファで回避し、README に既知の制限として記載
+-> **同日に修正**: `ports/m5stack_xtensa/runtime/m5/compat/m5_newlib_stubs_lx6.c`（`_exit`/`_kill`/`_getpid`、S3 の
+`chip_rom_libc.c` と同じ意味論）を ESP32 の m5-unified にだけ配置。負対照: スタック `char[16]` を持つ試験スケッチ
+（`stage6/logs/stack-array-probe.ino.txt`）が修正前の platform で `_exit`/`_getpid`/`_kill` 未定義 -> 修正後にリンク。
+実機（Basic、m5 構成）: 5 s 後に意図的にカナリアを壊すと `*** stack smashing detected ***: terminated` ->
+`libc: _kill(sig=6)` で停止し `[STACK] returned` は出ない（`stage6/logs/stack-stub-corebasic-m5.log`）。既存例題
+（StackChanBasic、Basic m5）のイメージはバナー時刻 + checksum + sha 以外バイト不変。X-check は esp32/m5-unified のみ
+DIFF -> baseline 取り直し。
 
 ### 段6 で行っていないこと
 

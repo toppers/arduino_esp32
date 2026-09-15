@@ -345,6 +345,13 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${RUNTIME_ROOT}/m5/app_support/m5_diag.c"
         "${RUNTIME_ROOT}/m5/app_support/m5_display_smoke_heap.c"
         "${RUNTIME_ROOT}/m5/compat/esp_shim_m5_ext.c")
+    if(A1_CHIP STREQUAL "esp32")
+        #  _exit / _kill / _getpid for the flash-side newlib's
+        #  __stack_chk_fail / abort() paths. The S3 has them in
+        #  chip_rom_libc.c; the ESP32's bt-classic in bt_idf_stubs.c.
+        target_sources(seam_objects PRIVATE
+            "${RUNTIME_ROOT}/m5/compat/m5_newlib_stubs_lx6.c")
+    endif()
     if(FMP3_RUNTIME_PROFILE STREQUAL "all-in-one")
         #  Ahead of m5/compat: both provide freertos/FreeRTOS.h and the Wi-Fi
         #  HAL must get the Wi-Fi one (see the M5_USE_ESP_SHIM note above).

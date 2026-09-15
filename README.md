@@ -167,11 +167,11 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   G19 / G20 と flash の G26-32、M5Stack Basic は UART0 の G1 / G3、flash の G6-11、
   GPIO でないパッド（20, 24, 28-31）。`attachInterrupt` は `pinMode` を呼ばないので
   先に `pinMode` してください。`delay()` / `Serial` は引き続きありません。
-- **M5Stack Basic の `M5Unified + Dual Core` 構成には `_exit` / `__stack_chk_fail`
-  が無く**、ローカルの `char` 配列を持つ関数（SDK の `-fstack-protector` で
-  `__stack_chk_fail` -> `_exit` を参照する）を含むスケッチはリンクに落ちます
-  （他の構成・他のボードにはあります。2026-09-15 に `GpioInterrupt` で発見、未修正。
-  例題側は静的バッファで回避）。
+- M5Stack Basic の `M5Unified + Dual Core` 構成で、ローカルの `char` 配列を持つ
+  関数を含むスケッチが `_exit` / `_kill` / `_getpid` 未定義でリンクに落ちる問題は
+  2026-09-15 に修正しました（SDK の `-fstack-protector` が `__stack_chk_fail` ->
+  `_exit` を参照する経路。実機でカナリア破壊 -> `*** stack smashing detected ***`
+  -> `libc: _kill(sig=6)` で停止することまで確認）。
 - **Intel Mac には対応していません。** ビルドに必要なリンクドライバをホストごとに
   同梱していますが、`x86_64-apple-darwin` 向けは含まれていません。
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の

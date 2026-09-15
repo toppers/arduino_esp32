@@ -80,6 +80,11 @@ IO_MUX 系が libsoc の `GPIO_PIN_MUX_REG_OFFSET[]` を要求するため、同
 避けて `IO_MUX_GPIO0_REG + 4 * n` へ直接書きます。wifi-connect の manifest には
 `<chip>.peripherals.ld` が `extraLinkerScripts` として入ります（`GPIO` の供給。
 同日に修正）。`examples/GpioInterrupt` が 4 板共通の自己駆動試験です。
+ESP32 の m5-unified には `m5/compat/m5_newlib_stubs_lx6.c`（`_exit` / `_kill` /
+`_getpid`）も入ります: SDK の `-fstack-protector` でスタック上の `char` 配列を
+持つスケッチ関数が flash 側 newlib の `__stack_chk_fail` -> `_exit` を引くため
+（S3 は `chip_rom_libc.c`、ESP32 の wifi-connect は自前の `__stack_chk_fail`、
+bt-classic は `bt_idf_stubs.c` が同じ役をもつ）。
 
 診断・対照用の CMake オプションは `--cmake-define` でそのままステージの
 CMake 呼び出しへ渡せます。
