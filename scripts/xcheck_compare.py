@@ -113,7 +113,9 @@ TIME_KEYS = frozenset({
 #  (xcheck_baseline.py --chips esp32c6) once the C6 stages are something to
 #  guard as well (stage 5, S5-6); which chips a given comparison covers is
 #  whatever its BASELINE.json records.
-CHIPS = ["esp32s3", "esp32", "esp32c6"]
+#  esp32c5 likewise (C5 plan A4: the C5 stages are ignorable until a C5
+#  baseline is wanted); the C5 plan's baseline is --chips esp32s3 esp32 esp32c6.
+CHIPS = ["esp32s3", "esp32", "esp32c6", "esp32c5"]
 DEFAULT_CHIPS = ["esp32s3", "esp32"]
 
 

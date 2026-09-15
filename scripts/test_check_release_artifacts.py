@@ -53,16 +53,33 @@ STAGES = {
     "esp32s3": ["minimal", "m5-unified", "wifi-connect"],
     "esp32": ["minimal", "m5-unified", "wifi-connect", "bt-classic"],
     "esp32c6": ["minimal", "wifi-connect"],
+    #  minimal only until C5 plan stage 3 stages wifi-connect.
+    "esp32c5": ["minimal"],
 }
 CHIP_TOOLS = {
     "esp32c6": [
         {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
         {"packager": "m5stack", "name": "esp32c6-libs", "version": "3.3.8"},
     ],
+    "esp32c5": [
+        {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
+        {"packager": "m5stack", "name": "esp32c5-libs", "version": "3.3.8"},
+    ],
 }
 XTENSA_BOARDS = {"m5cores3_fmp3": "esp32s3", "m5sticks3_fmp3": "esp32s3",
                  "m5core_fmp3": "esp32"}
 C6_BOARD = {"m5nanoc6_fmp3": "esp32c6"}
+C5_BOARD = {"m5stampc5_fmp3": "esp32c5"}
+#  The release shapes the cases below build: every chip of STAGES with its
+#  board and tools (the shape a full release has), and the C6-only shape
+#  the cases were written against before the C5 row existed (the C5 stage
+#  left out, so that a case about the C6 tools does not also trip over the
+#  C5 ones).
+ALL_BOARDS = {**XTENSA_BOARDS, **C6_BOARD, **C5_BOARD}
+ALL_CHIP_TOOLS = CHIP_TOOLS["esp32c6"] + [
+    row for row in CHIP_TOOLS["esp32c5"] if row not in CHIP_TOOLS["esp32c6"]]
+STAGES_WITHOUT_C5 = {chip: profiles for chip, profiles in STAGES.items()
+                     if chip != "esp32c5"}
 
 
 def _platform_files(root: str, stages: dict[str, list[str]],
@@ -248,20 +265,30 @@ class PlatformContents(unittest.TestCase):
         self.addCleanup(setattr, checker, "PROBE", self.saved_probe)
         checker.PROBE = lambda url: ""
 
-    def test_four_boards_with_c6_tools_pass(self):
-        release = Release(self.root, stages=STAGES,
-                          boards={**XTENSA_BOARDS, **C6_BOARD},
-                          chip_tools=CHIP_TOOLS["esp32c6"], tables=True)
+    def test_five_boards_with_riscv_tools_pass(self):
+        release = Release(self.root, stages=STAGES, boards=ALL_BOARDS,
+                          chip_tools=ALL_CHIP_TOOLS, tables=True)
         code, out = release.run()
         self.assertEqual(code, 0, out)
         self.assertIn("ok   stages esp32c6", out)
+        self.assertIn("ok   stages esp32c5", out)
         self.assertIn("ok   stages esp32s3", out)
         self.assertIn("ok   stages esp32", out)
         self.assertNotIn("note no ", out)
 
+    def test_c5_stages_without_the_c5_sdk_fail(self):
+        #  The shared esp-rv32 row declared (through the C6), the C5 SDK not:
+        #  the failure names the C5 SDK and only it.
+        release = Release(self.root, stages=STAGES, boards=ALL_BOARDS,
+                          chip_tools=CHIP_TOOLS["esp32c6"], tables=True)
+        code, out = release.run()
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("esp-rv32@2601, which", out)
+        self.assertIn("does not declare tool m5stack:esp32c5-libs@3.3.8", out)
+
     def test_c6_stages_without_the_tools_fail(self):
         #  The negative that matters: the same release, tools not declared.
-        release = Release(self.root, stages=STAGES,
+        release = Release(self.root, stages=STAGES_WITHOUT_C5,
                           boards={**XTENSA_BOARDS, **C6_BOARD},
                           chip_tools=[], tables=True)
         code, out = release.run()
@@ -270,7 +297,7 @@ class PlatformContents(unittest.TestCase):
         self.assertIn("does not declare tool m5stack:esp32c6-libs@3.3.8", out)
         #  One of the two declared is still a failure naming the other.
         (self.root / "half").mkdir()
-        release = Release(self.root / "half", stages=STAGES,
+        release = Release(self.root / "half", stages=STAGES_WITHOUT_C5,
                           boards={**XTENSA_BOARDS, **C6_BOARD},
                           chip_tools=CHIP_TOOLS["esp32c6"][:1], tables=True)
         code, out = release.run()
@@ -287,11 +314,12 @@ class PlatformContents(unittest.TestCase):
         code, out = release.run()
         self.assertEqual(code, 0, out)
         self.assertIn("note no esp32c6 stages in this release", out)
+        self.assertIn("note no esp32c5 stages in this release", out)
         self.assertNotIn("esp-rv32", out)
 
     def test_c6_stage_missing_or_stray_fails(self):
         #  wifi-connect absent: the board offers a runtime that cannot link.
-        stages = dict(STAGES)
+        stages = dict(STAGES_WITHOUT_C5)
         stages["esp32c6"] = ["minimal"]
         release = Release(self.root, stages=stages,
                           boards={**XTENSA_BOARDS, **C6_BOARD},
@@ -322,7 +350,7 @@ class PlatformContents(unittest.TestCase):
         self.assertIn("board m5nanoc6_fmp3 names build.toppers_chip=esp32c6, "
                       "and the archive holds no esp32c6 stage", out)
         (self.root / "noboard").mkdir()
-        release = Release(self.root / "noboard", stages=STAGES,
+        release = Release(self.root / "noboard", stages=STAGES_WITHOUT_C5,
                           boards=XTENSA_BOARDS,
                           chip_tools=CHIP_TOOLS["esp32c6"], tables=True)
         code, out = release.run()
@@ -334,16 +362,14 @@ class PlatformContents(unittest.TestCase):
         stages = dict(STAGES)
         stages["esp32h2"] = ["minimal"]
         release = Release(self.root, stages=stages,
-                          boards={**XTENSA_BOARDS, **C6_BOARD,
-                                  "h2_fmp3": "esp32h2"},
-                          chip_tools=CHIP_TOOLS["esp32c6"], tables=True)
+                          boards={**ALL_BOARDS, "h2_fmp3": "esp32h2"},
+                          chip_tools=ALL_CHIP_TOOLS, tables=True)
         code, out = release.run()
         self.assertEqual(code, 1, out)
         self.assertIn("stages for esp32h2 (minimal), a chip", out)
 
     def test_without_tables_the_check_says_it_did_not_run(self):
-        release = Release(self.root, stages=STAGES,
-                          boards={**XTENSA_BOARDS, **C6_BOARD},
+        release = Release(self.root, stages=STAGES, boards=ALL_BOARDS,
                           chip_tools=[], tables=False)
         code, out = release.run()
         self.assertEqual(code, 0, out)

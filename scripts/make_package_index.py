@@ -73,10 +73,19 @@ M5STACK_TOOL_DEPENDENCIES = [
 #  being packaged holds fmp3-prebuilt/<chip>, which is what install_platform.py
 #  creates exactly when it emits that chip's boards. A platform without the
 #  directory produces the same index as before these rows existed.
+#
+#  Two RISC-V chips share the toolchain row (esp-rv32 serves the C6 and the
+#  C5); tool_dependencies_for() emits each (packager, name, version) once,
+#  in first-seen order, so a platform holding both chips' stages declares
+#  esp-rv32 once and both SDKs.
 CHIP_TOOL_DEPENDENCIES = {
     "esp32c6": [
         ("m5stack", "esp-rv32", "2601"),
         ("m5stack", "esp32c6-libs", "3.3.8"),
+    ],
+    "esp32c5": [
+        ("m5stack", "esp-rv32", "2601"),
+        ("m5stack", "esp32c5-libs", "3.3.8"),
     ],
 }
 
@@ -92,7 +101,7 @@ def tool_dependencies_for(platform_dir: Path) -> list[tuple[str, str, str]]:
     rows = list(M5STACK_TOOL_DEPENDENCIES)
     for chip, chip_rows in CHIP_TOOL_DEPENDENCIES.items():
         if (platform_dir / STAGE_ROOT_NAME / chip).is_dir():
-            rows.extend(chip_rows)
+            rows.extend(row for row in chip_rows if row not in rows)
     return rows
 
 DRIVER_TOOL_NAME = "fmp3-link"

@@ -119,6 +119,19 @@ CHIPS = {
                     toolchain="toolchain-riscv-esp32c6.cmake",
                     sdk_headers_always=True,
                     profiles=frozenset({"minimal", "wifi-connect"})),
+    #  ESP32-C5 (RISC-V, single core, CLIC). Same tool directory and
+    #  compiler as the C6 (the M5Stack core's esp-rv32 2601 serves every
+    #  RISC-V chip; the SDK is esp32c5-libs 3.3.8), same port directory
+    #  (ports/m5stack_riscv is a chip branch: C5 plan A2), its own
+    #  toolchain file. minimal only until the C5 plan's stage 3 stages
+    #  wifi-connect (the runtime refuses that profile for the C5 until
+    #  then); the drift test holds this set against install_platform.py,
+    #  xcheck_compare.py and the release allowlist, so the four move together.
+    "esp32c5": Chip(tool="esp-rv32", gcc="riscv32-esp-elf-gcc",
+                    port="m5stack_riscv",
+                    toolchain="toolchain-riscv-esp32c5.cmake",
+                    sdk_headers_always=True,
+                    profiles=frozenset({"minimal"})),
 }
 
 

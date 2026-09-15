@@ -30,7 +30,9 @@ RISC-V stages): that a schema 1 manifest still produces the schema 1 link
 command literally, that schema 2 takes its flags from the manifest, and that
 the image checks C-1 to C-8 each fail on an image built to break exactly one
 of them - a check that cannot be shown failing is not evidence of anything.
-The images and the ELF are synthetic; esptool is not involved.
+The images and the ELF are synthetic; esptool is not involved. C-9 (the
+esp32c5 row: chip_id and the chip revision window of the image header) is
+covered the same way, and the esp32c6 row is shown to keep C-1..C-8 only.
 
 The last group pins the driver 4 step in front of elf2image: a fixed-vma
 stage's image is made from a --strip-debug copy of the ELF (so the build
@@ -238,10 +240,21 @@ def synthetic_elf(data_vma: int = DATA_VMA, data: bytes = DATA_BYTES,
     return body
 
 
-def synthetic_image(segments, entry: int = ENTRY) -> bytes:
-    """esp_image bytes: header, then (load, data) segments in order."""
+def synthetic_image(segments, entry: int = ENTRY, chip_id: int = 0,
+                    min_rev: int = 0, max_rev: int = 0) -> bytes:
+    """esp_image bytes: header, then (load, data) segments in order.
+
+    The extended header carries chip_id (uint16 at 12), min_chip_rev_full
+    (uint16 at 15) and max_chip_rev_full (uint16 at 17) the way
+    esp_image_header_t lays them out; zero unless a C-9 case sets them.
+    """
     header = struct.pack("<BBBBI", 0xE9, len(segments), 0, 0, entry)
     header += b"\0" * (24 - len(header))
+    header = bytearray(header)
+    struct.pack_into("<H", header, 12, chip_id)
+    struct.pack_into("<H", header, 15, min_rev)
+    struct.pack_into("<H", header, 17, max_rev)
+    header = bytes(header)
     body = bytearray(header)
     for load, data in segments:
         body += struct.pack("<II", load, len(data)) + data
@@ -406,6 +419,56 @@ def image_cases(failures: list) -> None:
     expect_error(failures, "C-3: a page that does not divide the flash offset",
                  lambda: check_fixed_vma_image(image, elf, odd, APP_LENGTH),
                  "C-3")
+
+    #  C-9 (esp32c5 row). The esp32c6 row names no chip_id, so the image
+    #  above - whose header carries chip_id 0 - passes it without a C-9
+    #  line; the same header must fail the esp32c5 row, and a header with
+    #  the C5's chip_id and a revision window around the board's revision
+    #  must pass it with a C-9 line.
+    check(failures, "esp32c6 layout: no C-9 (C-1 to C-8 only)",
+          lines[-1] == "fixed-vma image: C-1 to C-8 satisfied"
+          and not any("C-9" in line for line in lines), f"lines={lines}")
+    c5 = FIXED_VMA_LAYOUTS["esp32c5"]
+    check(failures, "esp32c5 layout names chip_id 0x0017 and board rev 100",
+          c5.chip_id == 0x0017 and c5.board_rev_full == 100, str(c5))
+    segments = layout_segments([(TEXT_VADDR, text), (RODATA_VADDR, b"R" * 0x100),
+                                (DATA_VMA, DATA_BYTES)])
+    c5_image = synthetic_image(segments, chip_id=0x0017, min_rev=100, max_rev=199)
+    try:
+        c5_lines = check_fixed_vma_image(c5_image, elf, c5, APP_LENGTH)
+    except LinkError as error:
+        failures.append(f"the well-formed C5 image should pass: {error}")
+        c5_lines = []
+    check(failures, "esp32c5 layout: C-9 OK line and C-1 to C-9 satisfied",
+          any("C-9 OK: chip_id=0x0017 min_chip_rev_full=100 <= board rev 100 "
+              "<= max_chip_rev_full=199" in line for line in c5_lines)
+          and c5_lines[-1:] == ["fixed-vma image: C-1 to C-9 satisfied"],
+          f"lines={c5_lines}")
+    expect_error(failures, "C-9: chip_id of another chip (0x000d = ESP32-C6)",
+                 lambda: check_fixed_vma_image(
+                     synthetic_image(segments, chip_id=0x000D, min_rev=100, max_rev=199),
+                     elf, c5, APP_LENGTH), "C-9")
+    expect_error(failures, "C-9: chip_id 0 (the header esptool would not write)",
+                 lambda: check_fixed_vma_image(image, elf, c5, APP_LENGTH), "C-9")
+    expect_error(failures, "C-9: board rev 100 below min_chip_rev_full 102",
+                 lambda: check_fixed_vma_image(
+                     synthetic_image(segments, chip_id=0x0017, min_rev=102, max_rev=199),
+                     elf, c5, APP_LENGTH), "C-9")
+    expect_error(failures, "C-9: board rev 100 above max_chip_rev_full 99",
+                 lambda: check_fixed_vma_image(
+                     synthetic_image(segments, chip_id=0x0017, min_rev=0, max_rev=99),
+                     elf, c5, APP_LENGTH), "C-9")
+    #  The window's ends are inclusive (bootloader: rev < min or rev > max
+    #  fails).
+    check_fixed_vma_image(
+        synthetic_image(segments, chip_id=0x0017, min_rev=100, max_rev=100),
+        elf, c5, APP_LENGTH)
+    #  A layout that names only one of the pair cannot be checked.
+    half = ImageLayout(page=c5.page, drom=c5.drom, iram=c5.iram,
+                       loader_seg=c5.loader_seg, chip_id=0x0017)
+    expect_error(failures, "C-9: a layout with chip_id but no board revision",
+                 lambda: check_fixed_vma_image(c5_image, elf, half, APP_LENGTH),
+                 "C-9")
 
 
 #  The M5Stack core's tools/partitions/default.csv, which the C6 boards use.

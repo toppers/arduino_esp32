@@ -79,6 +79,12 @@ BOARDS = {
     #  every other board.
     "m5nanoc6_fmp3": ("esp32c6", "m5stack_nano_c6",
                       "M5NanoC6 (TOPPERS/FMP3)", "m5stack_nano_c6"),
+    #  ESP32-C5 (RISC-V). Derived from the M5Stack core's m5stack_stamp_c5
+    #  (boards.txt 3.3.8: tarch=riscv32, mcu=esp32c5, 4MB flash,
+    #  bootloader_addr=0x2000 - the C5's bootloader offset, inherited as is;
+    #  f_cpu=240000000L, the clock the stage is built for). C5 plan A9.
+    "m5stampc5_fmp3": ("esp32c5", "m5stack_stamp_c5",
+                       "M5StampC5 (TOPPERS/FMP3)", "m5stack_stamp_c5"),
 }
 
 
@@ -135,6 +141,12 @@ EXPECTED_PROFILES = {
     #  The C6 port offers minimal and wifi-connect (docs/c6-port.md, D11).
     #  m5-unified never - the M5NanoC6 has no display.
     "esp32c6": {"minimal", "wifi-connect"},
+    #  The C5 port is being brought up profile by profile, as the C6 was:
+    #  minimal first (C5 plan stage 1), wifi-connect once its stage builds
+    #  (stage 3; the same set as the C6 then). m5-unified never - the
+    #  M5Stamp-C5 has no display. The drift test holds this row against
+    #  build_prebuilt_stages.CHIPS and the release allowlist.
+    "esp32c5": {"minimal"},
 }
 
 #  recipe.size.regex per chip, for a chip whose linker script does not use
@@ -153,6 +165,10 @@ EXPECTED_PROFILES = {
 #  therefore not needed.
 SIZE_REGEX_OVERRIDES = {
     "esp32c6": (r"^(?:\.text|\.flash\.appdesc|\.flash\.rodata)\s+([0-9]+).*",
+                r"^(?:\.data|\.bss|\.tbss)\s+([0-9]+).*"),
+    #  The C5 port's esp32c5_xip.ld is the C6 script's copy with the same
+    #  output section names (docs/c5-port.md, stage 1).
+    "esp32c5": (r"^(?:\.text|\.flash\.appdesc|\.flash\.rodata)\s+([0-9]+).*",
                 r"^(?:\.data|\.bss|\.tbss)\s+([0-9]+).*"),
 }
 
@@ -174,6 +190,16 @@ SIZE_REGEX_OVERRIDES = {
 UPLOAD_SIZE_OVERRIDES = {
     "esp32c6": {"upload.maximum_size": "1310720",
                 "upload.maximum_data_size": "452112"},
+    #  esp32c5 (C5 plan A9): the C5 port's esp32c5_xip.ld gives RAM
+    #  LENGTH = 0x4084E5A0 - 0x40800000 = 0x4E5A0 = 320928 bytes (the
+    #  bootloader's iram_loader_seg starts at 0x4084E5A0 on the C5, lower
+    #  than the C6's 0x4086E610), against the inherited 327680 - here the
+    #  inherited value is LARGER than what the linker allows, so without
+    #  the override a sketch could read "95% used" and still fail to link.
+    #  upload.maximum_size stays the stock app0 partition, 0x140000 =
+    #  1310720 (the M5Stamp-C5's default partition scheme, same as the C6).
+    "esp32c5": {"upload.maximum_size": "1310720",
+                "upload.maximum_data_size": "320928"},
 }
 
 

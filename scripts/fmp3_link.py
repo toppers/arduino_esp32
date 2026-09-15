@@ -195,6 +195,7 @@ SDK_FALLBACKS = {
     "esp32s3": ("esp-x32", "xtensa-esp32s3-elf-gcc", "esp32s3-libs"),
     "esp32": ("esp-x32", "xtensa-esp32-elf-gcc", "esp32-libs"),
     "esp32c6": ("esp-rv32", "riscv32-esp-elf-gcc", "esp32c6-libs"),
+    "esp32c5": ("esp-rv32", "riscv32-esp-elf-gcc", "esp32c5-libs"),
 }
 
 
@@ -781,6 +782,16 @@ def write_partition_table(csv_path: Path, bin_path: Path) -> None:
 #    C-8  the image fits the app partition it is flashed to
 #         (the length comes from the build's partitions.csv, not a constant:
 #          a changed partition scheme must move this check with it)
+#    C-9  (chips whose layout names a chip_id) the image header's chip_id is
+#         the chip's ESP_CHIP_ID_* (esp_app_format.h; the bootloader refuses
+#         a mismatch: bootloader_common_check_chip_validity) and the board's
+#         efuse chip revision lies in [min_chip_rev_full, max_chip_rev_full]
+#         of the header (bootloader_common_check_chip_revision_validity;
+#         esptool fills the pair from its --min-rev-full / --max-rev-full
+#         defaults, so what esptool wrote is checked against the board that
+#         will be flashed). Added for the ESP32-C5 (dev cmake/
+#         a1_c5_seam_image.sh C-9); the C6 row names no chip_id and keeps
+#         the C-1..C-8 behaviour it had.
 #
 #  Unit tests build synthetic images that break one condition at a time and
 #  confirm the check names it; a check that cannot be made to fail is not one.
@@ -798,22 +809,51 @@ class ImageLayout(NamedTuple):
     #  Start of the bootloader's iram_loader_seg; the app's RAM must end
     #  below it.
     loader_seg: int
+    #  C-9, optional: the image header's expected chip_id (ESP_CHIP_ID_*)
+    #  and the efuse chip revision (major * 100 + minor) of the board the
+    #  image is for. None on both skips C-9 (the C6 row: its check set is
+    #  C-1..C-8 and unchanged).
+    chip_id: int | None = None
+    board_rev_full: int | None = None
 
 
 #  esp32c6: soc.h:154-165 (SOC_IROM_LOW 0x42000000, 256 pages of 64 KB;
 #  SOC_IRAM_LOW/HIGH 0x40800000/0x40880000), bootloader.ld:48
 #  (bootloader_iram_loader_seg_start == 0x4086E610), sdkconfig of
 #  esp32c6-libs 3.3.8 (CONFIG_MMU_PAGE_SIZE=0x10000).
+#  esp32c5: soc.h:148-161 (SOC_IROM_LOW/HIGH 0x42000000/0x44000000, DROM ==
+#  IROM, a fixed 32 MiB window; SOC_IRAM_LOW/HIGH 0x40800000/0x40860000,
+#  384 KiB), bootloader.ld:48 (bootloader_iram_loader_seg_start ==
+#  0x4084E5A0; the same address in all four bootloader_*.elf of esp32c5-libs
+#  3.3.8, .iram_loader.text at 0x4084e5a0), sdkconfig of esp32c5-libs 3.3.8
+#  (CONFIG_MMU_PAGE_SIZE=0x10000; the C5 has no SOC_MMU_PAGE_SIZE_CONFIGURABLE,
+#  so the bootloader uses that value unconditionally). C-9: chip_id
+#  ESP_CHIP_ID_ESP32C5 = 0x0017 (esp_app_format.h:28); the M5Stamp-C5 is
+#  chip revision v1.0 = 100 (dev C5 plan stage 0 efuse readout; the SDK's
+#  CONFIG_ESP32C5_REV_MIN_FULL=100 / CONFIG_ESP_REV_MAX_FULL=199 are what
+#  esptool's defaults write into the header).
 FIXED_VMA_LAYOUTS = {
     "esp32c6": ImageLayout(page=0x10000,
                            drom=(0x42000000, 0x43000000),
                            iram=(0x40800000, 0x40880000),
                            loader_seg=0x4086E610),
+    "esp32c5": ImageLayout(page=0x10000,
+                           drom=(0x42000000, 0x44000000),
+                           iram=(0x40800000, 0x40860000),
+                           loader_seg=0x4084E5A0,
+                           chip_id=0x0017,
+                           board_rev_full=100),
 }
 
 IMAGE_MAGIC = 0xE9
 IMAGE_HEADER_SIZE = 24          # 8-byte header plus the 16-byte extended one
 APP_DESC_MAGIC = 0xABCD5432
+#  esp_image_header_t (esp_app_format.h): chip_id is the uint16 at offset
+#  12, min_chip_rev_full the uint16 at 15, max_chip_rev_full the uint16 at
+#  17 (unaligned; the struct is packed).
+IMAGE_CHIP_ID_OFFSET = 12
+IMAGE_MIN_REV_OFFSET = 15
+IMAGE_MAX_REV_OFFSET = 17
 
 
 def fixed_vma_layout(chip: str) -> ImageLayout:
@@ -921,7 +961,8 @@ def app_partition_length(csv_path: Path,
 
 def check_fixed_vma_image(image: bytes, elf: bytes, layout: ImageLayout,
                           app_length: int) -> list[str]:
-    """Check an esp_image against the bootloader's conditions C-1 to C-8.
+    """Check an esp_image against the bootloader's conditions C-1 to C-8,
+    plus C-9 when the layout names a chip_id.
 
     Returns the lines to report on success; raises LinkError naming the
     condition on the first failure.
@@ -1028,7 +1069,31 @@ def check_fixed_vma_image(image: bytes, elf: bytes, layout: ImageLayout,
             f"{app_length} bytes by {len(image) - app_length}")
     lines.append(f"  C-8 OK: image {len(image)}/{app_length} bytes "
                  f"({app_length - len(image)} free)")
-    lines.append("fixed-vma image: C-1 to C-8 satisfied")
+    #  C-9
+    if layout.chip_id is None and layout.board_rev_full is None:
+        lines.append("fixed-vma image: C-1 to C-8 satisfied")
+        return lines
+    if layout.chip_id is None or layout.board_rev_full is None:
+        raise LinkError("C-9: the layout names one of chip_id / "
+                        "board_rev_full without the other; the check "
+                        "cannot be made")
+    chip_id = struct.unpack_from("<H", image, IMAGE_CHIP_ID_OFFSET)[0]
+    min_rev = struct.unpack_from("<H", image, IMAGE_MIN_REV_OFFSET)[0]
+    max_rev = struct.unpack_from("<H", image, IMAGE_MAX_REV_OFFSET)[0]
+    if chip_id != layout.chip_id:
+        raise LinkError(
+            f"C-9: the image header's chip_id is 0x{chip_id:04x}, not "
+            f"0x{layout.chip_id:04x}; the bootloader refuses the image as "
+            "built for another chip")
+    if not (min_rev <= layout.board_rev_full <= max_rev):
+        raise LinkError(
+            f"C-9: the board's chip revision {layout.board_rev_full} is "
+            f"outside the image header's [min_chip_rev_full={min_rev}, "
+            f"max_chip_rev_full={max_rev}]; the bootloader refuses the image")
+    lines.append(f"  C-9 OK: chip_id=0x{chip_id:04x} min_chip_rev_full="
+                 f"{min_rev} <= board rev {layout.board_rev_full} <= "
+                 f"max_chip_rev_full={max_rev}")
+    lines.append("fixed-vma image: C-1 to C-9 satisfied")
     return lines
 
 

@@ -34,9 +34,9 @@ DEFAULT_CORE_VERSION = "3.3.8"
 #  The one header that differs by architecture, keyed by chip: the item name
 #  the error message uses, and its path below <sdk>/include/. The Xtensa rows
 #  are the path resolve() used to build from the chip name; the RISC-V SDK has
-#  no include/xtensa at all, so the C6 row names the header that proves its
-#  own arch tree is there (riscv/include/riscv/csr.h, checked against
-#  esp32c6-libs 3.3.8).
+#  no include/xtensa at all, so the C6 and C5 rows name the header that
+#  proves their own arch tree is there (riscv/include/riscv/csr.h, checked
+#  against esp32c6-libs / esp32c5-libs 3.3.8).
 ARCH_HEADERS = {
     "esp32s3": ("xtensaCoreIsa",
                 ("xtensa", "esp32s3", "include", "xtensa", "config",
@@ -45,6 +45,8 @@ ARCH_HEADERS = {
               ("xtensa", "esp32", "include", "xtensa", "config",
                "core-isa.h")),
     "esp32c6": ("riscvCsr", ("riscv", "include", "riscv", "csr.h")),
+    #  Same layout as the C6 (checked against esp32c5-libs 3.3.8).
+    "esp32c5": ("riscvCsr", ("riscv", "include", "riscv", "csr.h")),
 }
 
 
