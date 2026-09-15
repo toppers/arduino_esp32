@@ -53,8 +53,7 @@ STAGES = {
     "esp32s3": ["minimal", "m5-unified", "wifi-connect"],
     "esp32": ["minimal", "m5-unified", "wifi-connect", "bt-classic"],
     "esp32c6": ["minimal", "wifi-connect"],
-    #  minimal only until C5 plan stage 3 stages wifi-connect.
-    "esp32c5": ["minimal"],
+    "esp32c5": ["minimal", "wifi-connect"],
 }
 CHIP_TOOLS = {
     "esp32c6": [
@@ -404,6 +403,25 @@ class PlatformContents(unittest.TestCase):
         for chip, profiles in STAGES.items():
             self.assertEqual(xcheck_compare.profiles_for(chip), profiles,
                              chip)
+        #  verify_package.py: what every board is verified with
+        #  (BOARD_PROFILES, menu-entry names) must be exactly the stages its
+        #  chip ships (C5 plan stage 1 review F1: a board row that plans a
+        #  build against a stage that does not exist fails on the FQBN and
+        #  says nothing about the code; a row that omits a shipped stage
+        #  leaves that stage unverified). Chip-only entries (bt-classic) are
+        #  offered by the chip's boards too.
+        import verify_package
+        menu_of = {profile: menu
+                   for menu, _, profile in install_platform.MENU_ENTRIES}
+        menu_of.update({profile: menu
+                        for entries in install_platform.CHIP_ONLY_ENTRIES.values()
+                        for menu, _, profile in entries})
+        for board, (chip, _, _, _) in install_platform.BOARDS.items():
+            expected = {menu_of[profile] for profile in STAGES[chip]} | {
+                menu for menu, _, _
+                in install_platform.CHIP_ONLY_ENTRIES.get(chip, [])}
+            self.assertEqual(verify_package.BOARD_PROFILES[board], expected,
+                             board)
 
 
 if __name__ == "__main__":

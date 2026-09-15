@@ -13,6 +13,9 @@
  *    M5Stack Basic  G16 (Grove Port C p1; G8-11 are the flash)
  *    M5StickS3      G9  (Grove port SDA; M5Unified's Ex_I2C SDA for this
  *                       board)
+ *    M5StampC5     G1  (a free pad, Grove-class pin; the blue LED G28 is
+ *                       BOOT and is not used as a test pin: C5 plan A10.
+ *                       Link only until C5 plan stage 4 runs it)
  *    other boards   no pin assigned: the sketch links and reports it
  *  Runs in every profile that offers attachInterrupt (m5 / wificonnect /
  *  btclassic); minimal has neither attachInterrupt nor pinMode.
@@ -37,6 +40,8 @@ extern "C" volatile int32_t ard_intr_acre_ercd;
 #define PROBE_PIN 16
 #elif defined(ARDUINO_M5STACK_STICKS3)
 #define PROBE_PIN 9
+#elif defined(ARDUINO_M5STACK_STAMP_C5)
+#define PROBE_PIN 1
 #else
 #define PROBE_PIN -1   /* unknown boards: link only */
 #endif

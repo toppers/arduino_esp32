@@ -87,7 +87,8 @@ PROFILES = {
     "m5": ["M5Unified", "StackChanBasic", "DualCore", "Blink", "LibraryInfo",
            "GpioInterrupt"],
     #  NanoC6Gpio is board-guarded: the real test on the M5NanoC6, a no-op
-    #  on the Xtensa boards (it also drives the C6's RGB LED). It is on
+    #  on the Xtensa boards and the M5StampC5 (it also drives the C6's RGB
+    #  LED). It is on
     #  wificonnect because that is the only profile that links the C6's
     #  arduino_rgb_led.o; the Xtensa link of the no-op is the check that
     #  the guard holds.
@@ -116,13 +117,12 @@ PROFILES = {
 #    - the M5NanoC6 (ESP32-C6, RISC-V) offers minimal and wificonnect only:
 #      it has no display, so there is no m5 option (docs/c6-port.md, D11),
 #      and no BR/EDR radio either.
-#    - the M5StampC5 (ESP32-C5, RISC-V) offers minimal only until C5 plan
-#      stage 3 stages its wifi-connect (the row grows to the C6 pair then,
-#      together with the other five tables: build_prebuilt_stages.CHIPS,
-#      install_platform.EXPECTED_PROFILES, the release allowlist, the drift
-#      test and the CI workflow; A10's 68 builds are stage 3's count, 62
-#      now). A row must never plan a build against a stage that does not
-#      exist: the FQBN would fail to resolve and say nothing about the code.
+#    - the M5StampC5 (ESP32-C5, RISC-V) offers the same pair as the C6
+#      (docs/c5-port.md A10; wificonnect since C5 plan stage 3, 68 builds).
+#      The drift test (scripts/test_check_release_artifacts.py) holds this
+#      table against the chip's stages, so a row can neither plan a build
+#      against a stage that does not exist (the FQBN would fail to resolve
+#      and say nothing about the code) nor leave a shipped stage unverified.
 #  Adding a board is adding a row (the value is a set; the order the builds
 #  run in is that of sorted(PROFILES), unchanged from before the table).
 BOARD_PROFILES = {
@@ -130,7 +130,7 @@ BOARD_PROFILES = {
     "m5sticks3_fmp3": {"minimal", "m5", "wificonnect"},
     "m5core_fmp3": {"minimal", "m5", "wificonnect", "btclassic"},
     "m5nanoc6_fmp3": {"minimal", "wificonnect"},
-    "m5stampc5_fmp3": {"minimal"},
+    "m5stampc5_fmp3": {"minimal", "wificonnect"},
 }
 
 #  Every board the platform offers, in the order they are verified.

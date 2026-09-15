@@ -80,12 +80,12 @@
       "kind": "platform",
       "architecture": "esp32",
       "fileNamePattern": "toppers-esp32-{version}.zip",
-      "_prebuiltStagesComment": "chip -> the prebuilt stages (fmp3-prebuilt/<chip>/<profile>/link-manifest.json) the archive must hold for every chip it ships a board for. A chip present in the archive with a profile missing here, or a chip the archive holds that has no row, fails check_release_artifacts.py. A chip in this table that the archive does not hold at all is reported, not failed: whether a chip ships is decided by which stages install_platform.py was given. The same table as the stage check in .github/workflows/verify-package.yml and EXPECTED_PROFILES in scripts/install_platform.py. esp32c5 is minimal only until C5 plan stage 3 adds its wifi-connect stage (docs/c5-port.md); the row grows together with the other three tables the drift test holds it against.",
+      "_prebuiltStagesComment": "chip -> the prebuilt stages (fmp3-prebuilt/<chip>/<profile>/link-manifest.json) the archive must hold for every chip it ships a board for. A chip present in the archive with a profile missing here, or a chip the archive holds that has no row, fails check_release_artifacts.py. A chip in this table that the archive does not hold at all is reported, not failed: whether a chip ships is decided by which stages install_platform.py was given. The same table as the stage check in .github/workflows/verify-package.yml and EXPECTED_PROFILES in scripts/install_platform.py. esp32c5 offers the same pair as esp32c6 since C5 plan stage 3 (docs/c5-port.md); the drift test holds this row against the other tables.",
       "prebuiltStages": {
         "esp32s3": ["minimal", "m5-unified", "wifi-connect"],
         "esp32": ["minimal", "m5-unified", "wifi-connect", "bt-classic"],
         "esp32c6": ["minimal", "wifi-connect"],
-        "esp32c5": ["minimal"]
+        "esp32c5": ["minimal", "wifi-connect"]
       },
       "_chipToolDependenciesComment": "chip -> M5Stack tools the current platform entry's toolsDependencies must name whenever the archive holds that chip's stages (R9 of the C6 plan). The Xtensa tools are unconditional in the index and are not listed here; the RISC-V toolchain and the ESP32-C6 / ESP32-C5 SDKs are declared by make_package_index.py only when fmp3-prebuilt/<chip> is packaged, so that a release without those boards does not make every user download them - and this row is what catches the gate silently ceasing to fire while the stages still ship. esp-rv32 is shared by the two RISC-V chips and appears once in the index. The values mirror CHIP_TOOL_DEPENDENCIES in scripts/make_package_index.py; scripts/test_check_release_artifacts.py holds the two together.",
       "chipToolDependencies": {

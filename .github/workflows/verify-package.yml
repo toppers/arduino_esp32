@@ -99,8 +99,8 @@ jobs:
         #  build_prebuilt_stages.py narrows to what the chip's port can stage
         #  (esp32s3 / esp32: minimal m5-unified wifi-connect; esp32c6:
         #  minimal wifi-connect - the M5NanoC6 has no display, so no
-        #  m5-unified; esp32c5: minimal until C5 plan stage 3 adds its
-        #  wifi-connect). The M5 source paths are passed to every call and
+        #  m5-unified; esp32c5: minimal wifi-connect, the same pair). The
+        #  M5 source paths are passed to every call and
         #  used only by the profiles that need them. The RISC-V toolchain
         #  (esp-rv32) and the esp32c6-libs / esp32c5-libs SDKs come with the
         #  M5Stack core installed above, like the Xtensa ones.
@@ -149,7 +149,7 @@ jobs:
               "esp32s3:minimal m5-unified wifi-connect" \
               "esp32:minimal m5-unified wifi-connect bt-classic" \
               "esp32c6:minimal wifi-connect" \
-              "esp32c5:minimal"; do
+              "esp32c5:minimal wifi-connect"; do
             chip=${spec%%:*}
             for p in ${spec#*:}; do
               test -f "$root/fmp3-prebuilt/$chip/$p/link-manifest.json" \
@@ -182,17 +182,14 @@ jobs:
               exit 1
             fi
           done
-          #  The M5StampC5 likewise (no display, no BR/EDR radio); its
-          #  wifi-connect stage is C5 plan stage 3, so until then the board
-          #  must offer minimal only and no esp32c5 stage beyond minimal may
-          #  be packaged.
-          for key in m5 btclassic wificonnect; do
+          #  The M5StampC5 likewise (no display, no BR/EDR radio).
+          for key in m5 btclassic; do
             if grep -q "^m5stampc5_fmp3\.menu\.FMP3Runtime\.$key=" "$root/boards.txt"; then
-              echo "M5StampC5 must not offer the $key menu entry (C5 plan stage 1: minimal only)"
+              echo "M5StampC5 must not offer the $key menu entry"
               exit 1
             fi
           done
-          for p in m5-unified bt-classic all-in-one wifi-connect; do
+          for p in m5-unified bt-classic all-in-one; do
             if [ -e "$root/fmp3-prebuilt/esp32c5/$p" ]; then
               echo "unexpected stage packaged: esp32c5/$p"
               exit 1

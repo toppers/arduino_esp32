@@ -1,7 +1,11 @@
 /*
- * Shared Wi-Fi bring-up for the scan and connect adapters (ESP32-C6).
- * See toppers_wifi_core.h for how this differs from the Xtensa version
- * (D6: no WPA callback table, no --wrap=esp_supplicant_init).
+ * Shared Wi-Fi bring-up for the scan and connect adapters (ESP32-C6 /
+ * ESP32-C5). See toppers_wifi_core.h for how this differs from the Xtensa
+ * version (D6: no WPA callback table, no --wrap=esp_supplicant_init) and
+ * for what the C5 shares with the C6 (everything in this file: the dev
+ * C5 station path, esp/app/wifi_sta.c with wifi_sta_c5.inc at 1d96bcba, is
+ * the C6 sequence; the chip-specific work - APM/TEE unblock, modem clock,
+ * CLIC interrupt lines - is inside the vendored shim, C5 plan stage 3).
  */
 #include <kernel.h>
 #include <t_syslog.h>
@@ -17,12 +21,12 @@
 #include "toppers_wifi_core.h"
 
 /*
- * ESP32-C6 only. The Xtensa adapter lives in ports/m5stack_xtensa; this
- * file must never be compiled for a chip whose blob needs the private
+ * ESP32-C6 / ESP32-C5 only. The Xtensa adapter lives in ports/m5stack_xtensa;
+ * this file must never be compiled for a chip whose blob needs the private
  * callback table that this version deliberately does not carry.
  */
-#if !defined(TOPPERS_ESP32C6)
-#error "toppers_wifi_core.c (ports/m5stack_riscv) is the ESP32-C6 version"
+#if !defined(TOPPERS_ESP32C6) && !defined(TOPPERS_ESP32C5)
+#error "toppers_wifi_core.c (ports/m5stack_riscv) is the ESP32-C6 / ESP32-C5 version"
 #endif
 
 /*

@@ -1,5 +1,6 @@
 /*
- * Shared Wi-Fi bring-up for the scan and connect adapters (ESP32-C6).
+ * Shared Wi-Fi bring-up for the scan and connect adapters (ESP32-C6 /
+ * ESP32-C5).
  *
  * ESP32-C6 (ports/m5stack_riscv) version of
  * ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_core.h. Both
@@ -43,6 +44,14 @@
  * (register addresses of those chips) and do not exist for the C6; the
  * modem clock and the APM access-path filters are handled inside the shim's
  * _wifi_clock_enable callback (esp_wifi_adapter.c, c6_apm_unblock; S3-6).
+ *
+ * ESP32-C5 (C5 plan stage 3, A11): the same ordering and the same D6
+ * position. The dev C5 station path (esp/app/wifi_sta.c + wifi_sta_c5.inc
+ * at 1d96bcba) calls the same functions in the same order; the C5's APM
+ * unblock (four controllers' FUNC_CTRL + 32 TEE masters, dev
+ * c5_apm_unblock in esp_wifi_adapter_c5.inc) and its CLIC interrupt lines
+ * are inside the shim as well, so the adapter has no C5 register code.
+ * Open AP is UNVERIFIED on the C5 as on the C6.
  */
 
 #ifndef TOPPERS_WIFI_CORE_H

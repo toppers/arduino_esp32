@@ -460,3 +460,12 @@ defined(TOPPERS_C5_NET_DIAG) && !defined(TOPPERS_C6_NET_DIAG)` で `TOPPERS_C6_N
 - `esp/boot/seam_c5_clk.cfg`、`fmp3/target/m5stampc5_gcc/app/**`: 段1 と同じ。
 - `esp32c5.rom.eco3.ld`: dev D14（M5Stamp-C5 は rev v1.0 = 100。eco3 を入れた asp3 は ROM の PHY 関数が
   blob の RAM 版を上書きする store fault を踏んだ）。ROM ld は dev と同じ 13 本。
+
+## ESP32-C5 段3 Task 2（2026-09-16）: adapter の C5 分岐・`app/wifi_connect_c5/`・scripts の表（arduino 側の派生、dev 由来ではない）
+
+| 元 | arduino のパス | 改変 | 理由 |
+|---|---|---|---|
+| `runtime/wifi/adapter/toppers_wifi_core.{h,c}` `toppers_wifi_connect.c` `toppers_wifi_scan.c`（C6 版、段3 Task 2） | 同名（C6 / C5 共用） | **あり（C5 分岐）** | `#if !defined(TOPPERS_ESP32C6)` の `#error` を `&& !defined(TOPPERS_ESP32C5)` に。`toppers_wifi_scan.c` は APM 読み戻しを `#if defined(TOPPERS_ESP32C5)` で `esp_wifi_adapter_c5_apm_readback` に切替え（`toppers_wifi_apm_readback` マクロ）、C5 だけ scan 後に `[WiFiScan] bands: 2.4GHz=N 5GHz=M (of K listed)` を 1 行出す（ch > 14 を 5 GHz と数える dev の規則、S3-6: 記録のみ）。初期化順・D6・D7 は C6 と同一（dev の C5 経路 `wifi_sta.c` + `wifi_sta_c5.inc` も同じ順）。C6 の objs は不変（X-check） |
+| `app/wifi_connect/phase9_wifi_connect_app.{c,cfg,h}`（C6） | `app/wifi_connect_c5/phase9_wifi_connect_app.{c,cfg,h}` | **あり（cfg の INCLUDE 1 行）** | `INCLUDE("arduino_interrupt.cfg")` -> `INCLUDE("arduino_interrupt_c5.cfg")`（線 23）。`.c` / `.h` は C6 の写し。cfg は `#ifdef` で切らない（`BUILDING.md`）ので別ディレクトリにし、`scripts/build_prebuilt_stages.py` の `CHIP_APPLICATIONS[("esp32c5", "wifi-connect")]` が選ぶ |
+| `scripts/build_prebuilt_stages.py` `install_platform.py` `verify_package.py` `test_check_release_artifacts.py` `packaging/release-allowlist.json` `.github/workflows/verify-package.yml` | 同名 | 表の行 | esp32c5 の profile を `minimal` + `wifi-connect` に（6 表）。drift test に `verify_package.BOARD_PROFILES` の写像（段1 レビュー F1）。`--list-builds` 62 -> 68 |
+| `examples/GpioInterrupt/GpioInterrupt.ino` | 同名 | `#elif defined(ARDUINO_M5STACK_STAMP_C5)` の 3 行 | 試験ピン G1（A10。リンクのみ、実機は段4） |

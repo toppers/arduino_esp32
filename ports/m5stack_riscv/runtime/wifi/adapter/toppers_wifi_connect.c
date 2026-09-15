@@ -1,5 +1,5 @@
 /*
- * Arduino-facing station connect adapter for ESP32-C6/FMP3.
+ * Arduino-facing station connect adapter for ESP32-C6 / ESP32-C5 FMP3.
  *
  * ESP32-C6 (ports/m5stack_riscv) version of
  * ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_connect.c. Two
@@ -36,8 +36,16 @@
 #include "netif_esp32s3.h"
 #include "toppers_wifi_core.h"
 
-#if !defined(TOPPERS_ESP32C6)
-#error "toppers_wifi_connect.c (ports/m5stack_riscv) is the ESP32-C6 version"
+/*
+ * ESP32-C5 (C5 plan stage 3): the same file. The connect path (set_config
+ * -> start -> connect -> netif/DHCP -> DNS -> TCP) is what the dev C5
+ * station demo runs at 1d96bcba; nothing here names a chip register.
+ * The open-AP NOTICE below still says "ESP32-C6": the D6 status (open AP
+ * unverified) is the same on the C5, and the string is kept so the C6
+ * object stays byte-identical.
+ */
+#if !defined(TOPPERS_ESP32C6) && !defined(TOPPERS_ESP32C5)
+#error "toppers_wifi_connect.c (ports/m5stack_riscv) is the ESP32-C6 / ESP32-C5 version"
 #endif
 
 enum { TOPPERS_WL_IDLE = 0, TOPPERS_WL_NO_SSID = 1,

@@ -141,12 +141,11 @@ EXPECTED_PROFILES = {
     #  The C6 port offers minimal and wifi-connect (docs/c6-port.md, D11).
     #  m5-unified never - the M5NanoC6 has no display.
     "esp32c6": {"minimal", "wifi-connect"},
-    #  The C5 port is being brought up profile by profile, as the C6 was:
-    #  minimal first (C5 plan stage 1), wifi-connect once its stage builds
-    #  (stage 3; the same set as the C6 then). m5-unified never - the
+    #  The C5 port offers the same pair as the C6 (docs/c5-port.md A10;
+    #  wifi-connect since C5 plan stage 3). m5-unified never - the
     #  M5Stamp-C5 has no display. The drift test holds this row against
     #  build_prebuilt_stages.CHIPS and the release allowlist.
-    "esp32c5": {"minimal"},
+    "esp32c5": {"minimal", "wifi-connect"},
 }
 
 #  recipe.size.regex per chip, for a chip whose linker script does not use

@@ -1,5 +1,6 @@
 /*
- *  Arduino-facing credential-free Wi-Fi scan adapter for ESP32-C6/FMP3.
+ *  Arduino-facing credential-free Wi-Fi scan adapter for ESP32-C6 / ESP32-C5
+ *  FMP3.
  *
  *  ESP32-C6 (ports/m5stack_riscv) version of
  *  ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_scan.c. The scan
@@ -22,17 +23,32 @@
 #include "esp_wifi.h"
 #include "toppers_wifi_core.h"
 
-#if !defined(TOPPERS_ESP32C6)
-#error "toppers_wifi_scan.c (ports/m5stack_riscv) is the ESP32-C6 version"
+/*
+ *  ESP32-C5 (C5 plan stage 3): the same sequence (dev wifi_sta_c5.inc,
+ *  wifi_sta_c5_scan_run, is the C6 one with a dual-band count). The blob
+ *  scans both bands by default (2.4 and 5 GHz; CONFIG_SOC_WIFI_SUPPORT_5G
+ *  1 in config/esp32c5/sdkconfig.h), so the C5 log adds one line with the
+ *  per-band count (S3-6: recorded, not asserted). The APM readback is the
+ *  C5 one. Both under #if so the C6 object is byte-identical.
+ */
+#if !defined(TOPPERS_ESP32C6) && !defined(TOPPERS_ESP32C5)
+#error "toppers_wifi_scan.c (ports/m5stack_riscv) is the ESP32-C6 / ESP32-C5 version"
 #endif
 
 #define TOPPERS_WIFI_MAX_RECORDS 20
 #define TOPPERS_WIFI_SCAN_WAIT_US 50000U
 #define TOPPERS_WIFI_SCAN_TIMEOUT_LOOPS 300U
 
-/* wifi/shim/esp_wifi_adapter.c (no header; the development demo uses the
- * same extern). Prints the APM/TEE filter registers and exception latches. */
+/* wifi/shim/esp_wifi_adapter.c (C6) / esp_wifi_adapter_c5.inc (C5), no
+ * header; the development demo uses the same extern. Prints the APM/TEE
+ * filter registers and exception latches. */
+#if defined(TOPPERS_ESP32C5)
+extern void esp_wifi_adapter_c5_apm_readback(const char *tag);
+#define toppers_wifi_apm_readback(tag) esp_wifi_adapter_c5_apm_readback(tag)
+#else
 extern void esp_wifi_adapter_c6_apm_readback(const char *tag);
+#define toppers_wifi_apm_readback(tag) esp_wifi_adapter_c6_apm_readback(tag)
+#endif
 
 static volatile bool scan_done;
 static uint16_t record_count;
@@ -142,14 +158,34 @@ int16_t toppers_fmp3_wifi_scan_networks(void)
                (int_t)records[index].primary,
                (int_t)records[index].authmode, (int_t)index);
     }
+#if defined(TOPPERS_ESP32C5)
+    {
+        /*
+         * Dual band (S3-6): a primary channel above 14 is a 5 GHz AP (the
+         * dev demo's rule). Recorded for the stage 4 log; nothing is
+         * asserted on it.
+         */
+        uint16_t count_5g = 0;
+
+        for (index = 0; index < record_count; ++index) {
+            if (records[index].primary > 14) {
+                ++count_5g;
+            }
+        }
+        syslog(LOG_NOTICE, "[WiFiScan] bands: 2.4GHz=%d 5GHz=%d (of %d listed)",
+               (int_t)(record_count - count_5g), (int_t)count_5g,
+               (int_t)record_count);
+    }
+#endif
     /*
      * APM exception-latch readback after the scan (register values only),
      * as the development demo does after its scan. With
-     * TOPPERS_C6_APM_UNBLOCK=OFF (the stage 4 0-AP control) this is the
+     * TOPPERS_C6_APM_UNBLOCK=OFF / TOPPERS_C5_APM_UNBLOCK=OFF (the stage 4
+     * 0-AP control) this is the
      * only readback the image prints, so the control's log still shows the
      * filter state that explains its 0 APs.
      */
-    esp_wifi_adapter_c6_apm_readback("after-scan");
+    toppers_wifi_apm_readback("after-scan");
     syslog(LOG_NOTICE, "[WiFiScan] done");
     return (int16_t)record_count;
 }

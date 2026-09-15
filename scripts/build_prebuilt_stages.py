@@ -55,6 +55,15 @@ APPLICATIONS = {
     "all-in-one": ("allinone_app", "allinone", True),
     "bt-classic": ("bt_classic_app", "bt_classic", False),
 }
+#  (chip, profile) -> the same triple, for a chip whose port keeps a
+#  chip-specific application directory for a profile. The esp32c5 wifi-connect
+#  application is the C6 one with the attachInterrupt cfg of the C5
+#  (arduino_interrupt_c5.cfg, CLIC line 23) in place of arduino_interrupt.cfg:
+#  a cfg is not switched with #ifdef (BUILDING.md), so the switch is which
+#  .cfg is passed, and that is a directory of its own.
+CHIP_APPLICATIONS = {
+    ("esp32c5", "wifi-connect"): ("phase9_wifi_connect_app", "wifi_connect_c5", False),
+}
 #  Only m5-unified has a self-test application; the others build the same thing
 #  either way. The self-test adds a monitor task that prints PASS or FAILED, and
 #  belongs to the test suite rather than the product - stages that go into the
@@ -123,15 +132,15 @@ CHIPS = {
     #  compiler as the C6 (the M5Stack core's esp-rv32 2601 serves every
     #  RISC-V chip; the SDK is esp32c5-libs 3.3.8), same port directory
     #  (ports/m5stack_riscv is a chip branch: C5 plan A2), its own
-    #  toolchain file. minimal only until the C5 plan's stage 3 stages
-    #  wifi-connect (the runtime refuses that profile for the C5 until
-    #  then); the drift test holds this set against install_platform.py,
+    #  toolchain file. minimal and wifi-connect, the same pair as the C6
+    #  (the M5Stamp-C5 has no display either; wifi-connect is C5 plan
+    #  stage 3); the drift test holds this set against install_platform.py,
     #  xcheck_compare.py and the release allowlist, so the four move together.
     "esp32c5": Chip(tool="esp-rv32", gcc="riscv32-esp-elf-gcc",
                     port="m5stack_riscv",
                     toolchain="toolchain-riscv-esp32c5.cmake",
                     sdk_headers_always=True,
-                    profiles=frozenset({"minimal"})),
+                    profiles=frozenset({"minimal", "wifi-connect"})),
 }
 
 
@@ -282,7 +291,8 @@ def main(argv: list[str] | None = None) -> int:
 
     results = []
     for name in args.profiles:
-        application_name, directory_name, outside_ports = APPLICATIONS[name]
+        application_name, directory_name, outside_ports = CHIP_APPLICATIONS.get(
+            (args.chip, name), APPLICATIONS[name])
         if args.self_test and name in SELF_TEST_APPLICATIONS:
             application_name = SELF_TEST_APPLICATIONS[name]
         #  The m5-unified application lives outside ports/ in the development
