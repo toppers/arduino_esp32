@@ -973,7 +973,7 @@ M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS
 | 4c | APM OFF 対照で 0 AP、ON に戻して復帰（軸表つき） | PASS | Task 1: warm OFF 対照 = 0 AP（`lp_apm_func_ctrl` は warm 残留で `0x0`）。Task 2: 真cold OFF 対照（`scan-cold-apmoff`）= 0 AP・`lp_apm_func_ctrl=0x3`（pristine）。ON 復帰 = warm4 11 AP、warm5 で WiFiConnect も復帰（下記「APM 対照」） |
 | 4d | WiFiConnect warm: connected / DHCP bound / DNS 解決 / TCP 受信の各 marker >= 1、`## Unexpected`/`mcause=` 0 | PASS（初回 1 回の `NO_AP_FOUND` を除く） | warm1-retry・warm2・warm3 のいずれも connected=1 dhcp=1 dnsok=2 tcp=255、unexpected=0。**warm1（最初の接続試行）は `NO_AP_FOUND` で失敗**、1 回の再試行で成功（下記「正直な観察」） |
 | 4e | 真cold 3/3 で 4d と同じ marker | **真cold 3/3（出力のあった run。cold2 は無音 1/6）** | cold1・cold3・cold4 は connected=1 dhcp=1 dnsok=2 tcp=255、unexpected=0（4 回中 3 回が出力あり run で成功、cold2 は 45 秒間 0 バイトの無音採取で成否判定不能。詳細は下記「正直な観察」） |
-| 4f | 秘密: repo の `git status` clean、採取ログに creds 針 0（台本の検査）、docs に SSID/IP/BSSID なし | PASS（残存する軽微な懸念 1 件あり） | `git status --porcelain` 0 行、`git diff --exit-code examples/` rc=0（Task 2）。採取ログ 75 本の creds 針 grep = ssid 0 / pass 0、`.UNREDACTED` 0。本節・本文書に SSID/IP/BSSID を書いていない。**懸念**: `DHCP address=0x%08x`（hex 形の LAN アドレス）9 行が dev 側 `.steering/` ログにマスク外で残る（下記「正直な観察」。公開対象外、fix wave 項目） |
+| 4f | 秘密: repo の `git status` clean、採取ログに creds 針 0（台本の検査）、docs に SSID/IP/BSSID なし | PASS（残存する軽微な懸念 1 件あり） | `git status --porcelain` 0 行、`git diff --exit-code examples/` rc=0（Task 2）。採取ログ 75 本の creds 針 grep = ssid 0 / pass 0、`.UNREDACTED` 0。本節・本文書に SSID/IP/BSSID を書いていない。**是正済み（fix wave、`a251202`）**: `DHCP address=0x%08x`（hex 形の LAN アドレス）が redact 段の対象外で dev 側 `.steering/` ログに残っていた件は、台本に `address=<HEX32>` マスクを足し、既存ログ 9 本（DHCP 9 行 + DNS 応答 18 行 = 27 語）を台本の `C6_REDACT_ONLY=1` モードで機械的にマスクした（手編集なし、residue 0）。**注記**: 生 creds の針（SSID/PASS）は Task 2 の実採取では一度も発火していない（スケッチは creds を印字しないので平文が元々出ない）＝針の経路の positive control は fixture の selftest のみで、実採取では未実証 |
 | 4g | W-1..W-3 の結果（begin-only で繋がったか、scan->begin の cycle が通ったか） | PASS（W-4 は不発、観測なし） | 下記「W-1..W-4 の結果」 |
 | 4h | minimal/wificonnect 非退行: 4 例題リンク、X-check | PASS | Task 0/1 とも X-check 7/7、minimal stage 非改変（Task 0: sha 比較同一、Task 1: 触っていない）。Task 2 はコード変更なし（非退行は自明） |
 
@@ -1064,7 +1064,12 @@ Task 1 の懸念（「warm の OFF 対照は LP_APM が ON 側の残留で `0x0`
 は Task 2 の真cold 対照で解消した: 電源断を経た直後は 3 レジスタとも有効（`lp_apm_func_ctrl=0x3`
 を含む）状態で、それでも scan は 0 AP。HP_APM の M1 例外ラッチ（`status=0x00000001`、
 `info0=0x00130001`）も真cold 側で確認済みで、0 AP の機序（modem 側アクセスの拒否）が
-ON/OFF・warm/真cold のいずれでも一貫している。
+ON/OFF・warm/真cold のいずれでも一貫している。**ラッチの帰属について**: unblock 前
+（`before-unblock`）に M1 ラッチが立っている読み戻しは、OFF の run の直後（Task 1 warm4）
+だけでなく **ON の run の直後（Task 2 warm5、scan-first の ON run の後）にも現れる**。
+したがって「unblock 前のラッチ = 直前の OFF run が残したもの」とは言えない（ON の scan
+でも何かが一度 M1 で拒否されている）。どちらの場合も unblock がラッチを消し
+（`after-unblock ... latch: none`）、scan は N > 0 になる。
 
 ### WPA3-SAE / Open は未実測（D6）
 
@@ -1081,24 +1086,33 @@ C6 でも起きるかは、依然として未確認のまま持ち越す。
   成功した。9 回の begin-only 接続試行（出力のあった run）のうち失敗はこの 1 回のみで、
   この証拠からは実装起因と判断できない。同じ `NO_AP_FOUND` + 非接続のパターンは APM OFF 像
   （想定どおりの失敗）でも決定的に 2/2 再現しており、区別が付く形にはなっている。
-- **接続断後に adapter が自動で再接続しない（W-5）**: `disconnected` ハンドラは理由コードを
-  ログするだけで、次の `esp_wifi_connect()` を自分からは呼ばない（スケッチの `loop()` 側の
-  タイムアウト待ちに委ねる設計）。**Xtensa 側の adapter
-  （`ports/m5stack_xtensa/runtime/wifi/adapter/toppers_wifi_connect.c`）を実ソースで確認した
-  結果、この挙動は C6 固有ではなく Xtensa と共通の既存設計**（disconnect ハンドラの実装が
-  両ポートで同型）。したがって C6 の回帰ではなく、両ポート共通の未対応項目として記録する
-  （段5 でスケッチ側に有界の再試行を足すかどうかを検討）。
-- **無音の真cold 採取（cold2、1/6）**: 電源投入から USJ（by-id）認識までの時間がこの 6 回の
-  中で最も遅く（3.91 秒）、45 秒の採取窓で 0 バイト。段2（cold5、1/10、認識 3.86 秒）と
+- **最初の association 前の `WIFI_EVENT_STA_DISCONNECTED` は terminal（W-5）**: 最初の
+  association より前に `STA_DISCONNECTED`（例: `201 NO_AP_FOUND`、C6 warm1 の 1/9）が来ると、
+  adapter（C6 も Xtensa も -- `DISCONNECTED` の処理は同じコード）もスケッチ例題も
+  `esp_wifi_connect()` を再発行しない。`WiFi.begin()` はスケッチ側のタイムアウトまで
+  `WL_CONNECTION_LOST` のまま座り続ける。Xtensa でも同じ挙動（`ports/m5stack_xtensa/runtime/
+  wifi/adapter/toppers_wifi_connect.c` を実ソースで確認）で、C6 の回帰ではない。有界の再試行を
+  adapter に置くか例題に置くかは段5 で決める。scan-first（W-2、1/1 OK）がこれを避けるかは
+  未検証。
+- **無音の真cold 採取（cold2、1/6）**: by-id の出現は**採取開始（台本の by-id 待ち開始）から
+  3.91 秒後**で、この 6 回（3.55-3.91 秒）の中で最も遅い（`journalctl -k` では電源投入から
+  約 1.6-1.9 秒の範囲。`uhubctl ... on` の直後からではなく、台本の待ち開始を起点にした値
+  である点に注意）。45 秒の採取窓で 0 バイト。段2（cold5、1/10、同じ起点で 3.86 秒）と
   **同型の現象**で、台本は「USJ が無音」と「アプリがハング」を区別できない。次の電源投入
   （cold3）は即座に成功しており、板のハングやフラッシュ破損の兆候は無い。
-- **`DHCP address=0x%08x` の hex 表記が未マスク**: `capture_c6_usj.sh` の redact 段は
-  ドット十進表記の IPv4（`ip=`/`gw=` 行）はマスクするが、adapter の
-  `"[WiFiConnect] DHCP address=0x%08x"` 行が持つ hex 形の LAN アドレスは対象外で、
-  dev 側ログに 9 行残っている。**このログは開発リポジトリの `.steering/` 配下にのみ存在し、
-  公開対象ではない**（本文書・本節にも書いていない）。是正は台本の redact 段へ
-  `address=0x[0-9a-f]{8}` 相当のマスクを足すことで、最終レビュー後の fix wave 項目として
-  持ち越す。
+- **`DHCP address=0x%08x` の hex 表記が未マスクだった（fix wave `a251202` で是正）**:
+  `capture_c6_usj.sh` の redact 段はドット十進表記の IPv4（`ip=`/`gw=` 行）はマスクしていたが、
+  adapter の `"[WiFiConnect] DHCP address=0x%08x"`（と `DNS resolved ... address=0x%08x`）が
+  持つ hex 形のアドレスは対象外で、dev 側ログに DHCP 9 行（+ DNS 応答 18 行）残っていた。
+  **このログは開発リポジトリの `.steering/` 配下にのみ存在し、公開対象ではない**
+  （本文書・本節にも書いていない）。fix wave で transformer と独立 checker の両方に
+  `address=0x<8 hex>` -> `address=<HEX32>` を足し（selftest に fixture と変異対照）、既存の
+  9 本は台本の `C6_REDACT_ONLY=1` モードで機械的にマスクした（手編集なし、residue 0）。
+- **`no time event is processed in hrt interrupt on PRC1.`**: Task 2 の warm ON run **7/7**
+  （warm1・warm1-retry・warm2・warm3・W-2・warm4・warm5）で起動ごとに 1 回、Task 1 の warm ON
+  4/4 も同じ。OFF の run と真cold の run では 0（真cold は起動先頭が USB enumeration 中に
+  失われるため、出ていないのか採れていないのか区別できない）。段2 (c) の既知の行で、害は
+  観測していない。
 - **早期終了マーカーの誤り（D-1）**: 段3 の「段4 の入口条件」節に書いた
   `MARKERS='DHCP completed|...'` が、DNS/TCP より前に採取を打ち切ってしまう誤りだったこと
   が本段で判明し、該当節に是正を追記した（上記「段4 採取のマーカーと注意」節末尾）。
@@ -1113,7 +1127,10 @@ C6 でも起きるかは、依然として未確認のまま持ち越す。
   examples/` の終了コード 0（差分なし）で確認し、`git add`・commit の前後とも確認済み。
 - 採取ログの redact は開発リポジトリの creds ファイルの値を針として使う（本リポジトリには
   commit 時点の secret guard フックが無いため、台本の EXIT トラップと `git diff --exit-code`
-  の手動確認が唯一の防波堤）。
+  の手動確認が唯一の防波堤）。**ただし Task 2 の実採取では生 creds の針は一度も発火して
+  いない**（スケッチは creds を印字せず、`REDACTED_` トークン 0 = 平文が元々出ていない）。
+  針の経路が実際に効くことの positive control は台本の selftest（合成 creds の fixture）
+  のみで、実採取ログでは未実証である。
 
 ### 板の最終状態
 
