@@ -47,6 +47,10 @@ Schema 2 adds:
   out from the section headers, and no flash_cache_init object is involved.
   After elf2image the driver checks such an image against what the
   bootloader will accept (check_fixed_vma_image, conditions C-1 to C-8).
+  Since driver 4 the elf2image of a fixed-vma stage runs on a copy of the
+  linked ELF stripped of its debug sections (objcopy --strip-debug), so the
+  image does not depend on the path the sketch was built in; see
+  image_source_elf.
 * ``linkBaseFlags`` (required, list of strings): the flags placed right after
   the compiler driver, where the schema 1 link places the literal
   ``-nostdlib -mlongcalls``. A schema 2 manifest for an Xtensa stage would
@@ -84,7 +88,11 @@ from typing import NamedTuple
 #  a real hazard: the manifest schema the driver understands is what decides
 #  whether a stage links at all. --version lets the release check compare the
 #  binary it is about to publish against this source.
-DRIVER_VERSION = "3"
+#
+#  4: a fixed-vma stage's elf2image reads a --strip-debug copy of the ELF
+#     (image_source_elf); the image no longer carries the build path. Driver
+#     3 links a runtime-mmu (schema 1, Xtensa) stage identically.
+DRIVER_VERSION = "4"
 
 #  The schema a stage written for this driver carries, and every schema this
 #  driver still reads. A schema 1 manifest links exactly as it did under
@@ -170,6 +178,11 @@ def tool_beside(gcc: Path, name: str) -> Path:
 def ar_beside(gcc: Path) -> Path:
     """The ar of the same toolchain as the given gcc."""
     return tool_beside(gcc, "ar")
+
+
+def objcopy_beside(gcc: Path) -> Path:
+    """The objcopy of the same toolchain as the given gcc."""
+    return tool_beside(gcc, "objcopy")
 
 
 #  Where the driver looks when the recipe does not pass the tools: keyed by
@@ -466,6 +479,47 @@ def run(command: list[str], cwd: Path, what: str) -> None:
             f"{what} failed (exit={completed.returncode})\n"
             f"--- stdout ---\n{completed.stdout}\n"
             f"--- stderr ---\n{completed.stderr}")
+
+
+LINKED_ELF = "fmp_xip.elf"
+#  The debug-stripped copy a fixed-vma stage's elf2image reads; the linked
+#  ELF itself is what the IDE and the debugger get.
+STRIPPED_ELF = "fmp_xip.stripped.elf"
+
+
+def strip_debug_command(gcc: Path, source: str = LINKED_ELF,
+                        target: str = STRIPPED_ELF) -> list[str]:
+    """The objcopy command that copies the ELF without its debug sections.
+
+    objcopy is derived from the gcc the recipe passes, like ar; a toolchain
+    without it stops the link here (LinkError), because the alternative -
+    quietly imaging the unstripped ELF - would hand back the build-path
+    dependence this step exists to remove.
+    """
+    return [str(objcopy_beside(gcc)), "--strip-debug", source, target]
+
+
+def image_source_elf(manifest: dict, sdk: dict[str, Path], work: Path,
+                     runner=run) -> str:
+    """Name of the ELF (relative to work) that elf2image should read.
+
+    runtime-mmu (schema 1, Xtensa): the linked ELF, exactly as before.
+
+    fixed-vma: a --strip-debug copy. esptool's elf2image hashes the whole
+    ELF file into the app descriptor's app_elf_sha256 (and the image's
+    trailing hash follows), and the ELF's .debug_str carries the absolute
+    paths of the objects arduino-cli compiled - the sketch and the core,
+    which no -ffile-prefix-map of the stage build can reach. Two builds of
+    one sketch in two build directories therefore produced images differing
+    in exactly those 64 bytes. Stripping the debug sections leaves every
+    loadable section untouched (the checks C-1 to C-8 run on the image and
+    the stripped ELF's .data), so the image is the same and its descriptor
+    now hashes only what the image is made of.
+    """
+    if manifest["paddrMode"] != PADDR_FIXED_VMA:
+        return LINKED_ELF
+    runner(strip_debug_command(sdk["gcc"]), work, "Stripping debug sections")
+    return STRIPPED_ELF
 
 
 #
@@ -1058,26 +1112,28 @@ def main(argv: list[str] | None = None) -> int:
     expand = expander(stage, sdk, manifest["chip"])
     run(build_link_command(manifest, stage, sdk, expand, archive), work,
         "Linking")
+    image_elf = image_source_elf(manifest, sdk, work)
     run([str(sdk["esptool"]), "--chip", manifest["chip"], "elf2image",
          "--flash-mode", manifest["flashMode"],
          "--flash-freq", manifest["flashFreq"],
          "--flash-size", args.flash_size or manifest["flashSize"],
-         "-o", "app_xip.bin", "fmp_xip.elf"], work, "elf2image")
+         "-o", "app_xip.bin", image_elf], work, "elf2image")
 
     if manifest["paddrMode"] == PADDR_FIXED_VMA:
         #  The image goes to flash unchanged, so what the bootloader will
         #  make of it is decided here. The app partition it must fit in
         #  comes from the same partitions.csv the partition recipe converts.
+        #  The ELF compared against is the one elf2image read.
         layout = fixed_vma_layout(manifest["chip"])
         app_length = app_partition_length(build_path / "partitions.csv")
         for line in check_fixed_vma_image(
                 (work / "app_xip.bin").read_bytes(),
-                (work / "fmp_xip.elf").read_bytes(), layout, app_length):
+                (work / image_elf).read_bytes(), layout, app_length):
             print(line)
 
     destination_elf = build_path / f"{args.project_name}.elf"
     destination_bin = build_path / f"{args.project_name}.bin"
-    shutil.copyfile(work / "fmp_xip.elf", destination_elf)
+    shutil.copyfile(work / LINKED_ELF, destination_elf)
     shutil.copyfile(work / "app_xip.bin", destination_bin)
 
     digest = hashlib.sha256(destination_bin.read_bytes()).hexdigest().upper()

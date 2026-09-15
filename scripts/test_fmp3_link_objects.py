@@ -31,6 +31,12 @@ command literally, that schema 2 takes its flags from the manifest, and that
 the image checks C-1 to C-8 each fail on an image built to break exactly one
 of them - a check that cannot be shown failing is not evidence of anything.
 The images and the ELF are synthetic; esptool is not involved.
+
+The last group pins the driver 4 step in front of elf2image: a fixed-vma
+stage's image is made from a --strip-debug copy of the ELF (so the build
+path in .debug_str does not reach the app descriptor's app_elf_sha256), a
+runtime-mmu stage's is not, and a toolchain without objcopy stops the link
+instead of imaging the unstripped ELF. The commands are recorded, not run.
 """
 
 import json
@@ -41,10 +47,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fmp3_link import (APP_DESC_MAGIC, FIXED_VMA_LAYOUTS,  # noqa: E402
-                       ImageLayout, LinkError, app_partition_length,
-                       build_link_command, check_fixed_vma_image,
-                       collect_arduino_objects, expander,
-                       parse_image_segments, validate_manifest)
+                       LINKED_ELF, STRIPPED_ELF, ImageLayout, LinkError,
+                       app_partition_length, build_link_command,
+                       check_fixed_vma_image, collect_arduino_objects,
+                       expander, image_source_elf, parse_image_segments,
+                       validate_manifest)
 
 
 PROJECT = "LibraryInfo.ino"
@@ -436,6 +443,59 @@ def partition_cases(failures: list) -> None:
                      "C-8")
 
 
+def strip_cases(failures: list) -> None:
+    """image_source_elf: what elf2image is handed, per paddrMode."""
+    with tempfile.TemporaryDirectory() as temporary:
+        bin_dir = Path(temporary) / "bin"
+        bin_dir.mkdir()
+        gcc = bin_dir / "riscv32-esp-elf-gcc"
+        objcopy = bin_dir / "riscv32-esp-elf-objcopy"
+        gcc.write_bytes(b"")
+        objcopy.write_bytes(b"")
+        work = Path(temporary) / "work"
+        work.mkdir()
+        sdk = {"gcc": gcc}
+        ran: list = []
+
+        def record(command, cwd, what):
+            ran.append((list(command), Path(cwd), what))
+
+        elf = image_source_elf(SCHEMA2_RISCV, sdk, work, runner=record)
+        check(failures, "fixed-vma images the stripped copy",
+              elf == STRIPPED_ELF, f"elf={elf!r}")
+        check(failures, "fixed-vma runs exactly one command before elf2image",
+              len(ran) == 1, f"ran={ran}")
+        if ran:
+            command, cwd, _ = ran[0]
+            check(failures, "fixed-vma strips with the objcopy beside gcc",
+                  command == [str(objcopy), "--strip-debug", LINKED_ELF,
+                              STRIPPED_ELF],
+                  f"command={command}")
+            check(failures, "the strip runs in the link work directory",
+                  cwd == work, f"cwd={cwd}")
+
+        ran.clear()
+        elf = image_source_elf(SCHEMA1, sdk, work, runner=record)
+        check(failures, "runtime-mmu images the linked ELF itself",
+              elf == LINKED_ELF, f"elf={elf!r}")
+        check(failures, "runtime-mmu runs nothing before elf2image",
+              ran == [], f"ran={ran}")
+
+        #  Fail closed: no objcopy, no image. The unstripped ELF must not be
+        #  imaged silently, and nothing may have been run before the error.
+        objcopy.unlink()
+        ran.clear()
+        expect_error(failures, "fixed-vma without objcopy stops the link",
+                     lambda: image_source_elf(SCHEMA2_RISCV, sdk, work,
+                                              runner=record),
+                     "objcopy")
+        check(failures, "no command ran when objcopy is missing",
+              ran == [], f"ran={ran}")
+        elf = image_source_elf(SCHEMA1, sdk, work, runner=record)
+        check(failures, "runtime-mmu does not need objcopy",
+              elf == LINKED_ELF and ran == [], f"elf={elf!r} ran={ran}")
+
+
 def main() -> int:
     failures: list = []
 
@@ -494,6 +554,7 @@ def main() -> int:
     manifest_cases(failures)
     image_cases(failures)
     partition_cases(failures)
+    strip_cases(failures)
 
     if failures:
         print(f"FAILED, {len(failures)} case(s):")
