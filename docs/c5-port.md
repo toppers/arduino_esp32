@@ -220,7 +220,7 @@ C6 の Blink（17760 bytes）より RAM が 3.7 KB 多いのは主に `_kernel_i
   採取台本は A12（`0x0-0x1FFF` 消去）。
 - `arduino_interrupt_c5` / `arduino_gpio_c5` はどの stage にも入っていない（段3）。
 
-## 段2 の記録（2026-09-16、branch `feature/c5-arduino-stage2`、commit `f7194cc`（Task 1）+ 記録）
+## 段2 の記録（2026-09-16、branch `feature/c5-arduino-stage2`、commit `f7194cc`（Task 1）/ `7b37d07`（記録））
 
 M5Stamp-C5 実機で `minimal` 版 `Blink` が **stock M5Stack bootloader（@0x2000）** で起動し、
 A1（bootloader）と A6（CPU クロック 240 MHz）を確定した段。書込み・採取は台本
