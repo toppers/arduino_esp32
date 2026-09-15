@@ -533,7 +533,7 @@ marker の正規表現に掛からず heartbeat=38（blink 行は 39 のまま�
   `esptool_py 5.2.0`。番地は M5Stack platform.txt の upload recipe と同一（0x0/0x8000/0xe000/0x10000）。
 - **安全ゲート**（すべて実測、`task-1-report.md`）:
   1. **DUT 同定**: `flash-id --no-stub`（read-only）で `BASE MAC:`／chip 完全文字列／flash size を照合。
-     FORBIDDEN MAC 一覧と期待 MAC 以外は書込み前に rc!=0（esptool 未呼出、ファイル 0 本）。
+     FORBIDDEN MAC 一覧と期待 MAC 以外は書込み前に rc!=0（FORBIDDEN/偽 MAC は esptool 未呼出・ファイル 0 本。ポートを強制した対照 (c) は read-only の flash-id だけ走り .ident.log を残す）。
   2. **画像妥当性検査**（fix round 1 で追加）: 0 バイト拒否、bootloader/app は先頭 0xE9 + ヘッダ長・
      セグメント数、ptable は 3072 バイトちょうど、boot_app0 は 8192 バイトちょうど。いずれも
      esptool を呼ぶ前に入力段で拒否（負対照 `task1-imgcheck-neg.txt`）。
@@ -544,12 +544,12 @@ marker の正規表現に掛からず heartbeat=38（blink 行は 39 のまま�
      成功と同じ顔をする」対策済み（positive control 4 種）。redact 不成立時は `.UNREDACTED` へ
      隔離し rc=93（fail-closed）。
 - 段2 の実機実験ではこれらのゲートが実際に効くこと（DUT 同定 OK、負対照 3 通り rc!=0、画像検査
-  負対照 rc=1、cold の消失/出現記録、redact "masked and checked clean" 全 run）を確認した上で、
+  負対照 rc=1、cold の起動時 by-id 不在（uhubctl off 後）と出現時刻の記録（電源断そのものと reset 理由はログに無い）、redact "masked and checked clean" 全 run）を確認した上で、
   書込みは 1 回（`task2-A-warm1`）のみ行った。
 
 ### 懸念・持ち越し（段3 以降、owner: 段3+）
 
-(a) **`[Arduino] task start` の頭欠け（15/15）と定常時の 1 文字落ち（cold7 で 1/約430 行）**:
+(a) **`[Arduino] task start` の頭欠け（14/14）と定常時の 1 文字落ち（cold7 で 1/約430 行）**:
   `target_fput_log()` の busy-poll 経路と logtask（ISR 経路）が同じ USJ TX FIFO を同時に使う瞬間に
   文字が落ちる型（Xtensa 板では同じ行が無傷）。marker（banner/setup/heartbeat）の判定には影響しないが、
   **段4 以降で行単位の厳密照合をする試験は偽陰性を作る**ため、marker 判定を厳密な文字列一致にしないこと。
