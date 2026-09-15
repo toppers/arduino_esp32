@@ -818,11 +818,48 @@ kernel 表は残るため。固定値として恒久扱いしないこと（段1
 | 文脈 | 文字列 |
 | --- | --- |
 | Wi-Fi 初期化・停止 | `"%s esp_wifi_init=%d"` / `"%s esp_wifi_start=%d"` / `"%s esp_wifi_stop=%d"`（`toppers_wifi_core.c`、LOG_NOTICE） |
-| Open AP 未検証 | `"init: open AP requested - unverified on ESP32-C6 (supplicant is initialized regardless; stage 4)"`（`toppers_wifi_core.c`） |
+| Open AP 未検証 | `"[WiFiConnect] begin: open AP requested - unverified on ESP32-C6 (supplicant is initialized regardless; stage 4)"`（`toppers_wifi_connect.c`、空パスワードの `begin()` のたび。fix wave で `toppers_wifi_core.c` の初回 init から移した -- scan-first のスケッチでも出るように） |
+| tcpip 起動前の link 通知（fix wave） | `"[WiFiConnect] link %s before tcpip start: not forwarded to lwIP"`（`toppers_wifi_connect.c`、`netif_esp32s3_start()` 前に STA_CONNECTED/DISCONNECTED が来たとき。lwIP へは渡さない） |
 | 接続・DHCP | `"[WiFiConnect] esp_wifi_set_config=%d"` / `"[WiFiConnect] esp_wifi_connect=%d"` / `"[WiFiConnect] DHCP address=0x%08x"`（`toppers_wifi_connect.c`） |
 | DNS 失敗（Low#1） | 初回のみ `"[WiFiConnect] DNS is not built into this runtime (LWIP_DNS 0); ..."`（LOG_WARNING）、毎回 `"[WiFiConnect] DNS failed host=%s error=%d"` |
 | TCP | `"[WiFiConnect] socket creation failed"` / `"[WiFiConnect] TCP connect failed host=%s port=%d"` / `"[WiFiConnect] TCP send failed"` |
 | attachInterrupt 拒否 | `"arduino_interrupt: attach refused pin=%u fn=%s"` / `"arduino_interrupt: attach refused pin=%u mode=%d (unsupported on this port)"` |
+
+### 継承した dev の診断フック（`netif_esp32s3.c`、段4 の証拠採取用に残す。出荷可否は段5）
+
+vendored `wifi/net/netif_esp32s3.c` は dev のデモ用の挙動をそのまま持っている（無改変で写す方針、R12）:
+
+- **DHCP bound のたびに `net: DHCP bound ip=<a.b.c.d> gw=<a.b.c.d>` を LOG_NOTICE で出す**（`netif_status_cb`）。
+- **DHCP bound 直後にデフォルトゲートウェイへ raw API の ping を 1 回（`ping_init`。停止 API は無く、
+  足す側を一度きりにしてある = BL-H-8 の訂正、ソースコメント）**。
+- **`tcpip_init` 完了時に TCP echo / UDP echo サーバ（ポート 7、`tcpecho_raw_init` / `udpecho_raw_init`）を開く**。
+
+これらは dev が STA/DHCP/ping を実証したときの証拠フックで、**段4 の実機採取ではそのまま使う**（`ip=`/`gw=` 行と
+ping の応答が到達の証拠になる）。採取ログの伏字化は `scripts/capture_c6_usj.sh` の redact 段が IPv4 の dotted quad を
+`<IPv4>` に置き換える（creds ファイルが無くても IPv4 mask と peer-MAC mask は効く）ので、`ip=`/`gw=` 行を
+そのまま文書へ写さないこと。**Arduino のランタイムがこれら（特に port 7 の echo サーバ）を出荷すべきかは段5 で
+決める**（外すなら vendored ファイルの改変か adapter 側での抑止 = R12 の分岐点）。
+
+### Arduino IDE の size 行は ld の上限を見ていない（段5 の項目）
+
+`m5nanoc6_fmp3:FMP3Runtime=wificonnect` で WiFiConnect を建てると IDE / `arduino-cli` は
+`Global variables use 301240 bytes (91%) of dynamic memory ... Maximum is 327680 bytes.` と出す。
+この 327680 は M5Stack core の `m5stack_nano_c6` から継承した **`upload.maximum_data_size`**（FreeRTOS 前提の値）で、
+本 port の像を実際に縛るのは `esp32c6_xip.ld` の `RAM LENGTH 0x6E610 = 452,112`（余裕 150,848 B、上記「size と
+RAM 余裕」節、ドライバの C-1..C-8 が検査する側）。**91% を「あと 26 KB」と読むのは誤り**。段5 で
+`install_platform.py` の板行に `upload.maximum_data_size=452112` を上書きするか（`recipe.size.regex` は既に C6 用に
+上書きしている）、値の意味を `README.release.md` に書くかを決める。
+
+### 段4 の watch item: dev のデモ経路との未計測の差 3 点
+
+Task 2 のレビュー（stage-4 readiness）が挙げた、**dev `esp/app/wifi_sta.c` の C6 経路と adapter の経路の差で、
+まだ実機で測っていないもの**。どれもリンクでは分からない。
+
+| # | 差 | 何が起こりうるか（推測） | 段4 で回す対照 |
+| --- | --- | --- | --- |
+| W-1 | dev は `esp_wifi_start` の直後・`esp_wifi_connect` の前に scan を 1 回打つ（`wifi_sta_c6_scan_run`）。adapter の `begin()` は scan を打たずに connect する | scan 無しの connect で `NO_AP_FOUND` が出る可能性（dev がその条件を測っていない） | 最初の connect が失敗したら、**WiFiScan を先に建てて scan が AP を見つけることを確かめ**、次に scan -> `begin()` の順のスケッチで再試行する。それで通るなら差は W-1 |
+| W-2 | scan の後に `begin()` すると adapter は driver を `esp_wifi_stop` -> `set_config` -> `esp_wifi_start` と 1 回サイクルする（Xtensa で `AUTH_EXPIRE` 回避のために実測して入れた順序）。dev の C6 経路にはこのサイクルが無い | C6 の blob / shim で stop -> start が dev と同じ状態に戻るかは未計測（osi の `_wifi_clock_enable` の 2 回目の呼出し等） | scan-then-begin と begin-only の両方を焼き、`esp_wifi_stop=%d` / `esp_wifi_start=%d` の行と接続の成否を比べる |
+| W-3 | `attachInterrupt` は線 19 へ配線するコードがリンクされているだけで、一度も発火させていない | GPIO 割込みが線 19 で kernel の dispatcher に届くか、`acre_isr` が通るか、未計測 | 段6（LED / ボタンの例題）。段4 では `attachInterrupt` を呼ぶスケッチを焼かない |
 
 ### Xtensa の切り分け順を C6 にも適用する
 

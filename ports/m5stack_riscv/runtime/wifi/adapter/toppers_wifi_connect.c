@@ -52,6 +52,27 @@ static void stage_log(const char *message)
     (void)logtask_flush(0U);
 }
 
+/*
+ * Link notifications must not reach lwIP before tcpip_init() has run.
+ * The vendored netif_esp32s3_notify_link() goes straight to
+ * tcpip_callback(), whose LWIP_ASSERT("Invalid mbox") on the not yet
+ * created tcpip mailbox ends in the port's assert handler (an endless loop
+ * in the calling task - here the event task). A STA_CONNECTED/DISCONNECTED
+ * event can arrive before or without netif_esp32s3_start() (a scan-first
+ * boot, a failed begin() after a driver cycle), so the gate lives here, in
+ * the adapter, and the vendored netif stays untouched.
+ */
+static void notify_link_if_started(bool up)
+{
+    if (!netif_started) {
+        syslog(LOG_NOTICE,
+               "[WiFiConnect] link %s before tcpip start: not forwarded to lwIP",
+               up ? "up" : "down");
+        return;
+    }
+    netif_esp32s3_notify_link(up);
+}
+
 static const char *disconnect_reason_name(uint8_t reason)
 {
     switch (reason) {
@@ -89,7 +110,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         stage_log("[WiFiConnect] event: station connected");
         connection_status = TOPPERS_WL_IDLE;
         /* L2 up -> lwIP link up + DHCP start, in the tcpip_thread context. */
-        netif_esp32s3_notify_link(true);
+        notify_link_if_started(true);
     }
     else if (id == WIFI_EVENT_STA_DISCONNECTED) {
         const wifi_event_sta_disconnected_t *event =
@@ -107,7 +128,7 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         stage_log("[WiFiConnect] event: station disconnected");
         if (connection_status != TOPPERS_WL_CONNECT_FAILED)
             connection_status = TOPPERS_WL_CONNECTION_LOST;
-        netif_esp32s3_notify_link(false);
+        notify_link_if_started(false);
     }
 }
 
@@ -147,6 +168,15 @@ uint8_t toppers_fmp3_wifi_begin(const char *ssid, const char *password)
                 sizeof(config.sta.password) - 1U);
     config.sta.threshold.authmode = password_length == 0U
         ? WIFI_AUTH_OPEN : WIFI_AUTH_WPA2_PSK;
+    if (password_length == 0U) {
+        /*
+         * D6: said here, at every open request, rather than only on the
+         * first driver init - a scan-first sketch initializes the driver
+         * from the scan adapter and would otherwise never see it.
+         */
+        stage_log("[WiFiConnect] begin: open AP requested - unverified on "
+                  "ESP32-C6 (supplicant is initialized regardless; stage 4)");
+    }
     syslog(LOG_NOTICE,
            "[WiFiConnect] config authmode=%u password_length=%u",
            (uint_t)config.sta.threshold.authmode, (uint_t)password_length);

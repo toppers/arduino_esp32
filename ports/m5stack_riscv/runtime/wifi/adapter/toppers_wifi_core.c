@@ -133,12 +133,11 @@ int toppers_wifi_core_init(bool protected_auth, const char *tag,
      * zeroes it for an open AP because there it also skips the supplicant;
      * here the supplicant is initialized by esp_wifi_init() regardless, and
      * a crypto table that does not match the initialized supplicant would
-     * be a new, unmeasured state. Open AP on the C6 is unverified (stage 4).
+     * be a new, unmeasured state. Open AP on the C6 is unverified (stage 4);
+     * the NOTICE saying so is issued by toppers_fmp3_wifi_begin() on every
+     * open request, not here (this runs once per boot, and possibly from
+     * the scan adapter).
      */
-    if (!protected_auth) {
-        stage_log(tag, "init: open AP requested - unverified on ESP32-C6 "
-                       "(supplicant is initialized regardless; stage 4)");
-    }
     error = esp_wifi_init(&config);
     stage_log(tag, error == ESP_OK ? "init: esp_wifi_init OK"
                                    : "init: esp_wifi_init FAILED");
