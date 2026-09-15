@@ -116,14 +116,13 @@ PROFILES = {
 #    - the M5NanoC6 (ESP32-C6, RISC-V) offers minimal and wificonnect only:
 #      it has no display, so there is no m5 option (docs/c6-port.md, D11),
 #      and no BR/EDR radio either.
-#    - the M5StampC5 (ESP32-C5, RISC-V) is the same pair (C5 plan A10:
-#      59 -> 68 builds). Its wificonnect STAGE arrives at C5 plan stage 3;
-#      until then the platform's m5stampc5_fmp3 board offers the minimal
-#      menu entry only (install_platform.py EXPECTED_PROFILES), and the six
-#      wificonnect builds of this row fail at FQBN resolution, not at the
-#      link - run --boards m5stampc5_fmp3 --profiles minimal for the C5
-#      before stage 3. The row is written now so that --list-builds shows
-#      the 68 the plan verifies at stage 5.
+#    - the M5StampC5 (ESP32-C5, RISC-V) offers minimal only until C5 plan
+#      stage 3 stages its wifi-connect (the row grows to the C6 pair then,
+#      together with the other five tables: build_prebuilt_stages.CHIPS,
+#      install_platform.EXPECTED_PROFILES, the release allowlist, the drift
+#      test and the CI workflow; A10's 68 builds are stage 3's count, 62
+#      now). A row must never plan a build against a stage that does not
+#      exist: the FQBN would fail to resolve and say nothing about the code.
 #  Adding a board is adding a row (the value is a set; the order the builds
 #  run in is that of sorted(PROFILES), unchanged from before the table).
 BOARD_PROFILES = {
@@ -131,7 +130,7 @@ BOARD_PROFILES = {
     "m5sticks3_fmp3": {"minimal", "m5", "wificonnect"},
     "m5core_fmp3": {"minimal", "m5", "wificonnect", "btclassic"},
     "m5nanoc6_fmp3": {"minimal", "wificonnect"},
-    "m5stampc5_fmp3": {"minimal", "wificonnect"},
+    "m5stampc5_fmp3": {"minimal"},
 }
 
 #  Every board the platform offers, in the order they are verified.
