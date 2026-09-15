@@ -158,7 +158,10 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   複数ファイルのスケッチと、独自の `.cpp` を持つライブラリはリンクできます。
   `attachInterrupt` は `minimal` 以外の構成（`M5Unified + Dual Core` / `WiFi` /
   `Bluetooth Classic (SPP)`）で使えます（`WiFi` 構成で `GPIO` が未定義になる
-  問題は 2026-09-15 に修正済み）。
+  問題は 2026-09-15 に修正し、CoreS3 と M5Stack Basic の `WiFi` 構成で自己駆動の
+  割込み試験（RISING 5 / FALLING 5 / CHANGE 10 / detach 後 0）を実機で確認済み）。
+  Xtensa 側には `pinMode` が無いので、ピンの入出力設定は `hal/gpio_ll.h` などで
+  スケッチ側が行ってください（M5NanoC6 だけは `pinMode` を提供します）。
 - **Intel Mac には対応していません。** ビルドに必要なリンクドライバをホストごとに
   同梱していますが、`x86_64-apple-darwin` 向けは含まれていません。
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の

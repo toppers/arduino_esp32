@@ -1555,6 +1555,21 @@ DIFF: `link-manifest.json` の `extraLinkerScripts` と `banner.o`。baseline �
 `attachInterrupt` 自体が未定義で落ちる（minimal は `arduino_interrupt.o` を持たない設計、
 従来どおり）。スクリプトのテスト 4 本 PASS。
 
+**Xtensa 実機確認（同日、ユーザー指示）**: `wificonnect` 構成で `attachInterrupt` が実際に発火することを
+CoreS3（ESP32-S3、USB-JTAG `44:1b:f6:e2:73:ac`、G8 = Grove Port B p1）と M5Stack Basic（ESP32、
+CH34x `5B21222745` = `5c:01:3b:0c:ca:44`、G16 = Grove Port C p1。G8-11 は内蔵 flash）で確認した。
+自己駆動の試験スケッチ（`stage6/logs/xtensa-intr-probe.ino.txt`。開発リポジトリの
+`arduino/probe/arduino_t3_probe.cpp` と同じピン・同じ判定表。Xtensa runtime には `pinMode` が無いので
+pad 設定はスケッチ内で `hal/gpio_ll.h` + ROM `esp_rom_gpio_connect_out_signal`、ESP32 は
+`gpio_ll` の IO_MUX 系が libsoc の `GPIO_PIN_MUX_REG_OFFSET[]` を要求してリンクできないため
+`PERIPHS_IO_MUX_GPIO16_U` をレジスタマクロで直接書く）を、MAC ゲート付きの scratchpad 台本
+（`stage6/logs/xtensa-intr-capture.sh.txt`: `read-mac` が期待 MAC と一致しなければ焼かない、
+platform.txt と同じ番地で `write-flash`、`esp_idf_monitor --no-reset` で採取）で焼いて 2 run ずつ。
+**両板とも 2/2 で `[XT-INTR] VERDICT PASS rising=5 falling=5 change=10 detached=0 dispatch=20 call=20
+orphan=0 acre=2`**、`[XT-GPIO] readback ok`、`## Unexpected` 0、`dispatch isr id=2 on intno 18`（S3）/
+`intno 17`（ESP32）。ログ `stage6/logs/xtensa-intr-{cores3,corebasic}{,-run2}.log`。ONLOW/ONHIGH は
+C6 と同じ理由で測っていない。両板の flash にはこの試験スケッチが残っている（Wi-Fi 無し、creds 無し）。
+
 ### 段6 で行っていないこと
 
 - ~~RGB LED の色と点灯の目視~~ -> **段6 完了後の同日にユーザー目視で成立**（上記 6d / S6-6:
