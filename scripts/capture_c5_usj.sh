@@ -344,14 +344,15 @@ DUT_PORT="${DUT_PORT:-/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit
 #  Pure over the file; exercised by C5_MASK_SELFTEST=1.
 BOARDS_TXT="${BOARDS_TXT:-$HOME/Arduino/hardware/toppers/esp32/boards.txt}"
 BOARDS_KEY="m5stampc5_fmp3.build.bootloader_addr"
+BOARDS_KEY_RE="$(printf '%s' "$BOARDS_KEY" | sed 's/\./\\./g')"   # literal dots in the ERE
 C5_BL_ADDR_EXPECTED=0x2000
 c5_bootloader_addr() {   # <boards.txt> -> "0x2000" or a reason (rc 1)
     local f="$1" v n
     if [ ! -f "$f" ]; then echo "boards.txt not found: $f (BOARDS_TXT=; run scripts/install_platform.py first)"; return 1; fi
-    n="$($GREP -cE "^${BOARDS_KEY}=" "$f" || true)"
+    n="$($GREP -cE "^${BOARDS_KEY_RE}=" "$f" || true)"
     if [ "${n:-0}" -eq 0 ]; then echo "key $BOARDS_KEY not in $f"; return 1; fi
     if [ "$n" -ne 1 ]; then echo "key $BOARDS_KEY appears $n times in $f"; return 1; fi
-    v="$($GREP -E "^${BOARDS_KEY}=" "$f" | sed -E 's/^[^=]*=//; s/[[:space:]\r]+$//')"
+    v="$($GREP -E "^${BOARDS_KEY_RE}=" "$f" | sed -E 's/^[^=]*=//; s/[[:space:]\r]+$//')"
     case "$v" in
         0x*|0X*) [ -n "${v#0[xX]}" ] && printf '%s' "${v#0[xX]}" | $GREP -qE '^[0-9A-Fa-f]+$' \
                      || { echo "key $BOARDS_KEY has a non-hex value '$v' in $f"; return 1; } ;;
@@ -1107,6 +1108,7 @@ if [ "${C5_MASK_SELFTEST:-0}" = "1" ]; then
     }
     _bneg "missing file" MISSING "not found"
     _bneg "missing key" 'm5nanoc6_fmp3.build.bootloader_addr=0x0\n' "not in"
+    _bneg "key with the dots replaced (the ERE must treat them literally)" 'm5stampc5_fmp3Xbuild_bootloader_addr=0x2000\n' "not in"
     _bneg "0x0 (the C6 address)" 'm5stampc5_fmp3.build.bootloader_addr=0x0\n' "expected 0x2000"
     _bneg "0x1000 (the ESP32 address)" 'm5stampc5_fmp3.build.bootloader_addr=0x1000\n' "expected 0x2000"
     _bneg "decimal 8192" 'm5stampc5_fmp3.build.bootloader_addr=8192\n' "non-hex"
@@ -1135,7 +1137,7 @@ if [ "${C5_MASK_SELFTEST:-0}" = "1" ]; then
     _jp="$(c5_jtag_parse "$_jl" 0x40800123 "no ELF" 0 0x40800004)" || _fail "(20) parse (refused, clk) returned non-zero"
     printf '%s\n' "$_jp" | $GREP -qE '^(pcr|clk_result):' && _fail "(20) clock evidence printed although refused: $_jp"
     rm -rf "$_sd"
-    echo "c5 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact (dhcp 2 = both spellings), scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C5_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C5_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked (16) EXTRA_MARKERS: fixed strings counted (2/1), '[C5]' literal = 1 (ERE would be 8), empty -> nothing, absent -> 0 (17) c5_jtag_wanted: 6 asserted tuples + on_silent=0 (18) c5_jtag_parse: alive (1000 -> 2000, data_free=1 raw only) / not-advancing / refused (no serial with rc 0, other serial with rc 0 and 1: no values) / no serial + rc 1 -> not-run (no device), no values / backwards 2000 -> 1000 -> (wrapped), not-run, never alive / second read missing -> not-run, never alive / no symbol: pc equal -> not-advancing, pc moved -> not-run / empty -> not-run (19) bootloader address: 0x2000 (LF and CRLF) accepted; missing file / missing key / 0x0 / 0x1000 / decimal / empty / duplicate key refused with a reason (20) PCR decode 80 / 240 / XTAL, clk_result parsed (rc=1 OK), unavailable / wrong address reported, nothing printed when refused"
+    echo "c5 redact selftest PASS: (1) residue 5 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / HEX32 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (9b) address=0x<8 hex>: residue 1 / quarantined / masked 1 / 7-digit left (10) markers: fixture counts exact (dhcp 2 = both spellings), scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1 (13) redact-only refuses a git-tracked file, also with C5_REDACT_ANYWHERE (14) refuses outside LOG_DIR, file untouched (15) C5_REDACT_ANYWHERE=1 / inside LOG_DIR -> masked (16) EXTRA_MARKERS: fixed strings counted (2/1), '[C5]' literal = 1 (ERE would be 8), empty -> nothing, absent -> 0 (17) c5_jtag_wanted: 6 asserted tuples + on_silent=0 (18) c5_jtag_parse: alive (1000 -> 2000, data_free=1 raw only) / not-advancing / refused (no serial with rc 0, other serial with rc 0 and 1: no values) / no serial + rc 1 -> not-run (no device), no values / backwards 2000 -> 1000 -> (wrapped), not-run, never alive / second read missing -> not-run, never alive / no symbol: pc equal -> not-advancing, pc moved -> not-run / empty -> not-run (19) bootloader address: 0x2000 (LF and CRLF) accepted; missing file / missing key / dots-as-any-char / 0x0 / 0x1000 / decimal / empty / duplicate key refused with a reason (20) PCR decode 80 / 240 / XTAL, clk_result parsed (rc=1 OK), unavailable / wrong address reported, nothing printed when refused"
     exit 0
 fi
 
@@ -1240,6 +1242,7 @@ _pick_image() {   # suffix -> path (exactly one match required)
     printf '%s\n' "${c[0]}"
 }
 IMG_BL="${BOOTLOADER:-}"; IMG_PT="${PTABLE:-}"; IMG_APP="${APP:-}"
+BL_ADDR=""   # set ONLY by the boards.txt gate below; never a literal
 if [ -n "${SKETCH_BUILD:-}" ]; then
     [ -d "$SKETCH_BUILD" ] || die "SKETCH_BUILD is not a directory: $SKETCH_BUILD"
     [ -n "$IMG_BL" ]  || IMG_BL="$(_pick_image .bootloader.bin)"  || die "bootloader image not found"
@@ -1289,7 +1292,14 @@ fi
 #  The write list, in the upload recipe's order and addresses (bootloader at
 #  BL_ADDR = 0x2000 from boards.txt, gate 2b).
 ERASE_START=0x0; ERASE_LEN=0x2000    # flash 0x0-0x1FFF: the Direct Boot magic's home
-WRITE_ARGS=("${BL_ADDR:-0x2000}" "$IMG_BL" 0x8000 "$IMG_PT")
+#  BL_ADDR is empty in the modes that never write (NOFLASH=1 / COLD=1); the
+#  commands below are then assembled but never run. Any mode that can write
+#  must have passed the boards.txt gate, so an empty BL_ADDR there is a bug
+#  in this script, not a case to paper over with a literal.
+if [ "$COLD" != "1" ] && { [ "$NOFLASH" != "1" ] || [ "$DRYRUN" = "1" ]; }; then
+    [ -n "$BL_ADDR" ] || die "internal: bootloader address unset on a writing path (the boards.txt gate did not run)"
+fi
+WRITE_ARGS=("$BL_ADDR" "$IMG_BL" 0x8000 "$IMG_PT")
 [ "$BOOT_APP0" = "none" ] || WRITE_ARGS+=(0xe000 "$BOOT_APP0")
 WRITE_ARGS+=(0x10000 "$IMG_APP")
 N_IMAGES=$(( ${#WRITE_ARGS[@]} / 2 ))
@@ -1350,10 +1360,11 @@ say "capture prerequisites OK: monitor python $IDF_PYTHON"
 
 #  ---------------------------------------------------------------- 4. gate part 2 (hardware, read-only)
 #  --after for the identification: the board is left in the ROM download mode
-#  (no-reset) when a write follows (write-flash resets it again anyway) or in
-#  DRYRUN; when nothing will be written and the monitor will not reset either
-#  (NOFLASH=1 NORESET=1), hard-reset so the monitor listens to a running
-#  board rather than to one this script parked in the download mode.
+#  (no-reset) when a write follows (the erase/write/read-back chain continues
+#  there with --before no-reset); hard-reset when nothing will be written and
+#  the monitor will not reset either (NOFLASH=1 NORESET=1), so the monitor
+#  listens to a running board, and in DRYRUN (override below), so the board
+#  is not parked in the download mode by a run that does nothing else.
 IDENT_AFTER=no-reset
 if [ "$NOFLASH" = "1" ] && [ "$NORESET" = "1" ] && [ "$DRYRUN" != "1" ]; then IDENT_AFTER=hard-reset; fi
 #  DRYRUN: nothing follows the identification, so wake the board instead of
@@ -1405,6 +1416,7 @@ C5_FILES+=("$SHA_TXT")
     echo "# $(date '+%F %T')  DRYRUN=$DRYRUN NOFLASH=$NOFLASH COLD=$COLD NORESET=$NORESET  DUT_MAC=$DUT_MAC"
 } > "$SHA_TXT"
 if [ "$NOFLASH" != "1" ]; then
+    [ -n "$BL_ADDR" ] || die "internal: bootloader address unset right before the write"
     say "==== 2. write (erase 0x0-0x1FFF / bootloader $BL_ADDR / ptable 0x8000 / boot_app0 0xe000 / app 0x10000) ===="
     print_write_plan
     C5_FILES+=("$FLASH_LOG")

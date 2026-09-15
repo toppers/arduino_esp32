@@ -236,7 +236,7 @@ Task 1 の実装報告は本リポジトリ `.superpowers/sdd/PLAN-stage2-impl/t
 
 | # | 基準 | 判定 | 根拠 |
 | --- | --- | --- | --- |
-| 2a | `capture_c5_usj.sh` の DRYRUN が「erase-region 0x0 0x2000 + 焼く物 4 点（bootloader @0x2000 / 0x8000 / 0xe000 / 0x10000）の sha256・番地 + 読み戻し」を出し、MAC 不一致・FORBIDDEN（NanoC6）・DUT 不在・`bootloader_addr` != 0x2000 で rc!=0、selftest PASS | PASS | `task1-dryrun.txt`（実機 `flash-id --no-stub` で `BASE MAC: 3c:dc:75:8d:ed:20` / `ESP32-C5 (revision v1.0)` / 4MB を確認後、3 手の実コマンド行と 4 点の sha256・番地、rc=0）、`task1-gate-neg.txt`（(a) FORBIDDEN = NanoC6 の MAC -> esptool 未呼出 rc=1、(b) MAC 偽値 = by-id 不在 rc=1、(c) MAC 偽値 + 実ポート = `BASE MAC does not match` rc=1、(d) 別 rev = rc=1、(e) boards.txt の番地 0x0 = esptool 未呼出 rc=1、(f) key 欠落 = rc=1）、`task1-imgcheck-neg.txt`（0 バイト / 不正 magic / 31 バイト / ptable 3071 / boot_app0 8191 / 不在の 6 通り、いずれも esptool 未呼出 rc=1）、`task1-selftest.txt`（20 項目 PASS。(19) 番地ゲート、(20) PCR decode は新設。変異体 2 種（期待番地 0x1000、PLL_F240M の 160 化）で FAIL を実演） |
+| 2a | `capture_c5_usj.sh` の DRYRUN が「erase-region 0x0 0x2000 + 焼く物 4 点（bootloader @0x2000 / 0x8000 / 0xe000 / 0x10000）の sha256・番地 + 読み戻し」を出し、MAC 不一致・FORBIDDEN（NanoC6）・DUT 不在・`bootloader_addr` != 0x2000 で rc!=0、selftest PASS | PASS | `task1-dryrun.txt`（実機 `flash-id --no-stub` で `BASE MAC: 3c:dc:75:8d:ed:20` / `ESP32-C5 (revision v1.0)` / 4MB を確認後、3 手の実コマンド行と 4 点の sha256・番地、rc=0）、`task1-gate-neg.txt`（(a) FORBIDDEN = NanoC6 の MAC -> esptool 未呼出 rc=1、(b) MAC 偽値 = by-id 不在 rc=1、(c) MAC 偽値 + 実ポート = `BASE MAC does not match` rc=1、(d) 別 rev = rc=1、(e) boards.txt の番地 0x0 = esptool 未呼出 rc=1、(f) key 欠落 = rc=1）、`task1-imgcheck-neg.txt`（0 バイト / 不正 magic / 31 バイト / ptable 3071 / boot_app0 8191 / 不在の 6 通り、いずれも esptool 未呼出 rc=1）、`task1-selftest.txt`（20 項目 PASS。(19) 番地ゲート、(20) PCR decode は新設）、`task1-selftest-mutants.txt`（fix round 1 で採取。scratch 複製の変異体 3 種 = 期待番地 0x1000 -> (19) FAIL rc=1、PLL_F240M の 160 化 -> (20) FAIL rc=1、boards.txt key の `.` を未エスケープ -> (19) の dots-as-any-char 項目 FAIL rc=1。無変異は PASS rc=0） |
 | 2b | 条件 A（stock bootloader @0x2000 + stock `default` ptable + boot_app0、240 MHz）warm 5/5 | **PASS** | `task2-A-warm{1..5}.log/.run.txt/.sha.txt`（warm1 は `.ident.log`/`.flash.log`、warm5 は `.jtag.log`/`.jtag.txt` も）。5 回とも banner=1・setup=1・heartbeat=39・unexpected=0・smark=1・blink=39。独立集計（`task2-A-recount.txt`、python）でも同数、heartbeat 行の文字落ち 0 |
 | 2c | 条件 A の真cold 5/5 | **PASS（5/5）** | `task2-A-cold{1..5}.log/.cold.txt/.journal.txt/.run.txt/.sha.txt/.ctl.txt`。5 回とも setup=1・heartbeat=39・unexpected=0・blink=39（banner/`S` は host が tty を開く前に出るため 0、R11 どおり判定に使わない）。`.cold.txt` は 5 回とも「absent at start」-> 「appeared」（wait 開始から 3.07 s）、`.journal.txt` は電源サイクルごとに `USB disconnect` 1 回 + `new full-speed USB device` 1 回で採取中の再列挙なし。`.ctl.txt` に uhubctl の off/on 出力（`Port 4` のみ、NanoC6 の by-id は電源断中も present） |
 | 2d | 不成立なら B（dev bootloader）-> C（+dev ptable） | **不要（実施せず）** | A が 2b/2c を満たしたため。dev 側 bootloader（`be37126b...`）は読んでもいない |
@@ -310,8 +310,9 @@ task start                 <- [Arduino] task start の頭欠け（C6 段2 と同
   banner・`Processor 1 start.`・hrt notice は host が tty を開く前に出るため失われる（C6 段2 と同じ、
   R11。判定は heartbeat 回数）。`no time event is processed in hrt interrupt on PRC1.` は warm 5/5 で
   1 回ずつ、cold は先頭欠落のため 0（C6 段2 (c) と同じ型、害は観測していない）。
-- `[Arduino] task start` の頭欠けは 10/10（warm2-4・cold4 は行ごと無し、他は `task start` /
-  `ask start` / `] task start` / `start`）。C6 段2 (a) と同じ経路（USJ TX FIFO の競合）と推定。
+- `[Arduino] task start` の頭欠けは 10/10（行ごと無い（空行）のは warm4 のみ。残りは warm1 `task start` /
+  warm2 `k start` / warm3 `sk start` / warm5 `ask start` / cold1 `task start` / cold2 ` task start` /
+  cold3 `] task start` / cold4 `art` / cold5 `start`）。C6 段2 (a) と同じ経路（USJ TX FIFO の競合）と推定。
   heartbeat 行の文字落ち（C6 の cold7 `hartbeat`）は本段の 390 行中 0。
 
 ### WDT が止まっていることの根拠（AC-2f、推論と明記）
@@ -366,7 +367,8 @@ C5 で違う次の 5 点を足した（台本ヘッダに列挙）:
    / 4MB。FORBIDDEN に **M5NanoC6 `9c:13:9e:d3:62:18`** を追加（隣の hub port の板 = C6 台本の DUT）。
 2. **bootloader 番地はリテラルではない**: `BOARDS_TXT`（既定 `~/Arduino/hardware/toppers/esp32/
    boards.txt`）の `m5stampc5_fmp3.build.bootloader_addr` を読み、**0x2000 以外は拒否**
-   （上書き変数は意図的に無い）。負対照 (e)(f) と selftest (19)。
+   （上書き変数は意図的に無い。fix round 1 で `WRITE_ARGS` のリテラル fallback `0x2000` を撤去し、
+   書込み経路で未設定なら die、key の `.` は ERE でエスケープ）。負対照 (e)(f) と selftest (19)。
 3. **書込み run は毎回 `erase-region 0x0 0x2000` -> `write-flash` 4 点 -> `read-flash 0x0 0x2000` の
    読み戻し全 0xFF を要求**（asp3 の Direct Boot magic。dev 段0/段2 の発見）。3 手は ROM download
    mode で `--before no-reset` に連鎖（dev 台本で実証済みの列）。DRYRUN は 3 手をすべて表示し、
@@ -379,7 +381,10 @@ C5 で違う次の 5 点を足した（台本ヘッダに列挙）:
 
 ### 懸念・持ち越し（段3 以降）
 
-(a) **`[Arduino] task start` の頭欠け（10/10）**: C6 段2 (a) と同型。marker 判定には影響しないが、
+(a) **`[Arduino] task start` の頭欠け（10/10）**: C6 段2 (a) と同型。
+  warm5 の `.jtag.log` には 8 語読み（`mdw 0x40800004 8`）の直前に `Warn : [esp32c5] Failed to read
+  memory via program buffer.` が 1 回ある（値は出ており、直読みの PCR 2 語と `*_after` が一致 =
+  自己整合。openocd が別経路へ fallback したと推測）。marker 判定には影響しないが、
   行単位の厳密照合をする試験は偽陰性を作る。
 (b) **B / C / 80 MHz は Blink で未検証**。A1/A6 の確定に不要だが、stock bootloader 固有の挙動
   （WDT・QIO）が問題になったときの切り分け腕は残っている。
