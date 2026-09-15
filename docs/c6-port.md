@@ -1570,6 +1570,22 @@ orphan=0 acre=2`**、`[XT-GPIO] readback ok`、`## Unexpected` 0、`dispatch isr
 `intno 17`（ESP32）。ログ `stage6/logs/xtensa-intr-{cores3,corebasic}{,-run2}.log`。ONLOW/ONHIGH は
 C6 と同じ理由で測っていない。両板の flash にはこの試験スケッチが残っている（Wi-Fi 無し、creds 無し）。
 
+**Xtensa にも `pinMode` 群を追加（同日、ユーザー指示）**: `ports/m5stack_xtensa/runtime/arduino/arduino_gpio.{c,h}`
+（C6 版の写し。ESP32 は IO_MUX の表を `PERIPHS_IO_MUX_*_U` マクロから私的に組み直し、S3 は
+`gpio_ll_pullup_en`/`pulldown_en` だけ表を引くので `IO_MUX_GPIO0_REG + 4n` へ直書き）。`arduino_interrupt.c` と
+同じ 3 profile（m5-unified / wifi-connect / bt-classic）に配置、minimal は不変。4 板共通の例題
+`examples/GpioInterrupt`（自己駆動試験を `pinMode`/`digitalWrite`/`digitalRead` 経由で行う。板ごとのピン: NanoC6 G7、
+CoreS3 G8、Basic G16、StickS3 は未割当でリンクのみ）を `PROFILES` の m5 / wificonnect / btclassic に足し、verify は
+51 -> 59 本。既存例題のイメージは m5-unified / bt-classic / wifi-connect の 4 組で修正前後を比較し、バナーの
+ビルド時刻 + checksum + image sha 以外バイト不変（`--gc-sections` で未参照の `arduino_gpio.o` は落ちる）。X-check は
+Xtensa の 5 stage が想定どおり DIFF（新 object と `banner.o`）で baseline を取り直した。**実機**: `GpioInterrupt` を
+CoreS3 `wificonnect` 2/2、M5Stack Basic `wificonnect` 2/2、M5NanoC6 `wificonnect` 1/1 で
+`[GPIO-INTR] VERDICT PASS pin=<8|16|7> rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2`、
+`readback ok`（ログ `stage6/logs/gpio-api-*.log`）。**発見した別の既存問題（未修正）**: ESP32 の m5-unified stage には
+`_exit` / `__stack_chk_fail` の供給が無く（S3 は `chip_rom_libc.o`、ESP32 の wifi-connect は `toppers_lwip_compat.o`、
+bt-classic は `bt_idf_stubs.o` が持つ）、SDK の `-fstack-protector` でスタック上の `char` 配列を持つ関数が
+`__stack_chk_fail` -> `_exit` を引いてリンクに落ちる。例題は静的バッファで回避し、README に既知の制限として記載。
+
 ### 段6 で行っていないこと
 
 - ~~RGB LED の色と点灯の目視~~ -> **段6 完了後の同日にユーザー目視で成立**（上記 6d / S6-6:

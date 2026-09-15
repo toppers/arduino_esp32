@@ -341,6 +341,7 @@ endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
     target_sources(seam_objects PRIVATE
         "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
+        "${RUNTIME_ROOT}/arduino/arduino_gpio.c"
         "${RUNTIME_ROOT}/m5/app_support/m5_diag.c"
         "${RUNTIME_ROOT}/m5/app_support/m5_display_smoke_heap.c"
         "${RUNTIME_ROOT}/m5/compat/esp_shim_m5_ext.c")
@@ -454,6 +455,7 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one|bt-classic)$")
     #
     target_sources(seam_objects PRIVATE
         "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
+        "${RUNTIME_ROOT}/arduino/arduino_gpio.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_mtx.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_sem.c"

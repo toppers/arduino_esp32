@@ -65,8 +65,8 @@ prebuilt archive、include 配置に依存しています）。
 - 各構成が、Boards Manager 経由で入れたパッケージから
   **対応するすべてのボードでビルドできること**
   （`python3 scripts/verify_package.py --list-builds` が導出する本数、
-  2026-09-15 実測: CoreS3 13・M5StickS3 13・M5Core 17・M5NanoC6 8 の
-  計 51 本。`Bluetooth Classic` は M5Core 専用、M5NanoC6 は minimal と
+  2026-09-15 実測: CoreS3 15・M5StickS3 15・M5Core 20・M5NanoC6 9 の
+  計 59 本。`Bluetooth Classic` は M5Core 専用、M5NanoC6 は minimal と
   wifi-connect のみ）。Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
@@ -110,8 +110,8 @@ prebuilt archive、include 配置に依存しています）。
   （adapter のコードは共通）。有界の再試行は現状スケッチ側の責務です。
 - **GPIO API は `WiFi` 構成にだけあり、`Minimal` にはありません。** M5NanoC6 では
   `pinMode` / `digitalWrite` / `digitalRead` / `attachInterrupt` / `rgbLedWrite` が
-  `WiFi`（wificonnect）ランタイムにリンクされていて、同梱例題 `NanoC6Gpio` で実機
-  確認済みです（G7 を自分で駆動する自己駆動試験: RISING 5 / FALLING 5 / CHANGE 10 /
+  `WiFi`（wificonnect）ランタイムにリンクされていて、同梱例題 `NanoC6Gpio` と
+  `GpioInterrupt` で実機確認済みです（G7 を自分で駆動する自己駆動試験: RISING 5 / FALLING 5 / CHANGE 10 /
   detach 後 0、warm 4 回 + 真cold 1 回すべて `VERDICT PASS`。段6）。`pinMode` が受ける
   mode は `INPUT` / `INPUT_PULLUP` / `INPUT_PULLDOWN` / `OUTPUT` の 4 つで、それ以外は
   何も書かずにログを出します。USB の G12 / G13 は拒否します。`attachInterrupt` は
@@ -156,12 +156,22 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   `delay()` は使えません。** どちらも FreeRTOS を呼ぶためです。ログは
   `target_fput_log()` へ書いてください（同梱例題はすべてそうしています）。
   複数ファイルのスケッチと、独自の `.cpp` を持つライブラリはリンクできます。
-  `attachInterrupt` は `minimal` 以外の構成（`M5Unified + Dual Core` / `WiFi` /
-  `Bluetooth Classic (SPP)`）で使えます（`WiFi` 構成で `GPIO` が未定義になる
-  問題は 2026-09-15 に修正し、CoreS3 と M5Stack Basic の `WiFi` 構成で自己駆動の
-  割込み試験（RISING 5 / FALLING 5 / CHANGE 10 / detach 後 0）を実機で確認済み）。
-  Xtensa 側には `pinMode` が無いので、ピンの入出力設定は `hal/gpio_ll.h` などで
-  スケッチ側が行ってください（M5NanoC6 だけは `pinMode` を提供します）。
+  `pinMode` / `digitalWrite` / `digitalRead` と `attachInterrupt` は、4 ボードとも
+  `minimal` 以外の構成（`M5Unified + Dual Core` / `WiFi` / `Bluetooth Classic (SPP)`）
+  で使えます（Xtensa 3 ボードの `pinMode` 群は 2026-09-15 に追加。`WiFi` 構成で
+  `GPIO` が未定義になる問題も同日に修正）。同梱例題 `GpioInterrupt`（自己駆動の
+  割込み試験: RISING 5 / FALLING 5 / CHANGE 10 / detach 後 0）を CoreS3（G8）・
+  M5Stack Basic（G16）・M5NanoC6（G7）の `WiFi` 構成で実機確認済み。M5StickS3 は
+  試験ピン未割当（リンクのみ）。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
+  `INPUT_PULLDOWN` / `OUTPUT` の 4 つ。拒否するピン: CoreS3 / M5StickS3 は USB の
+  G19 / G20 と flash の G26-32、M5Stack Basic は UART0 の G1 / G3、flash の G6-11、
+  GPIO でないパッド（20, 24, 28-31）。`attachInterrupt` は `pinMode` を呼ばないので
+  先に `pinMode` してください。`delay()` / `Serial` は引き続きありません。
+- **M5Stack Basic の `M5Unified + Dual Core` 構成には `_exit` / `__stack_chk_fail`
+  が無く**、ローカルの `char` 配列を持つ関数（SDK の `-fstack-protector` で
+  `__stack_chk_fail` -> `_exit` を参照する）を含むスケッチはリンクに落ちます
+  （他の構成・他のボードにはあります。2026-09-15 に `GpioInterrupt` で発見、未修正。
+  例題側は静的バッファで回避）。
 - **Intel Mac には対応していません。** ビルドに必要なリンクドライバをホストごとに
   同梱していますが、`x86_64-apple-darwin` 向けは含まれていません。
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の

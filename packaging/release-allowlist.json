@@ -59,9 +59,14 @@
       "destination": "examples/WiFiConnect/WiFiConnect.ino"
     },
     {
-      "_comment": "M5NanoC6 only (stage 6): pinMode/digitalWrite/digitalRead, a self-driven attachInterrupt test and the RGB LED, all provided by the ESP32-C6 wifi-connect runtime. It ships to every board for the same reason BluetoothSPP does - one architecture-neutral library, four boards - and is guarded with ARDUINO_M5STACK_NANO_C6: on the three Xtensa boards it compiles and links to a setup() that logs one line saying which board it targets, instead of failing at the link with an undefined pinMode (the Xtensa runtime has no GPIO API yet). The README.md beside it is repository documentation (what the example tests and which log lines to count) and is not distributed: the platform archive carries the .ino named here only.",
+      "_comment": "M5NanoC6 only (stage 6): pinMode/digitalWrite/digitalRead, a self-driven attachInterrupt test and the RGB LED, all provided by the ESP32-C6 wifi-connect runtime. It ships to every board for the same reason BluetoothSPP does - one architecture-neutral library, four boards - and is guarded with ARDUINO_M5STACK_NANO_C6: on the three Xtensa boards it compiles and links to a setup() that logs one line saying which board it targets, instead of failing at the link with an undefined rgbLedWrite (the Xtensa boards have no RGB LED driver). The README.md beside it is repository documentation (what the example tests and which log lines to count) and is not distributed: the platform archive carries the .ino named here only.",
       "source": "examples/NanoC6Gpio/NanoC6Gpio.ino",
       "destination": "examples/NanoC6Gpio/NanoC6Gpio.ino"
+    },
+    {
+      "_comment": "Every board (2026-09-15): pinMode/digitalWrite/digitalRead and a self-driven attachInterrupt test, now that the Xtensa runtime has arduino_gpio.o too (m5-unified / wifi-connect / bt-classic; minimal has neither). The probe pin is chosen per board define; the M5StickS3 has none assigned and only links. Its README.md is repository documentation and is not distributed.",
+      "source": "examples/GpioInterrupt/GpioInterrupt.ino",
+      "destination": "examples/GpioInterrupt/GpioInterrupt.ino"
     }
   ],
   "fmp3CoreBranch": "fix/p4-clic-ipm (main系ではない。動的生成一式を含む)",

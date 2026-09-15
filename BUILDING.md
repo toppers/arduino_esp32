@@ -69,6 +69,18 @@ M5Stack Arduino core 3.3.8 が同梱する `esp-rv32` 2601 と `esp32c6-libs`
 stage には入りません**（minimal は段6 の前後で `banner.o` 以外 sha 同一）。
 `attachInterrupt`（`arduino_interrupt.c`、段3）も同じく wifi-connect のみです。
 
+Xtensa 側（`ports/m5stack_xtensa/runtime/arduino/arduino_gpio.c`、2026-09-15）にも
+同じ `pinMode` / `digitalWrite` / `digitalRead` があり、`arduino_interrupt.c` と同じ
+場所（m5-unified / wifi-connect / bt-classic の `seam_objects`）に並びます（minimal
+には入りません）。ESP32（LX6）は IO_MUX のレジスタが等間隔でなく `hal/gpio_ll.h` の
+IO_MUX 系が libsoc の `GPIO_PIN_MUX_REG_OFFSET[]` を要求するため、同じ表を
+`PERIPHS_IO_MUX_*_U` マクロから私的に組み直して（数値リテラル無し、IDF の値と
+`_Static_assert` で照合）レジスタマクロで書きます。ESP32-S3 は等間隔ですが
+`gpio_ll_pullup_en` / `gpio_ll_pulldown_en` だけが同じ表を引くので、その 2 つは
+避けて `IO_MUX_GPIO0_REG + 4 * n` へ直接書きます。wifi-connect の manifest には
+`<chip>.peripherals.ld` が `extraLinkerScripts` として入ります（`GPIO` の供給。
+同日に修正）。`examples/GpioInterrupt` が 4 板共通の自己駆動試験です。
+
 診断・対照用の CMake オプションは `--cmake-define` でそのままステージの
 CMake 呼び出しへ渡せます。
 
@@ -212,8 +224,8 @@ python3 scripts/verify_package.py --list-builds   # 実行せず、計画だけ�
 ```
 
 `--list-builds` はパッケージも Boards Manager への出入れもせず、板x構成x例題の
-表と合計だけを表示します（2026-09-15 実測: CoreS3 13・M5StickS3 13・M5Core 17・
-M5NanoC6 8 = 計 51。導出の正本はコマンドそのもので、この数字は実測の一例です）。
+表と合計だけを表示します（2026-09-15 実測: CoreS3 15・M5StickS3 15・M5Core 20・
+M5NanoC6 9 = 計 59。導出の正本はコマンドそのもので、この数字は実測の一例です）。
 
 - **既定は 4 板すべて**です。`--boards`/`--profiles` で絞り込めます。
 - **`verify_package.py` はローカルの package index を作って Boards Manager の
@@ -350,7 +362,7 @@ PY
   `scripts/verify_package.py` の `PROFILES` が正本です。
 - **特定の板にしか無い API を呼ぶ共有例題には、板ガードを付けてください。**
   `examples/` は 4 板共有で、`verify_package.py` は `PROFILES` の例題を板ごとに
-  建てます。M5NanoC6 にしか無い `pinMode` / `rgbLedWrite` 等を呼ぶ `NanoC6Gpio` は
+  建てます。M5NanoC6 にしか無い `rgbLedWrite` を呼ぶ `NanoC6Gpio` は
   `#if defined(ARDUINO_M5STACK_NANO_C6)`（arduino-cli が板の `build.board` から
   付ける define）で本体を囲み、他の板では `setup()` が「この例題は M5NanoC6 向け」の
   1 行を `target_fput_log` で出して何もしません（`loop()` は空）。**ガードがある

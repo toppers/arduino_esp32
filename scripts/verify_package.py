@@ -80,17 +80,24 @@ MULTI_FILE_SKETCH = "TwoFileSketch"
 #  object collection it exercises does not vary by profile.
 PROFILES = {
     "minimal": ["Blink", "LibraryInfo", MULTI_FILE_SKETCH],
-    "m5": ["M5Unified", "StackChanBasic", "DualCore", "Blink", "LibraryInfo"],
+    #  GpioInterrupt (pinMode/digitalWrite/digitalRead + a self-driven
+    #  attachInterrupt test) is on every profile that links
+    #  arduino_interrupt.o / arduino_gpio.o, i.e. everything but minimal:
+    #  the link is what proves the GPIO API exists on each board.
+    "m5": ["M5Unified", "StackChanBasic", "DualCore", "Blink", "LibraryInfo",
+           "GpioInterrupt"],
     #  NanoC6Gpio is board-guarded: the real test on the M5NanoC6, a no-op
-    #  on the Xtensa boards (whose runtime has no pinMode yet). It is on
+    #  on the Xtensa boards (it also drives the C6's RGB LED). It is on
     #  wificonnect because that is the only profile that links the C6's
-    #  arduino_gpio.o / arduino_rgb_led.o; the Xtensa link of the no-op is
-    #  the check that the guard holds.
-    "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo", "NanoC6Gpio"],
+    #  arduino_rgb_led.o; the Xtensa link of the no-op is the check that
+    #  the guard holds.
+    "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo", "NanoC6Gpio",
+                    "GpioInterrupt"],
     #  LibraryInfo and the generated multi-file sketch belong here too: both
     #  exist to prove the link driver takes every object the builder produced,
     #  and bt-classic is the profile with a second library object of its own.
-    "btclassic": ["BluetoothSPP", "Blink", "LibraryInfo", MULTI_FILE_SKETCH],
+    "btclassic": ["BluetoothSPP", "Blink", "LibraryInfo", MULTI_FILE_SKETCH,
+                  "GpioInterrupt"],
 }
 
 #  board -> the menu options that board offers. Every board the platform
