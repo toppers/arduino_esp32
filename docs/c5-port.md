@@ -56,7 +56,7 @@ M5Stack Arduino core 3.3.8 を入れた利用者が、`ToppersFMP3` パッケー
 | --- | --- | --- | --- |
 | 0 | X-check 4 系統（baseline + positive control）、本文書の骨子、allowlist の C5 出自 | 不要 | 完了（下記「段0 の記録」） |
 | 1 | runtime の chip 表化（C6 値不変）、C5 層の並置（arch / target / config / seam / prebuilt_stage_c5 / toolchain / arduino_*_c5）、scripts の表に C5 行、`--chip esp32c5 --profiles minimal` の stage、`m5stampc5_fmp3:FMP3Runtime=minimal` で Blink / LibraryInfo / TwoFile リンク、重複定義監査、X-check 9/9 | 不要 | 完了（下記「段1 の記録」） |
-| 2 | M5Stamp-C5 で Blink（stock bootloader @0x2000）、warm 5/5・真cold 5/5、`capture_c5_usj.sh` | 要 | 未着手 |
+| 2 | M5Stamp-C5 で Blink（stock bootloader @0x2000）、warm 5/5・真cold 5/5、`capture_c5_usj.sh` | 要 | 完了（下記「段2 の記録」。条件 A で warm 5/5・真cold 5/5、A1 = stock、A6 = 240 MHz を JTAG の PCR 読出しで確定） |
 | 3 | wifi-connect stage（shim C5 分岐 + clic shim、`.a` x4 vendored、idf_src C5 原本、DNS liblwip）、`nm -u` 空、ROM ld 勝者、移し漏れ表 | 不要 | 未着手 |
 | 4 | WiFiScan（2.4 / 5 GHz 可視）/ WiFiConnect（STA -> DHCP -> DNS -> TCP）真cold 3/3、APM OFF 対照 0 AP、GpioInterrupt（G1） | 要 | 未着手 |
 | 5 | verify 5 板 68 本、`check_release_artifacts`、CI、README / BUILDING / README.release / THIRD_PARTY_NOTICES / allowlist、docs | 不要 | 未着手 |
@@ -219,3 +219,215 @@ C6 の Blink（17760 bytes）より RAM が 3.7 KB 多いのは主に `_kernel_i
   `0x10000 app`（C6 の `0x0` と違う。`stage1/logs` の `Blink.full.log` は scratch にのみ残る）。
   採取台本は A12（`0x0-0x1FFF` 消去）。
 - `arduino_interrupt_c5` / `arduino_gpio_c5` はどの stage にも入っていない（段3）。
+
+## 段2 の記録（2026-09-16、branch `feature/c5-arduino-stage2`、commit `f7194cc`（Task 1）+ 記録）
+
+M5Stamp-C5 実機で `minimal` 版 `Blink` が **stock M5Stack bootloader（@0x2000）** で起動し、
+A1（bootloader）と A6（CPU クロック 240 MHz）を確定した段。書込み・採取は台本
+`scripts/capture_c5_usj.sh`（C6 台本の写し、C6 台本は無改変）のみで行い、実機操作は
+uhubctl による電源断／投入のみ。証跡は開発リポジトリ
+`.steering/20260916-c5-arduino-plan/stage2/{AC.md,logs/}`（`task1-*` = 台本の同定・負対照・
+selftest、`task2-A-*` = 実機実験 条件 A、`task2-A-recount.txt` = `.log` からの独立集計）。
+Task 1 の実装報告は本リポジトリ `.superpowers/sdd/PLAN-stage2-impl/task-1-report.md`
+（gitignore、未追跡）。記法: 事実 = 実測（ログ名を引く）、推測 = そこからの読み、
+未確認 = 測っていない。
+
+### AC 2a-2h
+
+| # | 基準 | 判定 | 根拠 |
+| --- | --- | --- | --- |
+| 2a | `capture_c5_usj.sh` の DRYRUN が「erase-region 0x0 0x2000 + 焼く物 4 点（bootloader @0x2000 / 0x8000 / 0xe000 / 0x10000）の sha256・番地 + 読み戻し」を出し、MAC 不一致・FORBIDDEN（NanoC6）・DUT 不在・`bootloader_addr` != 0x2000 で rc!=0、selftest PASS | PASS | `task1-dryrun.txt`（実機 `flash-id --no-stub` で `BASE MAC: 3c:dc:75:8d:ed:20` / `ESP32-C5 (revision v1.0)` / 4MB を確認後、3 手の実コマンド行と 4 点の sha256・番地、rc=0）、`task1-gate-neg.txt`（(a) FORBIDDEN = NanoC6 の MAC -> esptool 未呼出 rc=1、(b) MAC 偽値 = by-id 不在 rc=1、(c) MAC 偽値 + 実ポート = `BASE MAC does not match` rc=1、(d) 別 rev = rc=1、(e) boards.txt の番地 0x0 = esptool 未呼出 rc=1、(f) key 欠落 = rc=1）、`task1-imgcheck-neg.txt`（0 バイト / 不正 magic / 31 バイト / ptable 3071 / boot_app0 8191 / 不在の 6 通り、いずれも esptool 未呼出 rc=1）、`task1-selftest.txt`（20 項目 PASS。(19) 番地ゲート、(20) PCR decode は新設。変異体 2 種（期待番地 0x1000、PLL_F240M の 160 化）で FAIL を実演） |
+| 2b | 条件 A（stock bootloader @0x2000 + stock `default` ptable + boot_app0、240 MHz）warm 5/5 | **PASS** | `task2-A-warm{1..5}.log/.run.txt/.sha.txt`（warm1 は `.ident.log`/`.flash.log`、warm5 は `.jtag.log`/`.jtag.txt` も）。5 回とも banner=1・setup=1・heartbeat=39・unexpected=0・smark=1・blink=39。独立集計（`task2-A-recount.txt`、python）でも同数、heartbeat 行の文字落ち 0 |
+| 2c | 条件 A の真cold 5/5 | **PASS（5/5）** | `task2-A-cold{1..5}.log/.cold.txt/.journal.txt/.run.txt/.sha.txt/.ctl.txt`。5 回とも setup=1・heartbeat=39・unexpected=0・blink=39（banner/`S` は host が tty を開く前に出るため 0、R11 どおり判定に使わない）。`.cold.txt` は 5 回とも「absent at start」-> 「appeared」（wait 開始から 3.07 s）、`.journal.txt` は電源サイクルごとに `USB disconnect` 1 回 + `new full-speed USB device` 1 回で採取中の再列挙なし。`.ctl.txt` に uhubctl の off/on 出力（`Port 4` のみ、NanoC6 の by-id は電源断中も present） |
+| 2d | 不成立なら B（dev bootloader）-> C（+dev ptable） | **不要（実施せず）** | A が 2b/2c を満たしたため。dev 側 bootloader（`be37126b...`）は読んでもいない |
+| 2e | 240 MHz で不成立なら 80 MHz を 1 軸 | **不要（実施せず）** | A が 240 MHz のまま成立。段1 の watch item「240 MHz は実機未検証」は本段で解消 |
+| 2f | 像の size、最初の行（`S` mark）、WDT 停止の根拠、CPU 240 MHz の根拠 | **PASS** | 下記「最初の行の観察」「WDT が止まっていることの根拠」「CPU クロックの根拠（JTAG）」。像 size は「板の最終状態」 |
+| 2g | 本節、A1/A6 の確定、段3 の入口条件、dev `stage2/AC.md` | PASS（本 commit） | 本節、`README.md` の C5 行 |
+| 2h | 非退行: X-check 9/9（scripts を触ったため）、C6 側ファイル無改変 | PASS | `task1-xcheck.txt`（`expected=9 compared=9 match=9 diff=0`、`--strict` の差は 9 stage とも `banner.o` のみ、`ignored (not in baseline): esp32c5`。`git diff --stat HEAD -- ports/m5stack_xtensa src third_party ports/m5stack_riscv scripts/capture_c6_usj.sh` は空）。段1 の 3 例題リンクは `ports/`・`src/`・prebuilt を触っていないので状態不変と判断（Blink は本段で再コンパイル rc=0、C-1..C-9 OK） |
+
+### 軸表（書込み前に固定）
+
+| 軸 | 値 | 条件 A（採った条件） | 条件 B | 条件 C | 80 MHz 腕 |
+| --- | --- | --- | --- | --- | --- |
+| bootloader | stock（`bootloader_qio_80m.elf` -> `Blink.ino.bootloader.bin`、@0x2000、WDT 9 秒 armed、UART0 主 + USJ secondary、QIO）／dev seam（`be37126b...`、WDT 無効、USJ、DIO） | stock | dev | dev | A と同じ |
+| ptable | stock `default`（otadata 0xe000、app0 0x10000 +0x140000）／dev（nvs 0x9000、phy 0xf000、factory 0x10000） | stock | stock | dev | A と同じ |
+| boot_app0 @0xe000 | 焼く／焼かない | 焼く | 焼く | 焼く（dev ptable では nvs と重なる。記録のみ） | 焼く |
+| flash 0x0-0x1FFF | 毎回 erase-region + 読み戻し全 0xFF（asp3 の Direct Boot magic の消去） | 消す | 消す | 消す | 消す |
+| CPU | 240（entry `seam_c5_entry_boost`）／80（entry `seam_c5_entry`） | 240 | 240 | 240 | 80 |
+| reset | warm（`NOFLASH=1`、monitor の hard reset）／真cold（`COLD=1` + `uhubctl -l 2-3.3 -p 4`） | 両方 5 回 | 両方 5 回 | 両方 5 回 | 両方 5 回 |
+
+手順は A warm x5 -> A cold x5 ->（不成立なら）B -> C -> 80 MHz。**A で成立したため B/C/80 MHz は未実施**。
+
+### 結果表
+
+| 条件 | warm | 真cold | 判定 |
+| --- | --- | --- | --- |
+| A: stock bootloader @0x2000 + stock `default` ptable + boot_app0 + 240 MHz | **5/5** | **5/5** | **成立**（A1 = stock、A6 = 240 MHz） |
+| B: dev bootloader + stock ptable | 未実施（A 成立のため） | 未実施 | -- |
+| C: dev bootloader + dev ptable | 未実施（A 成立のため） | 未実施 | -- |
+| 80 MHz | 未実施（240 MHz のまま A が成立したため） | 未実施 | -- |
+
+書込みは全 10 run 中 **1 回だけ**（`task2-A-warm1`: `erase-region 0x0 0x2000` -> `write-flash` 4 点
+（`Hash of data verified x4`）-> `read-flash 0x0 0x2000` の読み戻しが 8192 バイト全 0xFF）。以後は
+`NOFLASH=1`（warm）または `COLD=1`（cold）で flash に触れていない（各 `.sha.txt` に
+"NOT written by this run"）。C6 段2 で 1/10 あった cold の無音は C5 の 5 回では 0 回。
+
+### 最初の行の観察（AC-2f）
+
+warm（5/5 とも同一の系列、`task2-A-warm{1..5}.log`）:
+
+```
+ESP-ROM:esp32c5-eco2-20250121
+Build:Jan 21 2025
+rst:0x15 (USB_UART_HPSYS),boot:0x18 (SPI_FAST_FLASH_BOOT)
+SPI mode:DIO, clock div:1
+load:0x408556b0,len:0x1258
+load:0x4084bba0,len:0xca4
+load:0x4084e5a0,len:0x315c
+entry 0x4084bba0
+S
+TOPPERS/FMP3 Kernel Release 3.4.0 for M5Stamp-C5 (ESP32-C5) (Sep 16 2026, 05:39:57)
+...
+Processor 1 start.
+no time event is processed in hrt interrupt on PRC1.
+System logging task is started on port 1.
+task start                 <- [Arduino] task start の頭欠け（C6 段2 と同型）
+[Arduino] task=2 processor=1
+[Blink] serial indicator start
+[Arduino] setup complete
+[Blink] ON / [Arduino] loop heartbeat ...（交互に 39 回）
+```
+
+- 系列は **ROM 起動バナー -> `load:`/`entry 0x4084bba0` -> 生の `S` 単独行（`SEAM_C5_ENTRY_MARK`）->
+  FMP3 banner**。**stock bootloader 自身は USJ に 1 行も出さない**（UART0 主、
+  `BOOTLOADER_LOG_LEVEL=ERROR`）。dev 段2 の seam bootloader（USJ コンソール）では `I (21) boot: ...`
+  の行が出ていたので、これは stock との見える差。
+- `load:0x4084e5a0,len:0x315c` = stock bootloader の `iram_loader_seg` が `0x4084E5A0` に置かれる
+  （段1 の `task4-stock-bootloader-readelf.txt` の値と一致、xip ld の RAM 上限と同じ）。
+- `S` は `seam_c5_entry_boost` の昇圧（PCR の CPU_DIV_NUM 2->0）より**後**に出る（`seam_c5_entry.S`
+  の順序）。`S` が 5/5 出た = 昇圧を通過してから USJ に書けている。
+- 真cold（5/5 とも同一）: 最初の行は **`System logging task is started on port 1.`**。ROM 行・`S`・
+  banner・`Processor 1 start.`・hrt notice は host が tty を開く前に出るため失われる（C6 段2 と同じ、
+  R11。判定は heartbeat 回数）。`no time event is processed in hrt interrupt on PRC1.` は warm 5/5 で
+  1 回ずつ、cold は先頭欠落のため 0（C6 段2 (c) と同じ型、害は観測していない）。
+- `[Arduino] task start` の頭欠けは 10/10（warm2-4・cold4 は行ごと無し、他は `task start` /
+  `ask start` / `] task start` / `start`）。C6 段2 (a) と同じ経路（USJ TX FIFO の競合）と推定。
+  heartbeat 行の文字落ち（C6 の cold7 `hartbeat`）は本段の 390 行中 0。
+
+### WDT が止まっていることの根拠（AC-2f、推論と明記）
+
+- stock bootloader は `CONFIG_BOOTLOADER_WDT_ENABLE=y`・9000 ms で armed のまま app へ飛ぶ
+  （段1 記載、`task4-stock-bootloader-readelf.txt`）。`CAPTURE_SEC=40` の窓で heartbeat（`loop()`
+  1000 回ごと、40 s の窓に 39 本 = 約 1 s 周期）が **39 本**、10 run すべてで観測。9 秒の壁を
+  大きく超えて連続している。
+- 採取中の USB 再列挙は無い（`.journal.txt` は電源サイクルごとに 1 回の列挙のみ）、warm の `rst:`
+  行は毎回 `0x15 (USB_UART_HPSYS)`（USJ 経由の host reset）で、RTC WDT の reset 理由は 10 run の
+  どこにも出ていない。
+- **これは間接証拠であり、LP_WDT レジスタの読み戻しはしていない**。以上から `hardware_init_hook`
+  （`target/m5stampc5_gcc/target_kernel_impl.c`）が stock bootloader の armed した 9 秒 RTC WDT を
+  実際に止めている、と**推論する**（実証ではない）。
+
+### CPU クロックの根拠（AC-2f、JTAG で実測）
+
+minimal stage は PCR を印字しない（dev の報告タスクは持ち込まない、S1-C5-3）ので、warm5 で
+台本の JTAG probe を強制（`C5_JTAG_FORCE=1`、`board/esp32c5-builtin.cfg`、`adapter serial
+3C:DC:75:8D:ED:20` を最初の `-c` に、halt -> 読出し -> resume、リセット無し）し、採取後に読んだ
+（`task2-A-warm5.jtag.{log,txt}`、openocd rc=0、`esp_usb_jtag: serial (3C:DC:75:8D:ED:20)` を確認）:
+
+```
+pcr: sysclk_conf=0xb0030200 cpu_freq_conf=0x00000000 soc_clk_sel=3 (PLL_F240M) xtal=48 cpu_div_num=0 cpu=240MHz
+clk_result: sysclk_before=0xb0030200 cpu_freq_before=0x00000002 ahb_before=0x00000005
+            sysclk_after=0xb0030200 cpu_freq_after=0x00000000 ahb_after=0x00000005 busupd_wait=0 rc=1 (OK)
+loop_calls: 40709 -> 42543 delta=1834   verdict: alive
+```
+
+- `PCR_CPU_FREQ_CONF`（0x60096118）= 0 = `CPU_DIV_NUM` 0（divider 1）、`PCR_SYSCLK_CONF`（0x60096110）
+  の `SOC_CLK_SEL` = 3 = PLL_F240M。**= 240 MHz**（dev 段4 Task 1 の実測値と同じ組合せ）。
+- `g_seam_c5_clk_result`（`.data` 0x40800004）は `cpu_freq_before=2`（bootloader が渡す 80 MHz）->
+  `after=0`、`rc=1 OK`、`busupd_wait=0`。= `seam_c5_entry_boost` -> `seam_c5_clk_set()` が走り、
+  分周の書換えと `bus_clk_update` の自己クリアが通った。
+- **A6 = 240 MHz（確定、実測で裏付け）**。80 MHz へのフォールバックは発生していない。
+- probe は halt を 2 回（各 1 回の読出し分）挟むが、採取（monitor）が終わったあとなので marker
+  には影響しない。probe 後の cold1-5 は成立（probe が板を壊していない）。
+
+### A1・A6 の確定
+
+- **A1 = stock M5Stack bootloader（@0x2000）（確定、実測で裏付け）**。条件 A で warm 5/5・真cold 5/5。
+  bootloader を本リポジトリに同梱する必要は無い。dev seam bootloader（B）・+dev ptable（C）は
+  A1 の確定に不要となったため未実施。
+- **A6 = 240 MHz（確定、JTAG の PCR 読出しで実測）**。
+
+### 台本のインタフェースと安全ゲート（`scripts/capture_c5_usj.sh`）
+
+C6 台本（`docs/c6-port.md` 段2 の同名節）と同じ入力・EXIT トラップ・marker 集計・JTAG probe に、
+C5 で違う次の 5 点を足した（台本ヘッダに列挙）:
+
+1. **DUT**: `3c:dc:75:8d:ed:20` / `ESP32-C5 (revision v1.0)`（rev 込みの完全文字列、dev 台本と同じ）
+   / 4MB。FORBIDDEN に **M5NanoC6 `9c:13:9e:d3:62:18`** を追加（隣の hub port の板 = C6 台本の DUT）。
+2. **bootloader 番地はリテラルではない**: `BOARDS_TXT`（既定 `~/Arduino/hardware/toppers/esp32/
+   boards.txt`）の `m5stampc5_fmp3.build.bootloader_addr` を読み、**0x2000 以外は拒否**
+   （上書き変数は意図的に無い）。負対照 (e)(f) と selftest (19)。
+3. **書込み run は毎回 `erase-region 0x0 0x2000` -> `write-flash` 4 点 -> `read-flash 0x0 0x2000` の
+   読み戻し全 0xFF を要求**（asp3 の Direct Boot magic。dev 段0/段2 の発見）。3 手は ROM download
+   mode で `--before no-reset` に連鎖（dev 台本で実証済みの列）。DRYRUN は 3 手をすべて表示し、
+   `--after hard-reset` で板を起こして終わる（C6 台本は download mode に置き去り）。
+4. **JTAG probe** は `board/esp32c5-builtin.cfg`。USB_SERIAL_JTAG レジスタ（C5 でも 0x6000F004/8）に
+   加えて `PCR_SYSCLK_CONF` / `PCR_CPU_FREQ_CONF` と `g_seam_c5_clk_result`（8 語）を読み、
+   `pcr: ... cpu=<MHz>` / `clk_result: ...` を `.jtag.txt` と `.sha.txt` に残す（verdict には使わない）。
+   selftest (20)。
+5. `wifi_adapter(c5): apm ` の marker（段4 用、本段では 0）。
+
+### 懸念・持ち越し（段3 以降）
+
+(a) **`[Arduino] task start` の頭欠け（10/10）**: C6 段2 (a) と同型。marker 判定には影響しないが、
+  行単位の厳密照合をする試験は偽陰性を作る。
+(b) **B / C / 80 MHz は Blink で未検証**。A1/A6 の確定に不要だが、stock bootloader 固有の挙動
+  （WDT・QIO）が問題になったときの切り分け腕は残っている。
+(c) **WDT 停止は間接証拠**（上記）。LP_WDT の読み戻しは JTAG probe で足せる（レジスタ番地の確認が
+  要る、未実施）。
+(d) **PCR 読出しは warm5 の 1 回**（cold では読んでいない。cold の PCR は dev 段4 で 240 を 3/3 実測）。
+(e) 台本の `WIFI_CREDS` 既定は dev の `wifi_credentials.sh` を読む（needles=6）。本段に Wi-Fi は無いが、
+  マスク層は 10 run とも "masked and checked clean"、`.UNREDACTED` 0 本。
+
+### 板の最終状態
+
+最後に書込みをした run は `task2-A-warm1`（`.sha.txt` に `Hash of data verified x4`、
+0x0-0x1FFF 読み戻し全 0xFF）。以後 flash には書いていない。
+
+| 番地 | sha256 | size | 物 |
+| --- | --- | --- | --- |
+| 0x0-0x1FFF | （全 0xFF） | 8192 | 消去済み（asp3 の Direct Boot magic は無い。工場退避像は dev `build/c5-backup/`） |
+| 0x2000 | `98aa7b90...` | 20656 | stock bootloader（`Blink.ino.bootloader.bin`、`bootloader_qio_80m.elf` 由来） |
+| 0x8000 | `148b959c...` | 3072 | stock `default` OTA ptable（`Blink.ino.partitions.bin`、C6 と同一バイト） |
+| 0xe000 | `f94c5d78...` | 8192 | `boot_app0.bin`（M5Stack core 3.3.8） |
+| 0x10000 | `c73915da...` | 83536 | `Blink.ino.bin`（minimal、240 MHz、C-1..C-9 OK） |
+
+= 条件 A が焼かれたまま。最後の run（cold5）は成立して終わっており、板は Blink を実行中
+（電源 on、by-id 存在、hub `2-3.3` port 4 connect）。dev 計画 3 の像（seam-c5-wifi のダミー creds
+`3d8658bb...` + dev bootloader/ptable + Direct Boot の頭）は本段の初回書込みで上書き・消去されている。
+
+### 段3 の入口条件
+
+`wifi-connect` stage 着手前に（C6 段2「段3 の入口条件」の C5 版。C6 で決着した項目は結論だけ書く）:
+
+- **shim の C5 分岐 + clic shim**: `ports/m5stack_riscv/runtime/wifi/shim`（C6 段3 で dev `esp/shim`
+  の第2コピーとして持ち込んだ版）に dev の C5 分岐（`TOPPERS_ESP32C5`、`esp_shim_intr_clic.*`
+  相当）を A2 の型（同一ファイル内の chip 分岐、C6 側のバイト列不変を X-check の C6 2 stage で示す）
+  で載せる。dev 段4 0-3 節の「共通ファイルへの C5 分岐は 3 形に限る」は dev の golden の話であり、
+  本リポジトリでは X-check（debug 情報無し）が判定器なので `__LINE__` を焼く行にだけ注意する。
+- **`.a` x4 vendored**: dev 台本 `build_{wpa_libs,mbedtls_tls,lwip_lib}_espidf_esp32c5.sh` +
+  arduino 専用 `liblwip.a`（LWIP_DNS=1、A7）を `wifi/prebuilt/{wpa2,lwip}/esp32c5` に置く。
+  libsupplicant は C6 版と 3 .o が違う（dev 段4 Task 2）ので C6 の `.a` を流用しない。
+- **idf_src の C5 原本**: A8（C6 の D8 例外 6 本 + lwIP contrib 3 本の C5 同名原本、
+  `IMPORT_PROVENANCE.md` に出自）。
+- **ROM ld と libc 供給**: minimal の 2 本から wifi-connect の本数へ広げるとき、C6 段3 の勝者表
+  （`{rand, md5_vector}` の交差）を C5 の `esp32c5.rom.*.ld` で採り直す。`nm -u` 空を段1 と同じ
+  手法で確認。C6 段1 の M-6 parity gap（`chip_rom_libc.c` 相当）の扱いは C6 段3 の結論に従う。
+- **APM 解除の置き場所**（A11）: dev の `c5_apm_unblock`（FUNC_CTRL x4 + TEE、既定 ON）を
+  C6 の `c6_apm_unblock` と同じ位置で呼ぶ。対照（OFF で 0 AP）は段4。
+- **`arduino_interrupt_c5` / `arduino_gpio_c5`** はまだどの stage にも入っていない（段1 は
+  `-fsyntax-only` のみ）。wifi-connect stage に入れ、GpioInterrupt（G1）は段4 で実機。
+- **表の 6 箇所を同時に `wificonnect` へ**（S1-C5-6）: `CHIPS` / `EXPECTED_PROFILES` / allowlist
+  `prebuiltStages` / drift test / CI yml / `verify_package.py BOARD_PROFILES`。`--list-builds` 62 -> 68。
+- **移し漏れ表**: dev C5 段4 の Task 0 差分 20 項目（port/measure/new/skip）を段3 の AC に写す。
+- 実機の入口: 板は条件 A の Blink のまま。段4 の書込みは同じ台本（`erase 0x0-0x1FFF` は冪等）。
