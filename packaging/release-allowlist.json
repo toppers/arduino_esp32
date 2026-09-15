@@ -10,6 +10,10 @@
   "portBaseRepositoryC6": "https://github.com/exshonda/fmp3_esp_idf_dev.git",
   "portBaseCommitC6": "c7fef186d3b98e9046005a3f3ab0f2dfb1a2fdfe",
   "portBaseCommitDateC6": "2026-09-15",
+  "_portCommentC5": "ESP32-C5 (M5Stamp-C5) port, planned for ports/m5stack_riscv as a chip branch beside the C6 (plan 4 A2: arch/riscv_gcc/esp32c5, target/m5stampc5_gcc, config/esp32c5, seam/seam_c5_*, cmake/prebuilt_stage_c5.cmake, toolchain-riscv-esp32c5.cmake): its provenance is the PRIVATE development repository directly, the same way portBaseCommitC6 above records the C6 (the public snapshot fdd89f8 named by portBaseCommit contains neither chip). Replace portBaseRepositoryC5 / portBaseCommitC5 with the public repository and its next snapshot commit once that snapshot is published; until then this is the only commit the C5 sources can be compared against. Declared at stage 0 of the C5 plan, before any C5 source is in this tree (docs/c5-port.md). The stage and tool rows the C5 board needs (prebuiltStages.esp32c5, chipToolDependencies.esp32c5: esp-rv32 2601 and esp32c5-libs 3.3.8) are added at stage 1 together with the tables scripts/test_check_release_artifacts.py holds them against.",
+  "portBaseRepositoryC5": "https://github.com/exshonda/fmp3_esp_idf_dev.git",
+  "portBaseCommitC5": "1d96bcba32a043eb7066126550b0dbe598e4aad6",
+  "portBaseCommitDateC5": "2026-09-16",
   "entries": [
     {
       "source": "examples/LibraryInfo/LibraryInfo.ino",
