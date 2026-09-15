@@ -529,7 +529,10 @@ add_dependencies(seam_cxx generate_cfg_gen_files)
 #                   table and no --wrap=esp_supplicant_init = D6), scan,
 #                   connect on the dev netif (D7), and the weak stubs
 #    arduino        attachInterrupt on line 19 through the kernel's
-#                   esp32c6_intmtx_route (S3-4; linked, not yet measured)
+#                   esp32c6_intmtx_route (S3-4), pinMode/digitalWrite/
+#                   digitalRead on hal/gpio_ll.h and rgbLedWrite on RMT
+#                   channel 0 (stage 6; wifi-connect only, minimal has no
+#                   SDK include path)
 #
 if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     add_library(wifi_objects OBJECT
@@ -568,7 +571,9 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         "${WIFI_ROOT}/adapter/toppers_wifi_scan.c"
         "${WIFI_ROOT}/adapter/toppers_wifi_connect.c"
         "${WIFI_ROOT}/adapter/toppers_wifi_optional_stubs.c"
-        "${RUNTIME_ROOT}/arduino/arduino_interrupt.c")
+        "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
+        "${RUNTIME_ROOT}/arduino/arduino_gpio.c"
+        "${RUNTIME_ROOT}/arduino/arduino_rgb_led.c")
     target_link_libraries(wifi_objects PRIVATE seam_common)
     add_dependencies(wifi_objects generate_cfg_gen_files)
 endif()

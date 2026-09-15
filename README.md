@@ -65,8 +65,8 @@ prebuilt archive、include 配置に依存しています）。
 - 各構成が、Boards Manager 経由で入れたパッケージから
   **対応するすべてのボードでビルドできること**
   （`python3 scripts/verify_package.py --list-builds` が導出する本数、
-  2026-09-15 実測: CoreS3 12・M5StickS3 12・M5Core 16・M5NanoC6 7 の
-  計 47 本。`Bluetooth Classic` は M5Core 専用、M5NanoC6 は minimal と
+  2026-09-15 実測: CoreS3 13・M5StickS3 13・M5Core 17・M5NanoC6 8 の
+  計 51 本。`Bluetooth Classic` は M5Core 専用、M5NanoC6 は minimal と
   wifi-connect のみ）。Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み

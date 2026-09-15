@@ -81,7 +81,12 @@ MULTI_FILE_SKETCH = "TwoFileSketch"
 PROFILES = {
     "minimal": ["Blink", "LibraryInfo", MULTI_FILE_SKETCH],
     "m5": ["M5Unified", "StackChanBasic", "DualCore", "Blink", "LibraryInfo"],
-    "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo"],
+    #  NanoC6Gpio is board-guarded: the real test on the M5NanoC6, a no-op
+    #  on the Xtensa boards (whose runtime has no pinMode yet). It is on
+    #  wificonnect because that is the only profile that links the C6's
+    #  arduino_gpio.o / arduino_rgb_led.o; the Xtensa link of the no-op is
+    #  the check that the guard holds.
+    "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo", "NanoC6Gpio"],
     #  LibraryInfo and the generated multi-file sketch belong here too: both
     #  exist to prove the link driver takes every object the builder produced,
     #  and bt-classic is the profile with a second library object of its own.

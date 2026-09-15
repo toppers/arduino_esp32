@@ -203,8 +203,8 @@ python3 scripts/verify_package.py --list-builds   # 実行せず、計画だけ�
 ```
 
 `--list-builds` はパッケージも Boards Manager への出入れもせず、板x構成x例題の
-表と合計だけを表示します（2026-09-15 実測: CoreS3 12・M5StickS3 12・M5Core 16・
-M5NanoC6 7 = 計 47。導出の正本はコマンドそのもので、この数字は実測の一例です）。
+表と合計だけを表示します（2026-09-15 実測: CoreS3 13・M5StickS3 13・M5Core 17・
+M5NanoC6 8 = 計 51。導出の正本はコマンドそのもので、この数字は実測の一例です）。
 
 - **既定は 4 板すべて**です。`--boards`/`--profiles` で絞り込めます。
 - **`verify_package.py` はローカルの package index を作って Boards Manager の
