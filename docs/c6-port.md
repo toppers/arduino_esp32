@@ -1593,6 +1593,22 @@ bt-classic は `bt_idf_stubs.o` が持つ）、SDK の `-fstack-protector` で�
 （StackChanBasic、Basic m5）のイメージはバナー時刻 + checksum + sha 以外バイト不変。X-check は esp32/m5-unified のみ
 DIFF -> baseline 取り直し。
 
+**Codex / Fable レビュー（同日、対象 `32e6f2b..1775b51` の 13 commit）と是正**: Codex 3 件（246,694 トークン、
+`read-only` sandbox）、Fable 5 件。重複を除き 5 件、すべて SDK ヘッダで裏を取って真と判定し、1 commit で是正:
+(1) [Fable High] ESP32 の RTC 系パッド 18 本（G0/2/4/12-15/25-27/32-39）の pull は IO_MUX の FUN_PU/PD では効かず RTC_IO
+レジスタが持つ（IDF `gpio_pullup_en` は `rtc_gpio_pullup_en` へ分岐）-> `rtc_io_periph.c` と同じ表（reg / RUE / RDE、
+`soc/rtc_io_reg.h` のマクロのみ）を私的に持ち、RTC パッドは RTC_IO 側へ書く。G34-39（SENSE/ADC、pull 無し）は pull 要求を
+拒否してログ。**実機**: Basic の Grove Port B G26（RTC パッド）で `INPUT_PULLUP` -> 1 / `INPUT_PULLDOWN` -> 0 / 再 PULLUP -> 1、
+対照の G16（digital パッド）も同じ（`stage6/logs/pinrule-corebasic.log`）。(2) [Codex/Fable] S3 の存在しない G22-25、
+ESP32 の非 GPIO パッドを SDK の `SOC_GPIO_VALID_GPIO_MASK` で拒否し、ESP32 の入力専用 G34-39 は `OUTPUT` を
+`SOC_GPIO_VALID_OUTPUT_GPIO_MASK` で拒否（CoreS3 G22 / StickS3 G23 / Basic G24 の拒否と G34 の `input-only`・
+`no pull-up/pull-down` ログを実機で確認）。ESP32 の IO_MUX 表は G20 を IDF と同じくマクロ値にした（validity は SOC mask が決める）。
+(3) [Fable Medium] C6 の in-package flash の MSPI パッド G24-30 を拒否（NanoC6 で `pinMode(25, OUTPUT)` -> `refused pin 25`）。
+(4) [Fable Low] RGB の `tx timeout` 後に `rmt_ll_tx_stop` + 割込み status クリア + 再初期化フラグ（送信中のチャネルの
+RMTMEM を書き換えない）。(5) [Codex/Fable Low] allowlist のコメント（StickS3 未割当）を現状に合わせた。
+`GpioInterrupt` の非退行: Basic / NanoC6 で VERDICT PASS（`stage6/logs/gpio-api-*-postreview.log`）。
+`stage6/logs/pinrule-*.log`（4 板とも `[PR] VERDICT PASS`）、試験スケッチ `stage6/logs/pin-rule-probe.ino.txt`。
+
 ### 段6 で行っていないこと
 
 - ~~RGB LED の色と点灯の目視~~ -> **段6 完了後の同日にユーザー目視で成立**（上記 6d / S6-6:

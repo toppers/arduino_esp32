@@ -79,10 +79,12 @@ void pinMode(uint8_t pin, uint8_t mode);
 void digitalWrite(uint8_t pin, uint8_t val);
 int  digitalRead(uint8_t pin);
 
-/*  The pin rule of this port: false for the console pads (ESP32-S3: USB
+/*  The pin rule of this port: false outside the SDK's SOC_GPIO_VALID_GPIO_MASK
+ *  (ESP32-S3: 22-25; ESP32: 24, 28-31), for the console pads (ESP32-S3: USB
  *  Serial/JTAG GPIO 19/20; ESP32: UART0 GPIO 1/3), the SPI flash pads
- *  (ESP32-S3: 26-32; ESP32: 6-11), pads that are not GPIOs on the ESP32
- *  (20, 24, 28-31) and pin >= GPIO_NUM_MAX. */
+ *  (ESP32-S3: 26-32; ESP32: 6-11) and pin >= GPIO_NUM_MAX. pinMode() further
+ *  refuses OUTPUT on input-only pads and pulls on pads without them (ESP32:
+ *  34-39 for both). */
 bool ard_gpio_pin_ok(uint8_t pin);
 
 #ifdef __cplusplus

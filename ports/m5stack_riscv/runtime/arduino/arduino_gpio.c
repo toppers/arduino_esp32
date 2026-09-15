@@ -31,8 +31,12 @@
  *  attachInterrupt test (examples/NanoC6Gpio) depends on exactly this.
  *
  *  Refused pins: 12 and 13 are the USB Serial/JTAG pads (the console of
- *  this port; gpio_ll_func_sel() would drop the USB pad enable), and
- *  anything >= GPIO_NUM_MAX (31 on the C6) does not exist.
+ *  this port; gpio_ll_func_sel() would drop the USB pad enable), 24-30 are
+ *  the MSPI pads of the in-package flash (C6FH4; func_sel on one of them
+ *  kills XIP), and anything outside SOC_GPIO_VALID_GPIO_MASK (0-30 on the
+ *  C6) does not exist. OUTPUT is refused on pads outside
+ *  SOC_GPIO_VALID_OUTPUT_GPIO_MASK (none on the C6; the rule is shared with
+ *  the Xtensa file, where the ESP32 has input-only pads).
  */
 #include <stdint.h>
 #include <stdbool.h>
@@ -40,6 +44,8 @@
 #include <t_syslog.h>
 #include <hal/gpio_ll.h>
 #include <soc/io_mux_reg.h>		/* PIN_FUNC_GPIO, USB_INT_PHY0_D{M,P}_GPIO_NUM */
+#include <soc/soc_caps.h>		/* SOC_GPIO_VALID_GPIO_MASK, SOC_GPIO_VALID_OUTPUT_GPIO_MASK */
+#include <soc/spi_pins.h>		/* MSPI_IOMUX_PIN_NUM_* (the in-package flash) */
 
 #include "arduino_gpio.h"
 
@@ -63,12 +69,33 @@ _Static_assert(USB_INT_PHY0_DM_GPIO_NUM == 12 && USB_INT_PHY0_DP_GPIO_NUM == 13,
 #define ARD_MODE_PULLUP_BIT		0x04U
 #define ARD_MODE_PULLDOWN_BIT	0x08U
 
+/*  The MSPI pads are 24..30 (CS0 24, MISO 25, WP 26, HD 28, CLK 29, MOSI 30;
+ *  27 lies inside the range and is refused with them). */
+#define ARD_MSPI_PIN_MIN	MSPI_IOMUX_PIN_NUM_CS0
+#define ARD_MSPI_PIN_MAX	MSPI_IOMUX_PIN_NUM_MOSI
+_Static_assert(ARD_MSPI_PIN_MIN == 24 && ARD_MSPI_PIN_MAX == 30
+			   && MSPI_IOMUX_PIN_NUM_MISO > ARD_MSPI_PIN_MIN && MSPI_IOMUX_PIN_NUM_MISO < ARD_MSPI_PIN_MAX
+			   && MSPI_IOMUX_PIN_NUM_WP > ARD_MSPI_PIN_MIN && MSPI_IOMUX_PIN_NUM_WP < ARD_MSPI_PIN_MAX
+			   && MSPI_IOMUX_PIN_NUM_HD > ARD_MSPI_PIN_MIN && MSPI_IOMUX_PIN_NUM_HD < ARD_MSPI_PIN_MAX
+			   && MSPI_IOMUX_PIN_NUM_CLK > ARD_MSPI_PIN_MIN && MSPI_IOMUX_PIN_NUM_CLK < ARD_MSPI_PIN_MAX,
+			   "C6 MSPI flash pads are not 24-30");
+
 bool
 ard_gpio_pin_ok(uint8_t pin)
 {
 	return pin < (uint8_t) GPIO_NUM_MAX
+		&& ((SOC_GPIO_VALID_GPIO_MASK >> pin) & 1U) != 0U
 		&& pin != (uint8_t) USB_INT_PHY0_DM_GPIO_NUM
-		&& pin != (uint8_t) USB_INT_PHY0_DP_GPIO_NUM;
+		&& pin != (uint8_t) USB_INT_PHY0_DP_GPIO_NUM
+		&& !(pin >= (uint8_t) ARD_MSPI_PIN_MIN && pin <= (uint8_t) ARD_MSPI_PIN_MAX);
+}
+
+/*  Output driver allowed on this pad (input-only pads exist on the ESP32,
+ *  not on the C6; kept for symmetry with the Xtensa file). */
+static inline bool
+ard_gpio_output_ok(uint8_t pin)
+{
+	return ((SOC_GPIO_VALID_OUTPUT_GPIO_MASK >> pin) & 1U) != 0U;
 }
 
 void
@@ -85,6 +112,10 @@ pinMode(uint8_t pin, uint8_t mode)
 		&& mode != OUTPUT) {
 		syslog(LOG_WARNING, "[C6-GPIO] pinMode: unsupported mode 0x%02x on pin %u",
 			   (uint_t) mode, (uint_t) pin);
+		return;
+	}
+	if ((mode & ARD_MODE_OUTPUT_BIT) != 0U && !ard_gpio_output_ok(pin)) {
+		syslog(LOG_WARNING, "[C6-GPIO] pinMode: pin %u is input-only", (uint_t) pin);
 		return;
 	}
 

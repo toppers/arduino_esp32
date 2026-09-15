@@ -34,13 +34,26 @@
  *  level the pin drives and the interrupt logic sees the pin's own edges
  *  (the self-driven attachInterrupt test of examples/GpioInterrupt).
  *
- *  Refused pins (ard_gpio_pin_ok): the console pads (ESP32-S3: USB
- *  Serial/JTAG GPIO 19/20; ESP32: UART0 GPIO 1/3), the SPI flash pads
- *  (ESP32-S3: MSPI 26-32; ESP32: MSPI 6-11), pads that are not GPIOs on
- *  the ESP32 (20, 24, 28-31: no IO_MUX register) and pin >= GPIO_NUM_MAX.
+ *  Refused pins (ard_gpio_pin_ok): everything outside the SDK's
+ *  SOC_GPIO_VALID_GPIO_MASK (ESP32-S3: 22-25 do not exist; ESP32: 24,
+ *  28-31), the console pads (ESP32-S3: USB Serial/JTAG GPIO 19/20; ESP32:
+ *  UART0 GPIO 1/3), the SPI flash pads (ESP32-S3: MSPI 26-32; ESP32: MSPI
+ *  6-11) and pin >= GPIO_NUM_MAX. OUTPUT is refused on pads outside
+ *  SOC_GPIO_VALID_OUTPUT_GPIO_MASK (ESP32: 34-39 are input-only), and a
+ *  pull is refused on pads that have none (ESP32: the same 34-39).
  *  The ESP32-S3's octal-PSRAM pads 33-37 are NOT refused (boards without
  *  octal PSRAM use them as GPIOs); a sketch that touches them on a CoreS3
  *  gets what it asked for.
+ *
+ *  ESP32 pulls (review finding, 2026-09-15): on the ESP32 the 18 RTC-capable
+ *  pads (0, 2, 4, 12-15, 25-27, 32-39) take their pull-up/pull-down from
+ *  the RTC_IO registers, not from the IO_MUX FUN_PU/FUN_PD bits (IDF's
+ *  gpio_pullup_en() routes them to rtc_gpio_pullup_en(); soc_caps.h says
+ *  "must set pullup/down via RTC register"). A private table below, built
+ *  from the soc/rtc_io_reg.h macros (IDF: soc/esp32/rtc_io_periph.c),
+ *  holds the register and the RUE/RDE bits of each such pad; 34-39 have
+ *  no pulls at all (the table says so and pinMode refuses the request).
+ *  The digital-only pads keep using the IO_MUX bits.
  */
 #include <stdint.h>
 #include <stdbool.h>
@@ -48,8 +61,12 @@
 #include <t_syslog.h>
 #include <hal/gpio_ll.h>
 #include <soc/io_mux_reg.h>
+#include <soc/soc_caps.h>		/* SOC_GPIO_VALID_*_MASK, SOC_GPIO_VALID_DIGITAL_IO_PAD_MASK */
 #include <soc/spi_pins.h>		/* MSPI_IOMUX_PIN_NUM_* */
 #include <soc/uart_pins.h>		/* U0TXD_GPIO_NUM / U0RXD_GPIO_NUM (ESP32) */
+#if defined(TOPPERS_ESP32_LX6)
+#include <soc/rtc_io_reg.h>		/* RTC_IO_*_REG / _RUE_M / _RDE_M (the RTC pads' pulls) */
+#endif
 
 #include "arduino_gpio.h"
 
@@ -91,7 +108,7 @@ static const uint8_t ard_iomux_off[GPIO_NUM_MAX] = {
 	ARD_OFF(PERIPHS_IO_MUX_MTMS_U),		ARD_OFF(PERIPHS_IO_MUX_MTDO_U),
 	ARD_OFF(PERIPHS_IO_MUX_GPIO16_U),	ARD_OFF(PERIPHS_IO_MUX_GPIO17_U),
 	ARD_OFF(PERIPHS_IO_MUX_GPIO18_U),	ARD_OFF(PERIPHS_IO_MUX_GPIO19_U),
-	0 /* 20: not bonded */,				ARD_OFF(PERIPHS_IO_MUX_GPIO21_U),
+	ARD_OFF(PERIPHS_IO_MUX_GPIO20_U),	ARD_OFF(PERIPHS_IO_MUX_GPIO21_U),
 	ARD_OFF(PERIPHS_IO_MUX_GPIO22_U),	ARD_OFF(PERIPHS_IO_MUX_GPIO23_U),
 	0 /* 24 */,							ARD_OFF(PERIPHS_IO_MUX_GPIO25_U),
 	ARD_OFF(PERIPHS_IO_MUX_GPIO26_U),	ARD_OFF(PERIPHS_IO_MUX_GPIO27_U),
@@ -116,10 +133,60 @@ ard_iomux_reg(uint32_t n)
 	return DR_REG_IO_MUX_BASE + ard_iomux_off[n];
 }
 
+/*
+ *  RTC pads of the ESP32 and their pull bits (IDF soc/esp32/rtc_io_periph.c,
+ *  columns reg / pullup / pulldown). rue == 0 means "this pad has no pulls"
+ *  (the SENSE and ADC pads, GPIO 34-39). Pads absent from the table are
+ *  digital-only and use the IO_MUX bits.
+ */
+struct ard_rtc_pull {
+	uint8_t		gpio;
+	uint32_t	reg;
+	uint32_t	rue;
+	uint32_t	rde;
+};
+static const struct ard_rtc_pull ard_rtc_pull_tbl[] = {
+	{ 36, RTC_IO_SENSOR_PADS_REG, 0U, 0U },
+	{ 37, RTC_IO_SENSOR_PADS_REG, 0U, 0U },
+	{ 38, RTC_IO_SENSOR_PADS_REG, 0U, 0U },
+	{ 39, RTC_IO_SENSOR_PADS_REG, 0U, 0U },
+	{ 34, RTC_IO_ADC_PAD_REG,     0U, 0U },
+	{ 35, RTC_IO_ADC_PAD_REG,     0U, 0U },
+	{ 25, RTC_IO_PAD_DAC1_REG,    RTC_IO_PDAC1_RUE_M,      RTC_IO_PDAC1_RDE_M },
+	{ 26, RTC_IO_PAD_DAC2_REG,    RTC_IO_PDAC2_RUE_M,      RTC_IO_PDAC2_RDE_M },
+	{ 33, RTC_IO_XTAL_32K_PAD_REG, RTC_IO_X32N_RUE_M,      RTC_IO_X32N_RDE_M },
+	{ 32, RTC_IO_XTAL_32K_PAD_REG, RTC_IO_X32P_RUE_M,      RTC_IO_X32P_RDE_M },
+	{ 4,  RTC_IO_TOUCH_PAD0_REG,  RTC_IO_TOUCH_PAD0_RUE_M, RTC_IO_TOUCH_PAD0_RDE_M },
+	{ 0,  RTC_IO_TOUCH_PAD1_REG,  RTC_IO_TOUCH_PAD1_RUE_M, RTC_IO_TOUCH_PAD1_RDE_M },
+	{ 2,  RTC_IO_TOUCH_PAD2_REG,  RTC_IO_TOUCH_PAD2_RUE_M, RTC_IO_TOUCH_PAD2_RDE_M },
+	{ 15, RTC_IO_TOUCH_PAD3_REG,  RTC_IO_TOUCH_PAD3_RUE_M, RTC_IO_TOUCH_PAD3_RDE_M },
+	{ 13, RTC_IO_TOUCH_PAD4_REG,  RTC_IO_TOUCH_PAD4_RUE_M, RTC_IO_TOUCH_PAD4_RDE_M },
+	{ 12, RTC_IO_TOUCH_PAD5_REG,  RTC_IO_TOUCH_PAD5_RUE_M, RTC_IO_TOUCH_PAD5_RDE_M },
+	{ 14, RTC_IO_TOUCH_PAD6_REG,  RTC_IO_TOUCH_PAD6_RUE_M, RTC_IO_TOUCH_PAD6_RDE_M },
+	{ 27, RTC_IO_TOUCH_PAD7_REG,  RTC_IO_TOUCH_PAD7_RUE_M, RTC_IO_TOUCH_PAD7_RDE_M },
+};
+#define ARD_RTC_PULL_N	(sizeof(ard_rtc_pull_tbl) / sizeof(ard_rtc_pull_tbl[0]))
+_Static_assert(ARD_RTC_PULL_N == 18, "ESP32 has 18 RTC pads");
+
+/*  NULL for a digital-only pad. */
+static const struct ard_rtc_pull *
+ard_rtc_pull_of(uint32_t n)
+{
+	uint32_t	i;
+
+	for (i = 0U; i < ARD_RTC_PULL_N; i++) {
+		if (ard_rtc_pull_tbl[i].gpio == n) {
+			return &ard_rtc_pull_tbl[i];
+		}
+	}
+	return NULL;
+}
+
 bool
 ard_gpio_pin_ok(uint8_t pin)
 {
 	return pin < (uint8_t) GPIO_NUM_MAX
+		&& ((SOC_GPIO_VALID_GPIO_MASK >> pin) & 1ULL) != 0ULL
 		&& ard_iomux_off[pin] != 0U
 		&& pin != (uint8_t) U0TXD_GPIO_NUM && pin != (uint8_t) U0RXD_GPIO_NUM
 		&& !(pin >= (uint8_t) MSPI_IOMUX_PIN_NUM_CLK
@@ -128,22 +195,48 @@ ard_gpio_pin_ok(uint8_t pin)
 _Static_assert(MSPI_IOMUX_PIN_NUM_CLK == 6 && MSPI_IOMUX_PIN_NUM_CS0 == 11,
 			   "ESP32 flash pads are not 6-11");
 
+/*  The pad has a pull-up / pull-down at all (ESP32: not on 34-39). */
+static bool
+ard_gpio_pull_ok(uint8_t pin)
+{
+	const struct ard_rtc_pull	*r = ard_rtc_pull_of(pin);
+
+	return r == NULL || r->rue != 0U;
+}
+
 #else	/* ESP32-S3 */
 
 bool
 ard_gpio_pin_ok(uint8_t pin)
 {
 	return pin < (uint8_t) GPIO_NUM_MAX
+		&& ((SOC_GPIO_VALID_GPIO_MASK >> pin) & 1ULL) != 0ULL
 		&& pin != (uint8_t) USB_INT_PHY0_DM_GPIO_NUM
 		&& pin != (uint8_t) USB_INT_PHY0_DP_GPIO_NUM
 		&& !(pin >= (uint8_t) MSPI_IOMUX_PIN_NUM_CS1
 			 && pin <= (uint8_t) MSPI_IOMUX_PIN_NUM_MOSI);
+}
+
+/*  Every S3 pad has pulls. */
+static bool
+ard_gpio_pull_ok(uint8_t pin)
+{
+	(void) pin;
+	return true;
 }
 _Static_assert(USB_INT_PHY0_DM_GPIO_NUM == 19 && USB_INT_PHY0_DP_GPIO_NUM == 20,
 			   "USB Serial/JTAG pads are not GPIO 19/20");
 _Static_assert(MSPI_IOMUX_PIN_NUM_CS1 == 26 && MSPI_IOMUX_PIN_NUM_MOSI == 32,
 			   "ESP32-S3 flash pads are not 26-32");
 #endif
+
+/*  Output driver allowed on this pad (SOC_GPIO_VALID_OUTPUT_GPIO_MASK:
+ *  the ESP32's 34-39 are input-only; every S3 pad can drive). */
+static inline bool
+ard_gpio_output_ok(uint8_t pin)
+{
+	return ((SOC_GPIO_VALID_OUTPUT_GPIO_MASK >> pin) & 1ULL) != 0ULL;
+}
 
 /*  IO_MUX bits (input enable, function select, pulls): gpio_ll on the S3,
  *  register macros on the private table for the ESP32. */
@@ -181,6 +274,28 @@ static void
 ard_iomux_pulls(uint32_t n, bool pullup, bool pulldown)
 {
 #if defined(TOPPERS_ESP32_LX6)
+	const struct ard_rtc_pull	*r = ard_rtc_pull_of(n);
+
+	if (r != NULL) {
+		/*  RTC pad: the pulls live in RTC_IO (rtcio_ll_pullup_enable() and
+		 *  friends set/clear the same bits). r->rue == 0 (no pulls) was
+		 *  refused by pinMode before getting here; keep the bits untouched. */
+		if (r->rue != 0U) {
+			if (pullup) {
+				SET_PERI_REG_MASK(r->reg, r->rue);
+			}
+			else {
+				CLEAR_PERI_REG_MASK(r->reg, r->rue);
+			}
+			if (pulldown) {
+				SET_PERI_REG_MASK(r->reg, r->rde);
+			}
+			else {
+				CLEAR_PERI_REG_MASK(r->reg, r->rde);
+			}
+		}
+		return;
+	}
 	if (pullup) {
 		SET_PERI_REG_MASK(ard_iomux_reg(n), FUN_PU);
 	}
@@ -227,6 +342,14 @@ pinMode(uint8_t pin, uint8_t mode)
 		&& mode != OUTPUT) {
 		syslog(LOG_WARNING, "[XT-GPIO] pinMode: unsupported mode 0x%02x on pin %u",
 			   (uint_t) mode, (uint_t) pin);
+		return;
+	}
+	if ((mode & ARD_MODE_OUTPUT_BIT) != 0U && !ard_gpio_output_ok(pin)) {
+		syslog(LOG_WARNING, "[XT-GPIO] pinMode: pin %u is input-only", (uint_t) pin);
+		return;
+	}
+	if ((mode & (ARD_MODE_PULLUP_BIT | ARD_MODE_PULLDOWN_BIT)) != 0U && !ard_gpio_pull_ok(pin)) {
+		syslog(LOG_WARNING, "[XT-GPIO] pinMode: pin %u has no pull-up/pull-down", (uint_t) pin);
 		return;
 	}
 

@@ -64,7 +64,7 @@
       "destination": "examples/NanoC6Gpio/NanoC6Gpio.ino"
     },
     {
-      "_comment": "Every board (2026-09-15): pinMode/digitalWrite/digitalRead and a self-driven attachInterrupt test, now that the Xtensa runtime has arduino_gpio.o too (m5-unified / wifi-connect / bt-classic; minimal has neither). The probe pin is chosen per board define; the M5StickS3 has none assigned and only links. Its README.md is repository documentation and is not distributed.",
+      "_comment": "Every board (2026-09-15): pinMode/digitalWrite/digitalRead and a self-driven attachInterrupt test, now that the Xtensa runtime has arduino_gpio.o too (m5-unified / wifi-connect / bt-classic; minimal has neither). The probe pin is chosen per board define (M5NanoC6 G7, CoreS3 G8, M5Stack Basic G16, M5StickS3 G9; all four verified on hardware 2026-09-15). Its README.md is repository documentation and is not distributed.",
       "source": "examples/GpioInterrupt/GpioInterrupt.ino",
       "destination": "examples/GpioInterrupt/GpioInterrupt.ino"
     }

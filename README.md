@@ -164,8 +164,12 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   M5Stack Basic（G16）・M5StickS3（G9）・M5NanoC6（G7）の `WiFi` 構成で 4 板とも
   実機確認済み。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
   `INPUT_PULLDOWN` / `OUTPUT` の 4 つ。拒否するピン: CoreS3 / M5StickS3 は USB の
-  G19 / G20 と flash の G26-32、M5Stack Basic は UART0 の G1 / G3、flash の G6-11、
-  GPIO でないパッド（20, 24, 28-31）。`attachInterrupt` は `pinMode` を呼ばないので
+  G19 / G20、flash の G26-32、存在しない G22-25、M5Stack Basic は UART0 の G1 / G3、
+  flash の G6-11、GPIO でないパッド（24, 28-31）、M5NanoC6 は USB の G12 / G13 と
+  flash の G24-30。M5Stack Basic の入力専用 G34-39 は `OUTPUT` と pull 付き mode を
+  拒否し（ログを出す）、RTC 系パッド（G0/2/4/12-15/25-27/32/33）の pull は
+  RTC_IO レジスタで設定します（Grove Port B の G26 で pull-up / pull-down の
+  読み戻しを実機確認済み）。`attachInterrupt` は `pinMode` を呼ばないので
   先に `pinMode` してください。`delay()` / `Serial` は引き続きありません。
 - M5Stack Basic の `M5Unified + Dual Core` 構成で、ローカルの `char` 配列を持つ
   関数を含むスケッチが `_exit` / `_kill` / `_getpid` 未定義でリンクに落ちる問題は

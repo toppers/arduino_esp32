@@ -80,7 +80,8 @@ int  digitalRead(uint8_t pin);
 
 /*  The pin rule of this port, shared with arduino_rgb_led.c so that every
  *  entry point refuses the same pins: false for GPIO 12/13 (USB
- *  Serial/JTAG, the console) and for pin >= GPIO_NUM_MAX. */
+ *  Serial/JTAG, the console), 24-30 (the in-package flash's MSPI pads),
+ *  anything outside SOC_GPIO_VALID_GPIO_MASK and pin >= GPIO_NUM_MAX. */
 bool ard_gpio_pin_ok(uint8_t pin);
 
 #ifdef __cplusplus

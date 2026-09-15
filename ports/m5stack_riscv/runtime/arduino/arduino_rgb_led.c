@@ -211,5 +211,11 @@ rgbLedWrite(uint8_t pin, uint8_t red_val, uint8_t green_val, uint8_t blue_val)
 		}
 		esp_rom_delay_us(ARD_RGB_POLL_US);
 	}
+	/*  Timed out: the channel may still be running. Stop it and forget the
+	 *  init so the next call re-initialises (reset_register + clock) before
+	 *  rewriting RMTMEM under a possibly active transmitter (review F4). */
+	rmt_ll_tx_stop(hw, ARD_RMT_CH);
+	rmt_ll_clear_interrupt_status(hw, RMT_LL_EVENT_TX_MASK(ARD_RMT_CH) | RMT_LL_EVENT_TX_ERROR(ARD_RMT_CH));
+	ard_rgb_inited = false;
 	syslog(LOG_WARNING, "[C6-RGB] tx timeout");
 }
