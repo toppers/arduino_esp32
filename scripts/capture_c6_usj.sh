@@ -97,8 +97,8 @@
 #    IDF_PYTHON    python of an ESP-IDF python env that has esp_idf_monitor
 #                  (default: newest $HOME/tools/espressif/python_env/
 #                  idf*_py3.*_env or $HOME/.espressif/python_env/... by sort -V).
-#    C6_MASK_SELFTEST=1  run the redact/mask self-test on fixtures and exit.
-#                  Touches no hardware.
+#    C6_MASK_SELFTEST=1  run the redact/mask self-test and the marker-count
+#                  self-test on fixtures and exit. Touches no hardware.
 #
 #  Markers counted at the end (strings from src/bridge/ArduinoSketchBridge.cpp,
 #  third_party/fmp3_core/syssvc/banner.c and arch/riscv_gcc/common):
@@ -106,10 +106,35 @@
 #    setup      "[Arduino] setup complete"
 #    heartbeat  "[Arduino] loop heartbeat"      (once per 1000 loop() calls)
 #    unexpected "## Unexpected" / "## Assertion" / "## Internal" /
-#               "Unregistered exception|interrupt" / "mcause="
+#               "Unregistered exception|interrupt" / "mcause=" /
+#               "[LWIP-ASSERT]" (wifi/net/port/sys_arch.c, the tcpip thread
+#               parks) / "abort() called" (wifi/shim/esp_shim_libc.c) /
+#               "ROM newlib abort()" (wifi/shim/wifi_stubs.c) /
+#               "libc: _exit(" and "libc: _kill(" (seam/newlib_syscalls.c)
 #    smark      a line that is just "S" (SEAM_C6_ENTRY_MARK, printed by the
 #               seam entry before the FMP3 banner)
 #    blink      "[Blink] ON" / "[Blink] OFF"    (examples/Blink only)
+#  Wi-Fi markers (strings from ports/m5stack_riscv/runtime/wifi/adapter/
+#  toppers_wifi_scan.c, toppers_wifi_connect.c, wifi/net/netif_esp32s3.c and
+#  wifi/shim/esp_wifi_adapter.c; the wifi-connect runtime only):
+#    scan       "[WiFiScan] found N APs"; the value printed is the LAST N
+#               seen (-1 when the line never appeared)
+#    scanap     "[WiFiScan] AP[i] ..." lines (one per neighbour listed)
+#    ssidraw    scan lines whose SSID column is NOT the "<SSID-i>" placeholder
+#               (the adapter prints placeholders; any other spelling is a
+#               leak of a neighbour's SSID into the log -- must be 0)
+#    connected  "[WiFiConnect] connected authmode="
+#    dhcp       "net: DHCP bound"                 (netif_esp32s3.c)
+#    dhcpdone   "[WiFiConnect] DHCP completed"    (the adapter's own line)
+#    ping       "net: ping gateway -> OK"        (netif_esp32s3.c, once)
+#    dnsok      "[WiFiConnect] DNS resolved"
+#    dnsfail    "[WiFiConnect] DNS failed"
+#    tcp        "[WiFiConnect] TCP received="
+#    disc       "[WiFiConnect] disconnected reason="
+#    beginrej   "[WiFiConnect] begin: rejected"
+#    apm        "wifi_adapter(c6): apm " readback lines (before-unblock /
+#               after-unblock / after-scan; register values only). The lines
+#               themselves are copied into .sha.txt as evidence.
 #
 #  Exit status: 0 when the capture ran (or DRYRUN completed); non-zero when
 #  the gate refused, a tool failed, or the redact stage could not prove the
@@ -313,6 +338,46 @@ c6_redact_on_exit() {
     return "$rc0"
 }
 
+#  ---------------------------------------------------------------- markers
+#  Counts the markers in one capture file and prints two lines:
+#    markers: banner=.. setup=.. heartbeat=.. unexpected=.. smark=.. blink=..
+#    wifi: scan=<N> scanap=.. ssidraw=.. connected=.. dhcp=.. dhcpdone=.. ping=..
+#          dnsok=.. dnsfail=.. tcp=.. disc=.. beginrej=.. apm=..
+#  Counts only; verdicts are the caller's. Exercised by C6_MASK_SELFTEST=1.
+C6_UNEXPECTED_RE='## Unexpected|## Assertion|## Internal|Unregistered (exception|interrupt)|mcause ?=|\[LWIP-ASSERT\]|abort\(\) called|ROM newlib abort\(\)|libc: _(exit|kill)\('
+c6_count_markers() {
+    local f="$1"
+    _cnt() { $GREP -acE "$1" "$f" || true; }
+    local n_banner n_setup n_heart n_unexp n_smark n_blink
+    n_banner="$(_cnt 'TOPPERS/FMP3 Kernel Release')"
+    n_setup="$(_cnt '\[Arduino\] setup complete')"
+    n_heart="$(_cnt '\[Arduino\] loop heartbeat')"
+    n_unexp="$(_cnt "$C6_UNEXPECTED_RE")"
+    n_smark="$(_cnt '^S'$'\r''*$')"
+    n_blink="$(_cnt '\[Blink\] (ON|OFF)')"
+    echo "markers: banner=$n_banner setup=$n_setup heartbeat=$n_heart unexpected=$n_unexp smark=$n_smark blink=$n_blink"
+    #  Wi-Fi: the scan count is the last "found N APs" value (-1 = never seen).
+    local n_scan n_scanap n_ssidraw n_conn n_dhcp n_dhcpdone n_ping n_dnsok n_dnsfail n_tcp n_disc n_beginrej n_apm
+    n_scan="$($GREP -aoE '\[WiFiScan\] found [0-9]+ APs' "$f" | tail -1 | $GREP -oE '[0-9]+' || true)"
+    n_scan="${n_scan:--1}"
+    n_scanap="$(_cnt '\[WiFiScan\] AP\[[0-9]+\]')"
+    #  A scan line is leak-free only when its SSID column is the placeholder.
+    n_ssidraw="$({ $GREP -aE 'SSID=' "$f" || true; } | { $GREP -avcE 'SSID=<SSID-[0-9]+>' || true; })"
+    n_conn="$(_cnt '\[WiFiConnect\] connected authmode=')"
+    n_dhcp="$(_cnt 'net: DHCP bound')"
+    n_dhcpdone="$(_cnt '\[WiFiConnect\] DHCP completed')"
+    n_ping="$(_cnt 'net: ping gateway -> OK')"
+    n_dnsok="$(_cnt '\[WiFiConnect\] DNS resolved')"
+    n_dnsfail="$(_cnt '\[WiFiConnect\] DNS failed')"
+    n_tcp="$(_cnt '\[WiFiConnect\] TCP received=')"
+    n_disc="$(_cnt '\[WiFiConnect\] disconnected reason=')"
+    n_beginrej="$(_cnt '\[WiFiConnect\] begin: rejected')"
+    n_apm="$(_cnt 'wifi_adapter\(c6\): apm ')"
+    echo "wifi: scan=$n_scan scanap=$n_scanap ssidraw=$n_ssidraw connected=$n_conn dhcp=$n_dhcp dhcpdone=$n_dhcpdone ping=$n_ping dnsok=$n_dnsok dnsfail=$n_dnsfail tcp=$n_tcp disc=$n_disc beginrej=$n_beginrej apm=$n_apm"
+}
+#  The APM readback lines (register values only; no MAC, no IP, no SSID).
+c6_apm_lines() { $GREP -aE 'wifi_adapter\(c6\): apm ' "$1" || true; }
+
 #  ---------------------------------------------------------------- self-test
 if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     #  Positive controls on fixtures. Touches no hardware, writes only to a
@@ -376,8 +441,54 @@ if [ "${C6_MASK_SELFTEST:-0}" = "1" ]; then
     printf 'x SELFTESTEXTRA y\n' > "$_st"
     _pre="$(c6_residue_count "$_st")" || _fail "(9) checker failed"
     [ "$_pre" = "1" ] || _fail "(9) checker does not see the extra needle ($_pre)"
+    #  --- (10)-(12): marker counting on a fixture ---
+    #  (10) a Wi-Fi capture with placeholders only: every counter non-zero
+    #  where the fixture has the line, ssidraw 0, unexpected 0, scan = LAST N.
+    _mk="$_sd/markers.log"
+    printf '%s\n' \
+        'S' 'TOPPERS/FMP3 Kernel Release 3.2.1' '[Arduino] setup complete' \
+        'wifi_adapter(c6): apm before-unblock hp_func_ctrl=0x00000001 lp_apm0_func_ctrl=0x00000001 lp_apm_func_ctrl=0x00000001 tee_m4=0x00000000' \
+        'wifi_adapter(c6): apm after-unblock hp_apm exception latch: none' \
+        '[WiFiScan] found 3 APs' \
+        '[WiFiScan] AP[0] rssi=-40 ch=1 SSID=<SSID-0>' \
+        '[WiFiScan] AP[1] rssi=-60 ch=6 SSID=<SSID-1>' \
+        '[WiFiScan] AP[2] rssi=-70 ch=11 SSID=<SSID-2>' \
+        '[WiFiScan] found 12 APs' \
+        '[WiFiConnect] connected authmode=3 channel=6' \
+        'net: DHCP bound ip=<IPv4> gw=<IPv4>' '[WiFiConnect] DHCP completed' \
+        'net: ping gateway -> OK' 'net: ping gateway -> timeout' \
+        '[WiFiConnect] DNS resolved host=example.com address=0x12345678' \
+        '[WiFiConnect] DNS failed host=example.invalid error=-1 (unresolved)' \
+        '[WiFiConnect] TCP received=42' \
+        '[WiFiConnect] disconnected reason=201 (NO_AP_FOUND) rssi=0' \
+        '[WiFiConnect] begin: rejected or initialization failed' \
+        '[Arduino] loop heartbeat 1000' '[Blink] ON' '[Blink] OFF' > "$_mk"
+    _ml="$(c6_count_markers "$_mk")" || _fail "(10) c6_count_markers returned non-zero"
+    _exp1='markers: banner=1 setup=1 heartbeat=1 unexpected=0 smark=1 blink=2'
+    _exp2='wifi: scan=12 scanap=3 ssidraw=0 connected=1 dhcp=1 dhcpdone=1 ping=1 dnsok=1 dnsfail=1 tcp=1 disc=1 beginrej=1 apm=2'
+    [ "$(printf '%s\n' "$_ml" | sed -n 1p)" = "$_exp1" ] || _fail "(10) markers line: $(printf '%s\n' "$_ml" | sed -n 1p)"
+    [ "$(printf '%s\n' "$_ml" | sed -n 2p)" = "$_exp2" ] || _fail "(10) wifi line: $(printf '%s\n' "$_ml" | sed -n 2p)"
+    [ "$(c6_apm_lines "$_mk" | wc -l)" -eq 2 ] || _fail "(10) c6_apm_lines did not return 2 lines"
+    #  (11) positive controls for the new detectors: a leaked SSID column is
+    #  counted (ssidraw 1 per such line, placeholders excluded), and each new
+    #  unexpected pattern counts once.
+    printf '%s\n' '[WiFiScan] AP[0] rssi=-40 ch=1 SSID=SelfTestLeak' \
+        '[WiFiScan] AP[1] rssi=-40 ch=1 SSID=<SSID-1>' \
+        '[WiFiScan] AP[2] rssi=-40 ch=1 SSID=' \
+        '[LWIP-ASSERT] "x" at file.c:1' 'abort() called' 'ROM newlib abort()' \
+        'libc: _exit(1)' 'libc: _kill(sig=6)' '## Unexpected exception' > "$_mk"
+    _ml="$(c6_count_markers "$_mk")" || _fail "(11) c6_count_markers returned non-zero"
+    printf '%s\n' "$_ml" | sed -n 1p | $GREP -q ' unexpected=6 ' || _fail "(11) unexpected is not 6: $(printf '%s\n' "$_ml" | sed -n 1p)"
+    printf '%s\n' "$_ml" | sed -n 2p | $GREP -q ' ssidraw=2 ' || _fail "(11) ssidraw is not 2: $(printf '%s\n' "$_ml" | sed -n 2p)"
+    printf '%s\n' "$_ml" | sed -n 2p | $GREP -q '^wifi: scan=-1 scanap=3 ' || _fail "(11) scan/scanap without a found line: $(printf '%s\n' "$_ml" | sed -n 2p)"
+    #  (12) an empty file: every count 0, scan -1 (the counters must not
+    #  fail-open into a non-number when grep matches nothing).
+    : > "$_mk"
+    _ml="$(c6_count_markers "$_mk")" || _fail "(12) c6_count_markers returned non-zero on an empty file"
+    [ "$(printf '%s\n' "$_ml" | sed -n 1p)" = 'markers: banner=0 setup=0 heartbeat=0 unexpected=0 smark=0 blink=0' ] || _fail "(12) markers line on empty: $(printf '%s\n' "$_ml" | sed -n 1p)"
+    [ "$(printf '%s\n' "$_ml" | sed -n 2p)" = 'wifi: scan=-1 scanap=0 ssidraw=0 connected=0 dhcp=0 dhcpdone=0 ping=0 dnsok=0 dnsfail=0 tcp=0 disc=0 beginrej=0 apm=0' ] || _fail "(12) wifi line on empty: $(printf '%s\n' "$_ml" | sed -n 2p)"
     rm -rf "$_sd"
-    echo "c6 redact selftest PASS: (1) residue 4 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle"
+    echo "c6 redact selftest PASS: (1) residue 4 (2) quarantine rc!=0 + .UNREDACTED (3) transformer failure -> rc 93 (4) masked: peer 4 (EUI-64 whole) / IPv4 2 / DUT kept (5) DUT_MAC unset -> 7 masks, no tails (6) checker failure -> empty (7) creds needles 7, residue 5 (8) tokens SSID 2 / PASS 1 / BSSID 1 / IPv4 1 (9) checker sees an untransformed needle (10) markers: fixture counts exact, scan = last N, apm lines 2 (11) ssidraw 2 / unexpected 6 (new detectors) (12) empty file -> zeros, scan -1"
     exit 0
 fi
 
@@ -673,14 +784,12 @@ sed -i 's/\x1b\[[0-9;]*m//g' "$OUT" 2>/dev/null || true
 say "captured $(wc -l < "$OUT") lines -> $OUT"
 
 #  ---------------------------------------------------------------- 7. markers
-_cnt() { $GREP -acE "$1" "$OUT" || true; }
-n_banner="$(_cnt 'TOPPERS/FMP3 Kernel Release')"
-n_setup="$(_cnt '\[Arduino\] setup complete')"
-n_heart="$(_cnt '\[Arduino\] loop heartbeat')"
-n_unexp="$(_cnt '## Unexpected|## Assertion|## Internal|Unregistered (exception|interrupt)|mcause ?=')"
-n_smark="$(_cnt '^S'$'\r''*$')"
-n_blink="$(_cnt '\[Blink\] (ON|OFF)')"
-say "markers: banner=$n_banner setup=$n_setup heartbeat=$n_heart unexpected=$n_unexp smark=$n_smark blink=$n_blink"
-echo "markers: banner=$n_banner setup=$n_setup heartbeat=$n_heart unexpected=$n_unexp smark=$n_smark blink=$n_blink" >> "$SHA_TXT"
+MARKER_LINES="$(c6_count_markers "$OUT")"
+printf '%s\n' "$MARKER_LINES" | sed 's/^/[C6] /'
+printf '%s\n' "$MARKER_LINES" >> "$SHA_TXT"
+#  APM readback evidence (register values only) for the stage 4 control.
+if [ -n "$(c6_apm_lines "$OUT")" ]; then
+    { echo "# apm readback lines:"; c6_apm_lines "$OUT" | sed 's/^/#   /'; } >> "$SHA_TXT"
+fi
 say "record -> $SHA_TXT"
 exit 0
