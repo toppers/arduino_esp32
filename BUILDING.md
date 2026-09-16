@@ -306,10 +306,11 @@ python3 scripts/verify_package.py --list-builds   # 実行せず、計画だけ�
 ```
 
 `--list-builds` はパッケージも Boards Manager への出入れもせず、板x構成x例題の
-表と合計だけを表示します（2026-09-17 実測: CoreS3 15・M5StickS3 15・
-M5AtomS3 Lite 9・M5Core 20・
-M5NanoC6 9・M5StampC5 9 = 計 77。導出の正本はコマンドそのもので、この数字は
-実測の一例です。2026-09-16 時点は M5AtomS3Lite の 9 本が無く 68 でした）。
+表と合計だけを表示します（2026-09-17 実測: CoreS3 16・M5StickS3 16・
+M5AtomS3 Lite 10・M5Core 21・M5NanoC6 10・M5StampC5 10 = 計 83。導出の正本は
+コマンドそのもので、この数字は実測の一例です。2026-09-16 時点は
+M5AtomS3Lite の 10 本と例題 AtomS3LiteRgb（各 wificonnect 板に 1 本）が無く
+68 でした）。
 
 - **既定は 6 板すべて**です。`--boards`/`--profiles` で絞り込めます。
 - **`verify_package.py` はローカルの package index を作って Boards Manager の
@@ -604,6 +605,20 @@ PY
 - **資格情報を残さないでください。** Wi-Fi の SSID／パスワードを commit せず、
   実機ログを文書化するときは SSID、BSSID、割当 IP を書かないでください。
   `examples/WiFiConnect/WiFiConnect.ino` は公開前に空であることを確認します。
+- **`scripts/capture_s3_usj.sh` も同じく開発者向けで、配布しません。**
+  M5AtomS3 Lite（ESP32-S3）用で、C5 台本の写しです。差分は 4 点:
+  (1) esptool の MAC 行が `MAC:` 1 本（C5 は `BASE MAC:` と EUI-64 の 2 本）、
+  (2) bootloader は **0x0**（`m5atoms3lite_fmp3.build.bootloader_addr` から読み、
+  それ以外はゲート失敗）、(3) **Direct Boot 消去は無い**——このチップの
+  bootloader は 0x0 にあるので、代わりに書込み後 `read-flash 0x0 0x1000` が
+  焼いた bootloader 像の先頭 4096 B と一致することを確かめます、
+  (4) APM 計数と PCR / clk_result 読みは C5 専用なので落とし、JTAG は
+  `board/esp32s3-builtin.cfg`・USJ レジスタは `0x60038004`/`0x60038008`。
+  **この板の console は log task の行の先頭 1-2 文字を落とすことがある**ので
+  （`docs/atoms3lite-port.md` F-1）、計数パターンはタグの末尾に合わせてあります
+  （`Scan] found`、`duino] loop heartbeat`）。**スキャンが近隣 AP の実 SSID を
+  印字する**ため（同 F-2）、SSID 列をマスクし、マスク漏れがあれば採取ファイルを
+  隔離します。FORBIDDEN に M5NanoC6 と M5Stamp-C5 を入れてあります。
 - **`scripts/capture_c5_usj.sh` も同じく開発者向けで、配布しません。**
   C6 台本の写しで、chip が `ESP32-C5`、bootloader が **0x2000**、毎回
   flash `0x0-0x1FFF` を消してから焼きます（asp3 の Direct Boot magic 対策。

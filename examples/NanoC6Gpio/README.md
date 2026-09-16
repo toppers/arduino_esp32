@@ -7,12 +7,17 @@ RGB LED の例題です。Tools > FMP3 Runtime で **WiFi** を選んで建て�
 
 ## 板ガード
 
-`#if defined(ARDUINO_M5STACK_NANO_C6)` で囲ってあります。CoreS3 /
-M5StickS3 / M5Core（Xtensa）でも**コンパイルとリンクは通ります**が、
-setup() が `[NanoC6Gpio] this example targets the M5NanoC6; nothing to
-do on this board` を 1 行出すだけで、何もしません。Xtensa 側の
-ランタイムには `pinMode` 等がまだ無く、ガードを外すと未定義シンボルで
-リンクが落ちます（それが仕様です。段6 で負対照として実測済み）。
+`#if defined(ARDUINO_M5STACK_NANO_C6)` で囲ってあります。他の 5 板
+（CoreS3 / M5StickS3 / M5AtomS3 Lite / M5Core / M5Stamp-C5）でも
+**コンパイルとリンクは通ります**が、setup() が
+`[NanoC6Gpio] this example targets the M5NanoC6; nothing to do on this
+board` を 1 行出すだけで、何もしません。
+
+ガードを外すと落ちるのは `rgbLedWrite` です（`pinMode` 群は Xtensa にも
+C5 にもあるが、RGB ドライバは C6 と ESP32-S3 にしか無い）。当初この節は
+「Xtensa には `pinMode` 等がまだ無い」と書いていましたが、それは C6 計画
+段6 時点の話で、その後 Xtensa へ `pinMode` 群が載ったので訂正しました
+（2026-09-17）。
 
 ## 何を試すか（NanoC6 のみ、配線不要）
 

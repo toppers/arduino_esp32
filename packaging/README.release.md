@@ -1,19 +1,23 @@
 # ToppersFMP3-M5Stack
 
-M5Stack の 5 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
+M5Stack の 6 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
 Arduinoボードパッケージです。
 
 | ボード | チップ | `Tools > Board` |
 | --- | --- | --- |
 | M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 | `M5CoreS3 (TOPPERS/FMP3)` |
 | M5StickS3 | ESP32-S3 / Xtensa LX7 | `M5StickS3 (TOPPERS/FMP3)` |
+| M5AtomS3 Lite | ESP32-S3 / Xtensa LX7 | `M5AtomS3Lite (TOPPERS/FMP3)` |
 | M5Stack Basic | ESP32 / Xtensa LX6 | `M5Core (TOPPERS/FMP3)` |
 | M5NanoC6 | ESP32-C6 / RISC-V | `M5NanoC6 (TOPPERS/FMP3)` |
 | M5Stamp-C5 | ESP32-C5 / RISC-V | `M5StampC5 (TOPPERS/FMP3)` |
 
-1つのパッケージに5つとも入っています。M5NanoC6とM5Stamp-C5は
+1つのパッケージに6つとも入っています。M5NanoC6・M5Stamp-C5・M5AtomS3 Liteは
 `Tools > FMP3 Runtime`に`Minimal`と`WiFi`の2つしかありません
-（`M5Unified + Dual Core`と`Bluetooth Classic (SPP)`はXtensaの3機種のみ）。
+（`M5Unified + Dual Core`は画面を持つCoreS3・M5StickS3・M5Stack Basicのみ、
+`Bluetooth Classic (SPP)`はM5Stack Basicのみ）。M5AtomS3 Liteで実機確認したのは
+`Blink`・`GpioInterrupt`・本体RGB LED・Wi-Fiスキャンで、**STA接続は未達**です
+（詳細はdocs/atoms3lite-port.md）。
 
 Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカーネルの
 タスクとして動きます。ブート、割込み、スケジューラはFMP3が所有します。

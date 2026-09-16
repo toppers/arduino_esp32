@@ -68,7 +68,12 @@
       "destination": "examples/NanoC6Gpio/NanoC6Gpio.ino"
     },
     {
-      "_comment": "Every board (2026-09-15): pinMode/digitalWrite/digitalRead and a self-driven attachInterrupt test, now that the Xtensa runtime has arduino_gpio.o too (m5-unified / wifi-connect / bt-classic; minimal has neither). The probe pin is chosen per board define (M5NanoC6 G7, CoreS3 G8, M5Stack Basic G16, M5StickS3 G9; all four verified on hardware 2026-09-15). Its README.md is repository documentation and is not distributed.",
+      "_comment": "M5AtomS3 Lite only (2026-09-17): its on-board WS2812B-2020 RGB LED on G35, driven by the ESP32-S3 wifi-connect runtime's rgbLedWrite (ports/m5stack_xtensa/runtime/arduino/arduino_rgb_led.c, the ESP32-C6 driver ported to this chip). It ships to every board for the same reason NanoC6Gpio does - one architecture-neutral library, six boards - and is guarded with ARDUINO_M5STACK_ATOMS3LITE, a macro this package makes: install_platform.BOARD_BUILD_OVERRIDES rewrites the build.board the row inherits from m5stack_atoms3, which is the LCD-bearing AtomS3 and a different device. On the other five boards it compiles and links to a setup() that logs one line saying which board it targets; without the guard the link fails on the M5Core and the M5StampC5 with an undefined rgbLedWrite (measured). The README.md beside it is repository documentation and is not distributed.",
+      "source": "examples/AtomS3LiteRgb/AtomS3LiteRgb.ino",
+      "destination": "examples/AtomS3LiteRgb/AtomS3LiteRgb.ino"
+    },
+    {
+      "_comment": "Every board (2026-09-15): pinMode/digitalWrite/digitalRead and a self-driven attachInterrupt test, now that the Xtensa runtime has arduino_gpio.o too (m5-unified / wifi-connect / bt-classic; minimal has neither). The probe pin is chosen per board define (M5NanoC6 G7, CoreS3 G8, M5Stack Basic G16, M5StickS3 G9, M5StampC5 G1, M5AtomS3 Lite G7; all six verified on hardware, the last one 2026-09-17). Its README.md is repository documentation and is not distributed.",
       "source": "examples/GpioInterrupt/GpioInterrupt.ino",
       "destination": "examples/GpioInterrupt/GpioInterrupt.ino"
     }

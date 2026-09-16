@@ -92,8 +92,12 @@ PROFILES = {
     #  wificonnect because that is the only profile that links the C6's
     #  arduino_rgb_led.o; the Xtensa link of the no-op is the check that
     #  the guard holds.
+    #  AtomS3LiteRgb is the M5AtomS3 Lite's counterpart of NanoC6Gpio: the
+    #  board-guarded real test there, a no-op everywhere else, and on
+    #  wificonnect because that is the only profile that links the S3's
+    #  arduino_rgb_led.o.
     "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo", "NanoC6Gpio",
-                    "GpioInterrupt"],
+                    "AtomS3LiteRgb", "GpioInterrupt"],
     #  LibraryInfo and the generated multi-file sketch belong here too: both
     #  exist to prove the link driver takes every object the builder produced,
     #  and bt-classic is the profile with a second library object of its own.

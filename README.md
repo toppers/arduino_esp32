@@ -16,8 +16,8 @@ M5Stack の 6 機種で、Arduino の `setup()` / `loop()` を
 M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` の
 2 構成しかありません（`M5Unified + Dual Core` と `Bluetooth Classic (SPP)` は
 ありません。前 2 者は画面も BR/EDR も無いため、M5AtomS3 Lite は画面が無く
-`M5Unified + Dual Core` を提供してよいかを実機で確かめていないためです。
-下記「確認済みの範囲」参照）。
+`M5Unified + Dual Core` の主要な例題（LCD へ描くもの）が実機で成立しないことを
+確認したためです。下記「確認済みの範囲」参照）。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
 スケッチは静的に構成された FMP3 タスクから呼ばれます。
@@ -69,8 +69,8 @@ prebuilt archive、include 配置に依存しています）。
 - 各構成が、Boards Manager 経由で入れたパッケージから
   **対応するすべてのボードでビルドできること**
   （`python3 scripts/verify_package.py --list-builds` が導出する本数、
-  2026-09-17 実測: CoreS3 15・M5StickS3 15・M5AtomS3 Lite 9・M5Core 20・
-  M5NanoC6 9・M5Stamp-C5 9 の計 77 本。`Bluetooth Classic` は M5Core 専用、
+  2026-09-17 実測: CoreS3 16・M5StickS3 16・M5AtomS3 Lite 10・M5Core 21・
+  M5NanoC6 10・M5Stamp-C5 10 の計 83 本。`Bluetooth Classic` は M5Core 専用、
   M5NanoC6・M5Stamp-C5・M5AtomS3 Lite は minimal と wifi-connect のみ）。Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
@@ -82,6 +82,13 @@ prebuilt archive、include 配置に依存しています）。
   （Open / WPA2-PSK / WPA3-SAE -> DHCP -> DNS -> TCP）
 - M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
   all-in-one。**touch・IMU・RTC はこの機種に無いので使えません**
+- **M5AtomS3 Lite 実機**で、minimal（`Blink` warm 5/5・真cold 5/5）、
+  `GpioInterrupt`（G7 自己駆動、`rising=5 falling=5 change=10 detached=0
+  dispatch=call=20 orphan=0`）、本体 RGB LED（G35、`AtomS3LiteRgb` で
+  `tx_done=8`。**色順の目視確認は未了**）、Wi-Fi スキャン（16 AP）。
+  **STA 接続は現状この AP に繋がりません**（`reason=17` で 3/3 切断。
+  同じ stage を使う CoreS3 / StickS3 で同じ AP を試していないため、
+  板固有か Xtensa 共通かは未確定です。[`docs/atoms3lite-port.md`](docs/atoms3lite-port.md) F-3）
 - M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
   M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
   当初この機種だけ M5Unified が動かなかった経緯と原因は

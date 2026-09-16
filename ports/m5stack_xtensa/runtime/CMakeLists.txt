@@ -463,6 +463,11 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one|bt-classic)$")
     target_sources(seam_objects PRIVATE
         "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
         "${RUNTIME_ROOT}/arduino/arduino_gpio.c"
+        #  rgbLedWrite(): ESP32-S3 のみ。RMT を header-only の hal/rmt_ll.h と
+        #  RMTMEM 直書きで叩く（RMT / RMTMEM の番地は
+        #  <chip>.peripherals.ld = XIP_EXTRA_TSCRIPTS が供給する）。
+        #  LX6 の板（M5Stack Basic）にアドレサブル LED は無いので載せない。
+        $<$<STREQUAL:${A1_CHIP},esp32s3>:${RUNTIME_ROOT}/arduino/arduino_rgb_led.c>
         "${RUNTIME_ROOT}/wifi/shim/esp_shim.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_mtx.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_sem.c"
