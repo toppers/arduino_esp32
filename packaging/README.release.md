@@ -72,9 +72,9 @@ https://github.com/toppers/arduino_esp32/releases/latest/download/package_topper
 ボードマネージャが自動で取得します。ZIPの手動追加やスクリプトの実行は不要です。
 
 **M5NanoC6とM5Stamp-C5を使う場合も追加のツールは不要です。** RISC-Vツールチェーン
-（`esp-rv32`）とSDK（`esp32c6-libs`）は、前章で入れたM5Stack Arduino core
-3.3.8に既に同梱されています。M5NanoC6用に別のインデックスやツールを
-追加する必要はありません。
+（`esp-rv32`）と各チップのSDK（M5NanoC6は`esp32c6-libs`、M5Stamp-C5は`esp32c5-libs`）は、
+前章で入れたM5Stack Arduino core 3.3.8に既に同梱されています。この2枚のために
+別のインデックスやツールを追加する必要はありません。
 
 削除も`Boards Manager`の`Remove`で行えます。
 
@@ -416,7 +416,7 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
   Minimal（`Blink`）の起動（warm 5/5、真cold 5/5、CPU 240 MHz）と、
   Wi-Fi STA -> DHCP -> DNS -> TCP（warm 3/3、真cold 3/3）、scanが2.4 GHzと
   5 GHzの両方を拾うこと、`WiFi`構成での`pinMode`読み戻しと`attachInterrupt`の
-  自己駆動試験（例題`GpioInterrupt`、G1）。**接続に使われた認証方式は7/7とも
+  自己駆動試験（例題`GpioInterrupt`、G1）。**接続に使われた認証方式は8/8とも
   WPA3-SAE**で、**WPA2-PSK単独・Open AP・5 GHzでの接続は未実測**です。
   scanが返すAPは**最大20件**（アダプタの記録上限）なので、20件は「近所に20台」
   ではありません。**RGB LEDはありません**（例題`NanoC6Gpio`はno-op）。
