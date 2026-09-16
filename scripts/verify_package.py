@@ -128,6 +128,10 @@ PROFILES = {
 BOARD_PROFILES = {
     "m5cores3_fmp3": {"minimal", "m5", "wificonnect"},
     "m5sticks3_fmp3": {"minimal", "m5", "wificonnect"},
+    #  The M5AtomS3Lite (ESP32-S3) has no display, so it starts with the
+    #  M5NanoC6's pair; whether m5 is offered at all is decided on hardware
+    #  (AtomS3 Lite plan, stage 4), not by analogy with the other S3 boards.
+    "m5atoms3lite_fmp3": {"minimal", "wificonnect"},
     "m5core_fmp3": {"minimal", "m5", "wificonnect", "btclassic"},
     "m5nanoc6_fmp3": {"minimal", "wificonnect"},
     "m5stampc5_fmp3": {"minimal", "wificonnect"},

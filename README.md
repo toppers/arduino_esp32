@@ -1,19 +1,22 @@
 # Arduino on TOPPERS/FMP3 for M5Stack
 
-M5Stack の 5 機種で、Arduino の `setup()` / `loop()` を
+M5Stack の 6 機種で、Arduino の `setup()` / `loop()` を
 **TOPPERS/FMP3 SMP カーネルの上で**動かすための Arduino ボードパッケージです。
 
 | ボード | チップ |
 | --- | --- |
 | M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 |
 | M5StickS3 | ESP32-S3 / Xtensa LX7 |
+| M5AtomS3 Lite | ESP32-S3 / Xtensa LX7 |
 | M5Stack Basic | ESP32 / Xtensa LX6 |
 | M5NanoC6 | ESP32-C6 / RISC-V |
 | M5Stamp-C5 | ESP32-C5 / RISC-V |
 
-1 つのパッケージに 5 つとも入り、`Tools > Board` で選びます。M5NanoC6 と
-M5Stamp-C5 は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` の 2 構成しか
-ありません（`M5Unified + Dual Core` と `Bluetooth Classic (SPP)` はありません。
+1 つのパッケージに 6 つとも入り、`Tools > Board` で選びます。M5NanoC6 ・
+M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` の
+2 構成しかありません（`M5Unified + Dual Core` と `Bluetooth Classic (SPP)` は
+ありません。前 2 者は画面も BR/EDR も無いため、M5AtomS3 Lite は画面が無く
+`M5Unified + Dual Core` を提供してよいかを実機で確かめていないためです。
 下記「確認済みの範囲」参照）。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
@@ -66,9 +69,9 @@ prebuilt archive、include 配置に依存しています）。
 - 各構成が、Boards Manager 経由で入れたパッケージから
   **対応するすべてのボードでビルドできること**
   （`python3 scripts/verify_package.py --list-builds` が導出する本数、
-  2026-09-16 実測: CoreS3 15・M5StickS3 15・M5Core 20・M5NanoC6 9・
-  M5Stamp-C5 9 の計 68 本。`Bluetooth Classic` は M5Core 専用、M5NanoC6 と
-  M5Stamp-C5 は minimal と wifi-connect のみ）。Xtensa 3 ボード分については
+  2026-09-17 実測: CoreS3 15・M5StickS3 15・M5AtomS3 Lite 9・M5Core 20・
+  M5NanoC6 9・M5Stamp-C5 9 の計 77 本。`Bluetooth Classic` は M5Core 専用、
+  M5NanoC6・M5Stamp-C5・M5AtomS3 Lite は minimal と wifi-connect のみ）。Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
   （**M5NanoC6 の成果物はホスト間バイト一致の対象外**: 3 ホストでの

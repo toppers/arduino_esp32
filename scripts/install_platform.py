@@ -69,6 +69,15 @@ BOARDS = {
                       "M5CoreS3 (TOPPERS/FMP3)", "m5stack_cores3"),
     "m5sticks3_fmp3": ("esp32s3", "m5stack_sticks3",
                        "M5StickS3 (TOPPERS/FMP3)", "m5stack_sticks3"),
+    #  ESP32-S3, no display, no PSRAM. The M5Stack core 3.3.8 has no
+    #  m5stack_atoms3lite board at all (only m5stack_atoms3 and
+    #  m5stack_atoms3r), so this derives from m5stack_atoms3: same chip, same
+    #  8MB flash, same qio_qspi memory type and the same upload sizes as the
+    #  M5StickS3 row above - the two differ only in build.board, which
+    #  BOARD_BUILD_OVERRIDES rewrites below. Its variant is m5stack_atoms3
+    #  too; the variant supplies pin names, not a display.
+    "m5atoms3lite_fmp3": ("esp32s3", "m5stack_atoms3",
+                          "M5AtomS3Lite (TOPPERS/FMP3)", "m5stack_atoms3"),
     "m5core_fmp3": ("esp32", "m5stack_core",
                     "M5Core (TOPPERS/FMP3)", "m5stack_core"),
     #  ESP32-C6 (RISC-V). Derived from the M5Stack core's m5stack_nano_c6
@@ -85,6 +94,35 @@ BOARDS = {
     #  f_cpu=240000000L, the clock the stage is built for). C5 plan A9.
     "m5stampc5_fmp3": ("esp32c5", "m5stack_stamp_c5",
                        "M5StampC5 (TOPPERS/FMP3)", "m5stack_stamp_c5"),
+}
+
+#  Board-level build properties that must NOT be inherited from the board we
+#  derive from, keyed by our board id. The M5AtomS3Lite derives from the
+#  M5Stack core's m5stack_atoms3 (there is no Lite row upstream), and that
+#  row sets build.board=M5STACK_ATOMS3, which reaches a sketch as
+#  ARDUINO_M5STACK_ATOMS3 - the macro a sketch would use to tell the two
+#  apart. The AtomS3 has an LCD and no RGB LED; the Lite is the opposite, so
+#  examples/AtomS3LiteRgb must not compile its real body on an AtomS3.
+#  Rewriting the macro is safe because M5Unified and M5GFX decide the board
+#  at run time (autodetect); neither library reads ARDUINO_M5STACK_ATOMS3*
+#  anywhere (grep, 3.3.8-era checkouts).
+BOARD_BUILD_OVERRIDES = {
+    "m5atoms3lite_fmp3": {"build.board": "M5STACK_ATOMS3LITE"},
+}
+
+#  Menu entries a board does not offer although its chip ships the stage,
+#  keyed by our board id. Until now every board offered exactly what its chip
+#  shipped, because the display-less boards (M5NanoC6, M5StampC5) are the only
+#  boards of chips that ship no m5-unified stage at all. The M5AtomS3Lite is
+#  the first board that has to say no by itself: it is an ESP32-S3, and the
+#  ESP32-S3 ships m5-unified for the M5CoreS3 and the M5StickS3. The AtomS3
+#  Lite has no display, and M5Unified decides the board at run time, so
+#  whether the m5 option is usable there is a hardware question (AtomS3 Lite
+#  plan, stage 4) - until it is answered the board does not offer the entry.
+#  verify_package.BOARD_PROFILES and the drift test
+#  (scripts/test_check_release_artifacts.py) subtract the same set.
+BOARD_SKIP_ENTRIES = {
+    "m5atoms3lite_fmp3": {"m5"},
 }
 
 
@@ -314,13 +352,18 @@ def board_lines(source_boards: Path, board_id: str,
         raise SystemExit(
             f"{source_boards} has no board '{source_id}' to derive from")
 
-    #  Board-level denominators (UPLOAD_SIZE_OVERRIDES): replace the inherited
-    #  line of the same key, in place, so the board keeps one definition per
-    #  key and the menu.PartitionScheme lines that follow still override
+    #  Board-level overrides: replace the inherited line of the same key, in
+    #  place, so the board keeps one definition per key and the
+    #  menu.PartitionScheme lines that follow still override
     #  upload.maximum_size for the schemes that set it, as they do upstream.
     #  A key the source board does not set is appended; a key it does set
     #  must be found exactly once, or the override would silently not apply.
-    for key, value in UPLOAD_SIZE_OVERRIDES.get(chip, {}).items():
+    #  Two sources of these: the chip's size denominators
+    #  (UPLOAD_SIZE_OVERRIDES) and this board's own properties
+    #  (BOARD_BUILD_OVERRIDES).
+    overrides = dict(UPLOAD_SIZE_OVERRIDES.get(chip, {}))
+    overrides.update(BOARD_BUILD_OVERRIDES.get(board_id, {}))
+    for key, value in overrides.items():
         marker = f"{prefix}{key}="
         hits = [i for i, line in enumerate(board) if line.startswith(marker)]
         if len(hits) > 1:
@@ -344,7 +387,10 @@ def board_lines(source_boards: Path, board_id: str,
     if (stage_root / EXPERIMENTAL_ENTRY[2]).is_dir():
         entries.append(EXPERIMENTAL_ENTRY)
     entries.extend(CHIP_ONLY_ENTRIES.get(chip, []))
+    skip = BOARD_SKIP_ENTRIES.get(board_id, set())
     for key, label, profile in entries:
+        if key in skip:
+            continue
         if not (stage_root / profile).is_dir():
             continue
         lines.append(f"{prefix}menu.FMP3Runtime.{key}={label}")

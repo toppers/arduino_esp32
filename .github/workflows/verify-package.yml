@@ -137,7 +137,8 @@ jobs:
         run: |
           root=ci-sketchbook/hardware/toppers/esp32
           test -f "$root/boards.txt" || { echo "no boards.txt"; exit 1; }
-          for board in m5cores3_fmp3 m5sticks3_fmp3 m5core_fmp3 m5nanoc6_fmp3 m5stampc5_fmp3; do
+          for board in m5cores3_fmp3 m5sticks3_fmp3 m5atoms3lite_fmp3 \
+                       m5core_fmp3 m5nanoc6_fmp3 m5stampc5_fmp3; do
             grep -q "^$board\.name=" "$root/boards.txt" \
               || { echo "missing board: $board"; exit 1; }
           done
@@ -179,6 +180,18 @@ jobs:
           for p in m5-unified bt-classic all-in-one; do
             if [ -e "$root/fmp3-prebuilt/esp32c6/$p" ]; then
               echo "unexpected stage packaged: esp32c6/$p"
+              exit 1
+            fi
+          done
+          #  The M5AtomS3Lite has no display either, but unlike the two
+          #  RISC-V boards it is an ESP32-S3, whose m5-unified stage the
+          #  M5CoreS3 and the M5StickS3 do ship - so the stage is there and
+          #  the board must still not offer the entry
+          #  (install_platform.BOARD_SKIP_ENTRIES). Do not check for a stray
+          #  esp32s3/m5-unified directory here: it belongs to the other two.
+          for key in m5 btclassic; do
+            if grep -q "^m5atoms3lite_fmp3\.menu\.FMP3Runtime\.$key=" "$root/boards.txt"; then
+              echo "M5AtomS3Lite must not offer the $key menu entry"
               exit 1
             fi
           done

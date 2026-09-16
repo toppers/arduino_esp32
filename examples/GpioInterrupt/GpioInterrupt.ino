@@ -42,6 +42,11 @@ extern "C" volatile int32_t ard_intr_acre_ercd;
 #define PROBE_PIN 9
 #elif defined(ARDUINO_M5STACK_STAMP_C5)
 #define PROBE_PIN 1
+#elif defined(ARDUINO_M5STACK_ATOMS3LITE)
+/*  M5AtomS3Lite: G7 is one of the six pins on the bottom header
+ *  (G5/G6/G7/G8/G38/G39) and is not wired to anything on the board. G38 is
+ *  avoided because M5Unified reads it while detecting the board. */
+#define PROBE_PIN 7
 #else
 #define PROBE_PIN -1   /* unknown boards: link only */
 #endif

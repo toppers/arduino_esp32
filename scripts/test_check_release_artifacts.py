@@ -66,7 +66,7 @@ CHIP_TOOLS = {
     ],
 }
 XTENSA_BOARDS = {"m5cores3_fmp3": "esp32s3", "m5sticks3_fmp3": "esp32s3",
-                 "m5core_fmp3": "esp32"}
+                 "m5atoms3lite_fmp3": "esp32s3", "m5core_fmp3": "esp32"}
 C6_BOARD = {"m5nanoc6_fmp3": "esp32c6"}
 C5_BOARD = {"m5stampc5_fmp3": "esp32c5"}
 #  The release shapes the cases below build: every chip of STAGES with its
@@ -264,7 +264,7 @@ class PlatformContents(unittest.TestCase):
         self.addCleanup(setattr, checker, "PROBE", self.saved_probe)
         checker.PROBE = lambda url: ""
 
-    def test_five_boards_with_riscv_tools_pass(self):
+    def test_every_board_with_riscv_tools_pass(self):
         release = Release(self.root, stages=STAGES, boards=ALL_BOARDS,
                           chip_tools=ALL_CHIP_TOOLS, tables=True)
         code, out = release.run()
@@ -420,6 +420,12 @@ class PlatformContents(unittest.TestCase):
             expected = {menu_of[profile] for profile in STAGES[chip]} | {
                 menu for menu, _, _
                 in install_platform.CHIP_ONLY_ENTRIES.get(chip, [])}
+            #  A board may decline an entry its chip ships (the M5AtomS3Lite
+            #  has no display but is an ESP32-S3, whose m5-unified stage the
+            #  M5CoreS3 and M5StickS3 need). install_platform.board_lines()
+            #  leaves the menu line out for exactly this set, so the two
+            #  tables cannot drift apart.
+            expected -= install_platform.BOARD_SKIP_ENTRIES.get(board, set())
             self.assertEqual(verify_package.BOARD_PROFILES[board], expected,
                              board)
 
