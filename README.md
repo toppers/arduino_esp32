@@ -86,12 +86,12 @@ prebuilt archive、include 配置に依存しています）。
   収録されています。** `Minimal`・`WiFi` の 2 つが `Tools > FMP3 Runtime` に
   出ます。実機で確認済みなのは、stock M5Stack bootloader のまま
   minimal（`Blink`）が起動すること（warm 5/5、真cold 9/10）と、
-  Wi-Fi STA（**WPA2-PSK のみ**）-> DHCP -> DNS -> TCP がユーザーの実 AP に対して
-  通ること（真cold 3/4、1 回は無音採取で成否判定不能）、および `WiFi` 構成で
+  Wi-Fi STA -> DHCP -> DNS -> TCP がユーザーの実 AP（WPA2/WPA3 混在。**接続は 9/9 とも
+  WPA3-SAE**）に対して通ること（真cold 3/4、1 回は無音採取で成否判定不能）、および `WiFi` 構成で
   `pinMode` / `digitalRead` の読み戻し、`attachInterrupt` の自己駆動試験、RGB LED への
   RMT 送信完了が通ること（例題 `NanoC6Gpio`、warm 4 + 真cold 1。LED の色は赤 -> 緑 -> 青を目視確認）
-  です。**Open AP/WPA3-SAE は AP が用意できず未実測、BLE は未着手、M5Unified 相当の
-  profile はありません**（下記「M5NanoC6 の既知の制限」）。判断と到達点は
+  です。**Open AP と WPA2-PSK 単独の AP は用意できず未実測（混在 AP では WPA3-SAE が選ばれた）、
+  BLE は未着手、M5Unified 相当の profile はありません**（下記「M5NanoC6 の既知の制限」）。判断と到達点は
   [`docs/c6-port.md`](docs/c6-port.md)
 - **M5Stamp-C5（ESP32-C5）は統合作業中で、まだ配布物にありません**（2026-09-16、段4 まで =
   `minimal` の `Blink` が実機で warm 5/5・真cold 5/5、stock bootloader @0x2000、240 MHz。

@@ -954,7 +954,8 @@ supplicant が Xtensa と C6 で共通（同じ ESP-IDF v5.5.4 系列）なの�
 ## 段4 の記録（2026-09-15、commit `6602cd7`（Task 0）/ `211a067`・`f7da79e`（Task 1）、Task 2 はコード変更なし、記録 `265bfd2`、最終レビュー是正 fix wave `a251202`（台本）・`fafe685`（本節））
 
 M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS -> TCP）を、ユーザーの
-実 AP（WPA2-PSK）に対して回した段。詳細な証跡は本リポジトリ
+実 AP（WPA2/WPA3 混在。**実際に張られた接続は 9/9 とも WPA3-SAE**。下記「認証方式の訂正」）に
+対して回した段。詳細な証跡は本リポジトリ
 `.superpowers/sdd/PLAN-stage4-impl/{task-0-report.md,task-1-report.md,task-2-report.md,progress.md}`
 と、開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/{AC.md,logs/}`
 （`task0-*`/`task1-*`/`task2-*`、いずれも dev 側で未 commit）。
@@ -964,7 +965,7 @@ M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS
 - **Task 1**（commit `211a067` = 採取台本、`f7da79e` = scan adapter の SSID 伏字）:
   `scripts/capture_c6_usj.sh` に Wi-Fi マーカー集計を足し、`WiFiScan` を warm 3 回・
   APM OFF 対照 1 回・ON 復帰 1 回、実機で焼いた。
-- **Task 2**（コード変更なし、commit なし）: `WiFiConnect` をユーザーの実 AP（WPA2-PSK）に対し
+- **Task 2**（コード変更なし、commit なし）: `WiFiConnect` をユーザーの実 AP（WPA2/WPA3 混在。接続は WPA3-SAE）に対し
   warm・真cold・APM OFF 対照・W-2 で焼いた。
 
 ### AC 4a-4h
@@ -999,7 +1000,7 @@ M5NanoC6 の実機で `WiFiScan`（scan）と `WiFiConnect`（STA -> DHCP -> DNS
 | stage（APM） | ON（warm1-3・cold1-4・warm4・W-2）/ OFF（apmoff-warm-write・cold-apmoff・scan-apmoff-warm-write・scan-cold-apmoff） | 1 軸ずつ切替え |
 | リセット | warm（書込み or `NOFLASH=1`）/ **真cold**（`COLD=1` + `uhubctl -l 2-3.3 -p 3` 電源断 10 秒 -> 採取開始 -> 2 秒後投入） | uhubctl はこの Task でのみ使用 |
 | scan-先行/begin-only | begin-only（既定）/ scan-then-begin（W-2、作業コピーのみの変種を 1 回） | 数えた run は begin-only |
-| 認証方式 | WPA2-PSK（ユーザーの実 AP） | Open/WPA3-SAE 用 AP は用意できず未実測（D6） |
+| 認証方式 | ユーザーの実 AP 1 台（WPA2/WPA3 混在）。**association は 9/9 とも `authmode=6` = `WIFI_AUTH_WPA3_PSK` = WPA3-SAE**（下記「認証方式の訂正」） | Open AP は用意できず未実測。**WPA2-PSK 単独の AP も用意できていない**ので「WPA2-PSK で接続できること」は未実測（D6 の但し書きを訂正） |
 
 ### WiFiScan 結果表
 
@@ -1077,13 +1078,27 @@ ON/OFF・warm/真cold のいずれでも一貫している。**ラッチの帰�
 でも何かが一度 M1 で拒否されている）。どちらの場合も unblock がラッチを消し
 （`after-unblock ... latch: none`）、scan は N > 0 になる。
 
-### WPA3-SAE / Open は未実測（D6）
+### 認証方式の訂正（2026-09-16、C5 段4 のレビューで発覚）
 
-ユーザーのルーター以外に AP を用意できなかったため、WPA3-SAE と Open（無認証）は
-**本段では実測していない**。D6 の判断（C6 では私的 ABI の表を差し込まず `esp_wifi_init` に
-supplicant を任せる）自体は段3 の実装どおりで変更なし。実測できたのは WPA2-PSK のみ
-（真cold 3/3 を含む）。Open AP で Xtensa 側に見られた「常時 supplicant だと `AUTH_EXPIRE`」が
-C6 でも起きるかは、依然として未確認のまま持ち越す。
+**本節はもともと「実測できたのは WPA2-PSK のみ、WPA3-SAE は未実測」と書いていたが、これは誤り
+だった。** 採取ログ（開発リポジトリ `.steering/20260915-c6-arduino-plan/stage4/logs/*.log`）の
+`[WiFiConnect] connected authmode=6 channel=10` が **9 run すべて**にあり、
+`authmode` は `wifi_event_sta_connected_t` の「接続に使われた認証方式」で、
+6 = `WIFI_AUTH_WPA3_PSK`（esp-idf v5.5.4 `esp_wifi_types_generic.h` の enum。0 Open / 1 WEP /
+2 WPA / 3 WPA2 / 4 WPA_WPA2 / 5 ENTERPRISE / **6 WPA3_PSK** / 7 WPA2_WPA3）。
+スケッチ側が設定する `config authmode=3` は `threshold.authmode`（**下限**）であって結果ではない。
+
+したがって正しい主張は:
+
+- **WPA3-SAE の STA 接続 -> DHCP -> DNS -> TCP は実測済み**（warm/真cold 合わせて 9 run）。
+- **WPA2-PSK 単独での接続は未実測**（ユーザーの AP が WPA2/WPA3 混在で、supplicant が WPA3 を選んだ）。
+- Open（無認証）は AP を用意できず未実測。Open AP で Xtensa 側に見られた
+  「常時 supplicant だと `AUTH_EXPIRE`」が C6 でも起きるかも未確認のまま。
+
+D6 の判断（C6 では私的 ABI の表を差し込まず `esp_wifi_init` に supplicant を任せる）自体は
+段3 の実装どおりで変更なし。**この訂正は C5 側（`docs/c5-port.md` 段4）で同型の誤りを
+レビューが見つけたことをきっかけに、C6 のログを読み直して確認した**（同じ adapter・同じ
+`authmode` 表示なので同じ読み違いをしていた）。
 
 ### 正直な観察
 
