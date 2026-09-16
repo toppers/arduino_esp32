@@ -109,6 +109,14 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
 - 負対照: `AtomS3LiteRgb` の板ガードを外すと M5Core / M5StampC5 で
   `undefined reference to 'rgbLedWrite'`。
 - python テスト（`test_check_release_artifacts` ほか 3 本）すべて PASS。
+- **導入済み platform に対する全 83 builds の compile: 76 PASS / 0 FAIL / 7 SKIP**
+  （SKIP は `verify_package.py` が生成する `TwoFileSketch` で、直接 compile では
+  作れないため）。`check_host_paths.py` は導入済み platform の 1,075 ファイルで
+  PASS。**リリース形（Boards Manager 経由）の verify はこの機械では走らせられて
+  いない**——`verify_package.py` は `~/.venvs/toppers-verify/bin/python`
+  （PyInstaller 入り）で driver までは作れるが、`arduino-cli core install
+  toppers:esp32@0.4.2` が "not found" で落ちる（ローカル index が読まれない。
+  原因未解明）。
 
 ## 7. 残り
 
