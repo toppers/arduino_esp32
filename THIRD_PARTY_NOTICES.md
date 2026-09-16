@@ -196,6 +196,26 @@ mbedTLS 3.6.5 Apache-2.0 OR GPL-2.0-or-later、lwIP BSD-3-Clause、ESP-IDF の�
   建てた物（sha256 `5bfbc3ef...`、473,586 B、C6 の DNS 版とバイト同一）。dev golden
   （`LWIP_DNS 0`）は無改変。
 
+### C5 段5: 配布物として何が利用者へ届くか（2026-09-16）
+
+段5 で M5StampC5 が Boards Manager の配布パッケージに入った。届き方は他の 4 板と
+同じで、**`ports/` のソースそのものは配布しない**:
+
+- 上記 4 本のプリビルトアーカイブは、`esp32c5/wifi-connect` ステージの `lib/` の中
+  （`fmp3-prebuilt/esp32c5/wifi-connect/lib/`）としてのみ platform アーカイブに入る。
+  `esp32c5/minimal` には入らない。
+- `runtime/wifi/idf_src/` の esp-idf 原本（C6 の 6 本 + C5 の 3 本）と lwIP contrib
+  ヘッダ 3 本は、**コンパイル済みオブジェクトとして**ステージの `objs/` に入る
+  （ソースファイルは配布しない）。ライセンス表示の義務はこのファイルが果たす
+  （`THIRD_PARTY_NOTICES.md` は同梱ライブラリの一部として配布される）。
+- `liblwip.a` は C5 と C6 で**バイト同一**だが chip ごとに別ファイルとして配る
+  （段5 判断 S5-4。理由は
+  [`ports/m5stack_riscv/runtime/wifi/prebuilt/lwip/README.md`](ports/m5stack_riscv/runtime/wifi/prebuilt/lwip/README.md)）。
+- ビルド時に使う RISC-V トゥールチェーン `esp-rv32` 2601 と SDK `esp32c5-libs`
+  3.3.8 は M5Stack Arduino core 3.3.8 の物で、本リポジトリにも Release ZIP にも
+  複製しない（`packaging/release-allowlist.json` の `chipToolDependencies.esp32c5`
+  が、C5 のステージを配るときに index がこの 2 つを要求することを検査する）。
+
 ## BlueDroid (ESP-IDF Bluetooth host stack)
 
 `third_party/bluedroid/` — Espressif Systems, Apache License 2.0.

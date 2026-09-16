@@ -1,6 +1,6 @@
 # Arduino on TOPPERS/FMP3 for M5Stack
 
-M5Stack の 4 機種で、Arduino の `setup()` / `loop()` を
+M5Stack の 5 機種で、Arduino の `setup()` / `loop()` を
 **TOPPERS/FMP3 SMP カーネルの上で**動かすための Arduino ボードパッケージです。
 
 | ボード | チップ |
@@ -9,11 +9,12 @@ M5Stack の 4 機種で、Arduino の `setup()` / `loop()` を
 | M5StickS3 | ESP32-S3 / Xtensa LX7 |
 | M5Stack Basic | ESP32 / Xtensa LX6 |
 | M5NanoC6 | ESP32-C6 / RISC-V |
+| M5Stamp-C5 | ESP32-C5 / RISC-V |
 
-1 つのパッケージに 4 つとも入り、`Tools > Board` で選びます。M5NanoC6 だけは
-`Tools > FMP3 Runtime` に `Minimal` と `WiFi` の 2 構成しかありません
-（`M5Unified + Dual Core` と `Bluetooth Classic (SPP)` はありません。下記
-「確認済みの範囲」参照）。
+1 つのパッケージに 5 つとも入り、`Tools > Board` で選びます。M5NanoC6 と
+M5Stamp-C5 は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` の 2 構成しか
+ありません（`M5Unified + Dual Core` と `Bluetooth Classic (SPP)` はありません。
+下記「確認済みの範囲」参照）。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
 スケッチは静的に構成された FMP3 タスクから呼ばれます。
@@ -65,9 +66,9 @@ prebuilt archive、include 配置に依存しています）。
 - 各構成が、Boards Manager 経由で入れたパッケージから
   **対応するすべてのボードでビルドできること**
   （`python3 scripts/verify_package.py --list-builds` が導出する本数、
-  2026-09-15 実測: CoreS3 15・M5StickS3 15・M5Core 20・M5NanoC6 9 の
-  計 59 本。`Bluetooth Classic` は M5Core 専用、M5NanoC6 は minimal と
-  wifi-connect のみ）。Xtensa 3 ボード分については
+  2026-09-16 実測: CoreS3 15・M5StickS3 15・M5Core 20・M5NanoC6 9・
+  M5Stamp-C5 9 の計 68 本。`Bluetooth Classic` は M5Core 専用、M5NanoC6 と
+  M5Stamp-C5 は minimal と wifi-connect のみ）。Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
   （**M5NanoC6 の成果物はホスト間バイト一致の対象外**: 3 ホストでの
@@ -93,15 +94,54 @@ prebuilt archive、include 配置に依存しています）。
   です。**Open AP と WPA2-PSK 単独の AP は用意できず未実測（混在 AP では WPA3-SAE が選ばれた）、
   BLE は未着手、M5Unified 相当の profile はありません**（下記「M5NanoC6 の既知の制限」）。判断と到達点は
   [`docs/c6-port.md`](docs/c6-port.md)
-- **M5Stamp-C5（ESP32-C5）は統合作業中で、まだ配布物にありません**（2026-09-16、段4 まで =
-  `minimal` の `Blink` が実機で warm 5/5・真cold 5/5、stock bootloader @0x2000、240 MHz。
-  Wi-Fi は scan が 2.4 GHz と 5 GHz の両方を拾い（記録は adapter の上限 20 本に飽和したので
-  近隣の実数はこれ以上）、STA -> DHCP -> DNS -> TCP がユーザーの実 AP に対して warm 3/3 と
-  真cold 3/3。その AP は WPA2/WPA3 混在で、**実際に張られた接続は 7/7 とも WPA3-SAE**
-  （`authmode=6`）。`attachInterrupt` の自己駆動試験も `WiFi` 構成で PASS。
-  **WPA2-PSK 専用 AP、Open AP、5 GHz での接続、BLE は未実測**）。
-  判断 A0-A12 と段ごとの到達点は
-  [`docs/c5-port.md`](docs/c5-port.md)
+- **M5Stamp-C5（ESP32-C5）は `minimal` / `wificonnect` の 2 構成で配布物に
+  収録されています**（2026-09-16、段5）。`Minimal`・`WiFi` の 2 つが
+  `Tools > FMP3 Runtime` に出ます。実機で確認済みなのは、stock M5Stack
+  bootloader（**@0x2000**）のまま minimal（`Blink`）が起動すること
+  （warm 5/5・真cold 5/5、CPU 240 MHz）と、Wi-Fi の scan が 2.4 GHz と
+  5 GHz の両方を拾うこと、STA -> DHCP -> DNS -> TCP がユーザーの実 AP に
+  対して warm 3/3・真cold 3/3 で通ること、`WiFi` 構成で `pinMode` の
+  読み戻しと `attachInterrupt` の自己駆動試験（例題 `GpioInterrupt`、G1）が
+  PASS することです。判断 A0-A12 と段ごとの到達点は
+  [`docs/c5-port.md`](docs/c5-port.md)（下記「M5Stamp-C5 の既知の制限」も
+  読んでください）
+
+## M5Stamp-C5 の既知の制限（2026-09-16）
+
+- **on-board の RGB LED はありません。** `rgbLedWrite` は M5Stamp-C5 の
+  ランタイムに入っていません（板に WS2812 系の LED が無いため）。同梱例題
+  `NanoC6Gpio` は M5Stamp-C5 では板ガードにより「この例題は M5NanoC6 向け」の
+  1 行を出して何もしません。M5Stamp-C5 の GPIO を実際に動かして見せるのは
+  例題 `GpioInterrupt` のほうです（試験ピンは **G1**。青 LED の G28 は BOOT
+  ピンなので試験には使いません）。
+- **GPIO API は `WiFi` 構成にだけあり、`Minimal` にはありません。**
+  `pinMode` / `digitalWrite` / `digitalRead` / `attachInterrupt` は
+  `WiFi`（wificonnect）ランタイムにだけリンクされます（M5NanoC6 と同じ
+  切り分け）。`attachInterrupt` は `pinMode` を呼ばないので、先に `pinMode`
+  してください。`delay()` / `Serial` が使えないのは他の構成と同じです。
+- **CPU は 240 MHz 固定です**（`Minimal` / `WiFi` とも）。
+- **bootloader は flash の 0x2000 に置きます**（M5NanoC6 の 0x0 とは違います）。
+  **asp3_esp_idf の Direct Boot 像を焼いたことのある板では、そのままでは
+  起動しません**: flash 0x0 に Direct Boot の magic が残っていると ROM が
+  それを見てしまい、0x2000 の bootloader へ進みません。その場合は
+  `esptool erase-region 0x0 0x2000` で先頭 8 KB を消してから書き込んで
+  ください（Arduino IDE から焼くだけの利用者には関係ありませんが、同じ板で
+  両方を試す場合に踏みます）。
+- **実測できた認証方式は WPA3-SAE だけです。** 試験に使えた AP は
+  WPA2/WPA3 混在の 1 台で、実際に張られた接続は 7/7 とも WPA3-SAE
+  （`authmode=6`）でした。**WPA2-PSK 単独の AP と Open AP は未実測**です。
+- **scan が返す AP は最大 20 件です。** アダプタの記録上限
+  （`TOPPERS_WIFI_MAX_RECORDS` = 20）で、実測では 4 回とも 20 件に張り付いて
+  いました。**「20 件見えた」は「近所に 20 台ある」ではありません**（同じ板・
+  同じ場所で上限の無い計測をすると 19-29 台でした）。
+- **5 GHz での接続は未実測です。** scan には 5 GHz の ch（36/44/48/52/116）が
+  出ますが、実際に張れた接続は 7/7 とも ch 10（2.4 GHz）でした。
+- **BLE と 802.15.4（Zigbee / Thread）はありません。**
+- **M5Unified 相当の profile はありません**（LCD が無いため）。
+- **成果物のホスト間（Windows／Linux／macOS）バイト一致は未計測です**
+  （M5NanoC6 と同じ。下記「M5NanoC6 の既知の制限」の同項目を参照）。
+- **`random()` を呼ぶスケッチの ROM `rand()` ハザード**も M5NanoC6 と同じです
+  （下記）。
 
 ## M5NanoC6 の既知の制限（2026-09-15）
 
@@ -170,12 +210,13 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   で使えます（Xtensa 3 ボードの `pinMode` 群は 2026-09-15 に追加。`WiFi` 構成で
   `GPIO` が未定義になる問題も同日に修正）。同梱例題 `GpioInterrupt`（自己駆動の
   割込み試験: RISING 5 / FALLING 5 / CHANGE 10 / detach 後 0）を CoreS3（G8）・
-  M5Stack Basic（G16）・M5StickS3（G9）・M5NanoC6（G7）の `WiFi` 構成で 4 板とも
-  実機確認済み。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
+  M5Stack Basic（G16）・M5StickS3（G9）・M5NanoC6（G7）・M5Stamp-C5（G1）の
+  `WiFi` 構成で 5 板とも実機確認済み。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
   `INPUT_PULLDOWN` / `OUTPUT` の 4 つ。拒否するピン: CoreS3 / M5StickS3 は USB の
   G19 / G20、flash の G26-32、存在しない G22-25、M5Stack Basic は UART0 の G1 / G3、
   flash の G6-11、GPIO でないパッド（24, 28-31）、M5NanoC6 は USB の G12 / G13 と
-  flash の G24-30。M5Stack Basic の入力専用 G34-39 は `OUTPUT` と pull 付き mode を
+  flash の G24-30、M5Stamp-C5 は USB の G13 / G14 と内蔵 flash の MSPI パッド
+  G15-22（GPIO は G0-G28 まで）。M5Stack Basic の入力専用 G34-39 は `OUTPUT` と pull 付き mode を
   拒否し（ログを出す）、RTC 系パッド（G0/2/4/12-15/25-27/32/33）の pull は
   RTC_IO レジスタで設定します（Grove Port B の G26 で pull-up / pull-down の
   読み戻しを実機確認済み）。`attachInterrupt` は `pinMode` を呼ばないので
@@ -200,6 +241,7 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 | --- | --- |
 | `src/` | Arduino builder が再帰コンパイルする領域。`Arduino.h` だけに依存 |
 | `ports/m5stack_xtensa/runtime/` | FMP3 の Xtensa ポート（ESP32-S3 / LX7 と ESP32 / LX6） |
+| `ports/m5stack_riscv/runtime/` | FMP3 の RISC-V ポート（ESP32-C6 と ESP32-C5。チップ分岐で 1 ポート） |
 | `fmp_app/` | 開発ツリーでのみ使う FMP3 アプリケーション |
 | `examples/` | 同梱例題 |
 | `scripts/` | ビルド・パッケージング |
@@ -207,7 +249,8 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 | `third_party/fmp3_core` | FMP3 本体（submodule） |
 
 ソースからビルドする手順は [`BUILDING.md`](BUILDING.md) にあります。
-ESP32-C6（M5NanoC6）の判断と到達点は [`docs/c6-port.md`](docs/c6-port.md)。
+ESP32-C6（M5NanoC6）の判断と到達点は [`docs/c6-port.md`](docs/c6-port.md)、
+ESP32-C5（M5Stamp-C5）は [`docs/c5-port.md`](docs/c5-port.md)。
 
 ## ライセンス
 

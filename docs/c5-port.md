@@ -59,7 +59,7 @@ M5Stack Arduino core 3.3.8 を入れた利用者が、`ToppersFMP3` パッケー
 | 2 | M5Stamp-C5 で Blink（stock bootloader @0x2000）、warm 5/5・真cold 5/5、`capture_c5_usj.sh` | 要 | 完了（下記「段2 の記録」。条件 A で warm 5/5・真cold 5/5、A1 = stock、A6 = 240 MHz を JTAG の PCR 読出しで確定） |
 | 3 | wifi-connect stage（shim C5 分岐 + clic shim、`.a` x4 vendored、idf_src C5 原本、DNS liblwip）、`nm -u` 空、ROM ld 勝者、移し漏れ表 | 不要 | 完了（下記「段3 の記録」。6 例題リンク、C6 objs 不変、未焼き） |
 | 4 | WiFiScan（2.4 / 5 GHz 可視）/ WiFiConnect（STA -> DHCP -> DNS -> TCP）真cold 3/3、APM OFF 対照 0 AP、GpioInterrupt（G1） | 要 | 完了（下記「段4 の記録」。scan は記録上限 20 本に飽和（うち 5 GHz 6）、WiFiConnect warm 3/3 と真cold 3/3（association は WPA3-SAE）、APM OFF 対照 0 AP、GpioInterrupt VERDICT PASS。板はダミー creds 像へ復帰） |
-| 5 | verify 5 板 68 本、`check_release_artifacts`、CI、README / BUILDING / README.release / THIRD_PARTY_NOTICES / allowlist、docs | 不要 | 未着手 |
+| 5 | verify 5 板 68 本、`check_release_artifacts`、CI、README / BUILDING / README.release / THIRD_PARTY_NOTICES / allowlist、docs | 不要（W-2 再取得のみ任意） | 完了（下記「段5 の記録」。リリース形で 68/68 PASS、`check_release_artifacts` / `check_host_paths` rc=0、X-check 9/9。公開・tag・版上げはしない） |
 
 公開・tag・版上げは行わない（ユーザー判断）。
 
@@ -963,3 +963,160 @@ flash 0x0-0x1FFF は消去済み（全 0xFF を読み戻して確認）。**フ�
   上げるかを決める。
 - **ROM `rand()` / `syscall_table_ptr` ハザード**（段1 / 段3 から継続、C6 と同文）。
 - **`upload.maximum_data_size` の分母**（C6 段5 の項目、C5 は 320,928 で宣言済み）。
+
+## 段5 の記録（2026-09-16、branch `feature/c5-arduino-stage5`、BASE `38dbf97`。
+commit `402c950`（Task 2 の S5-4）+ 本 commit（Task 3、文書）。**`scripts/` と
+`ports/*/runtime` のコードは 1 行も変えていない** -- 段1/段3 で入れた表と
+チップ分岐が、リリース形でそのまま通ることの実証が段5 の中身である）
+
+段5 のゴールは「M5Stamp-C5 を**配布物として成立させる**」こと、すなわち
+(1) Boards Manager 経由で入れ直したパッケージから 5 板 68 本が建つ、
+(2) `check_release_artifacts.py` / `check_host_paths.py` / CI が C5 を検査する、
+(3) 利用者向け文書が C5 を正しく書く、の 3 つである。
+**公開（GitHub release / tag / index の push / `library.properties` の版上げ）は
+行わない**（ユーザー判断。`library.properties` は板の一覧だけを 4 板 -> 5 板に直し、
+`version=0.4.2` は触っていない）。
+
+### Task ごとの実施内容
+
+- **Task 0**（記録のみ）: AC 5a-5m を開発リポジトリ
+  `.steering/20260916-c5-arduino-plan/stage5/AC.md` に先に固定した。
+- **Task 1**（コード変更なし）: stage を 4 チップとも `--clean` で建て直し、
+  X-check 9/9、platform を組み、`make_package_index.py` でリリース形を作り、
+  Boards Manager 経由で入れ直して 68 本を建てた。CI の板検査ステップを
+  抽出してローカルで走らせ、負対照を 3 本取った。
+- **Task 2**（持ち越し）: S5-3 の ON 経路のリンク確認（机上）、S5-4 の根拠を
+  `prebuilt/lwip/README.md` へ（commit `402c950`）、S5-5 の W-2 を実機で 1 回
+  （段5 唯一の実機操作）、段4 の 4c（tree hash を前後で採る）を `BUILDING.md` の
+  手順として明文化。
+- **Task 3**（本 commit）: 本節と `README.md` / `BUILDING.md` /
+  `packaging/README.release.md` / `THIRD_PARTY_NOTICES.md` /
+  `packaging/release-allowlist.json` / `library.properties`。
+
+### 判断 S5-1..S5-7（段5 で確定）
+
+| # | 判断 | 結果 | 根拠 | 費用・残る穴 |
+| --- | --- | --- | --- | --- |
+| S5-1 | IDE の size 表示の分母 | **維持**。段1 で入れた `UPLOAD_SIZE_OVERRIDES` の C5 行（`upload.maximum_size=1310720` / `upload.maximum_data_size=320928`）をそのまま出荷する。他 4 板の値は不変 | `esp32c5_xip.ld` の RAM LENGTH = `0x4084E5A0-0x40800000`。組み立てた platform の `boards.txt` で 5 板ぶん確認（`task1-install-platform.txt`） | C5 の分母は継承値 327,680 より**小さい**（C6 は大きい）。つまり継承値のままだと「実際より余裕があるように」見えていた。IDE の表示バイト数そのものは変わらない |
+| S5-2 | D8 / A8（esp-idf 原本の vendoring） | **維持**。`BUILDING.md` の例外条項に C5 の 3 本（`phy_init_data_esp32c5.c` / `modem_clock_hal_esp32c5.c` / `efuse_hal_esp32c5.c`）を明記した | C6 D8 と同じ理由（core の `.a` メンバが FreeRTOS の `vPort*` を要求する）。段3/段4 の実機実績は vendored 版のもの | 再評価の条件も C6 と同じ（「core の `.a` + `vPort*` シム」の検証、または core の版が動く） |
+| S5-3 | 診断フック `TOPPERS_C5_NET_DIAG` | **出荷既定 OFF のまま**。ON 経路が今も建ち・リンクできることだけを机上で確認した | `task2-netdiag-on-link.txt`: ON stage（85 objects / 0 duplicated）に対して `WiFiConnect` が rc=0 でリンクし、最終 ELF の `nm -u` が **0**。ON/OFF の差は flash +2,224 B / RAM +64 B。負対照として OFF 像では ping/echo の定義が 0 件（1 件の一致は `pm_is_sleeping` の部分文字列） | **ON 像は一度も焼いていない**。ping と port 7 echo が C5 の実機で実際に応答するかは NOT-EXERCISED のまま。段4 の `ping=0` は OFF 腕の当然の結果であって、この穴とは別物 |
+| S5-4 | `liblwip.a` が C6 とバイト同一 | **重複を許容**（chip ごとに別ファイル） | commit `402c950`。理由 3 点（ビルドが chip ごとに 1 ディレクトリしか読まない / 同一なのは入力の偶然 / 費用 473,586 B は有界）は `prebuilt/lwip/README.md` | 再検討は 3 つ目の RISC-V チップが増えたとき |
+| S5-5 | W-2（scan -> begin）の再取得 | **実施。1/1 PASS（counts つき）** | `task2-w2-scanfirst.txt` / `task2-w2-scanfirst-warm1.{log,sha.txt}`: `[W2] scan returned 20` -> `connected authmode=6 channel=10` -> `dhcp=1 dhcpdone=1` -> `dnsok=2` -> `tcp=1`（`TCP received=255`）、`disc=0 beginrej=0 unexpected=0`、`[C5-HEAP] peak=72528 total=98304` | **scan-first が何かを回避することの証明ではない**: 段4 の begin-only 6/6 も `reason=` 0 件だったので、この AP では回避すべきものが発生していない |
+| S5-6 | 例題 `NanoC6Gpio` の C5 での扱い | **no-op のまま**（板ガード）。C5 の GPIO を代表する例題は `GpioInterrupt`（G1） | M5Stamp-C5 に WS2812 系の on-board RGB LED が無い。verify で C5 の `NanoC6Gpio` は 111,552 B = 同板の `Blink` と同じ = no-op 側が建っている | -- |
+| S5-7 | C3 を足すか | **足さない**。「チップを足すのは表に行を足すだけ」という主張は **`scripts/` と CI の表に限る**ことを `BUILDING.md` に明記した | C5 の実績: `scripts/` は行追加で済んだが、`ports/m5stack_riscv/runtime` 側は arch / target / config / seam / toolchain / `prebuilt_stage_c5.cmake` と、ピンと割込みがチップ決め打ちの `arduino_gpio_c5.c` / `arduino_interrupt_c5.c` を新たに要した（段1） | -- |
+
+**C5 stage を X-check の baseline に入れるか**（段4 の入口条件の 1 つ）は、
+**今回は入れない**と決めた。C5 自身が段1-5 の変更対象だったので、baseline に
+入れても「変わっていないこと」を主張する意味が無いためである。`xcheck_compare.py`
+の `CHIPS` には `esp32c5` が既にあるので、C5 を凍結する段に入ったら
+`--chips esp32s3 esp32 esp32c6 esp32c5` で 11 stage の baseline を取れる
+（`BUILDING.md`「X-check」節）。
+
+### AC 5a-5m の結果
+
+判定の正本は開発リポジトリ `.steering/20260916-c5-arduino-plan/stage5/AC.md`
+（根拠ログの名前つき）。ここでは結果だけを書く。
+
+| # | 基準 | 結果 |
+| --- | --- | --- |
+| 5a | verify 5 板、本数 = 表からの導出、Xtensa + C6 は不変 | **PASS**（`PASSED: 68 builds from the installed package on x86_64-pc-linux-gnu (68 planned)`、rc=0、9 分 37 秒。`BUILD FAILED` / `NO IMAGE` 0 行） |
+| 5b | `check_release_artifacts` / `check_host_paths` / 自己テスト | **PASS**（前者は URL probe 込みで rc=0、負対照 2 本とも rc=1。後者は zip 1,100 ファイル / staging 1,100 ファイルとも `PASSED`。`test_check_release_artifacts.py` 13 tests OK、`test_check_host_paths.py` / `test_fmp3_link_objects.py` / `test_xcheck.py` とも PASS） |
+| 5c | CI yml | **PASS**（chip ループ `esp32s3 esp32 esp32c6 esp32c5`、板名検査に `m5stampc5_fmp3`、stage 表に `esp32c5:minimal wifi-connect`、C5 が `m5` / `btclassic` を持たないことの検査。3 本の yml が `yaml.safe_load` を通り、板検査ステップを抽出してローカル実行 rc=0、負対照 3 本が rc=1） |
+| 5d | X-check 9/9 | **PASS**（4 チップの stage を `--clean` で建て直したあと 9/9 MATCH、`ignored (not in baseline): esp32c5`。`--strict` は 9 stage とも `banner.o` のみ DIFF = 期待どおり。`git diff --stat main -- ports/m5stack_xtensa src third_party` 空） |
+| 5e | size 分母 | **PASS**（`m5stampc5_fmp3` が 320928 / 1310720、他 4 板は 327680 or 452112 のまま） |
+| 5f | `TOPPERS_C5_NET_DIAG=ON` のリンク | **PASS**（`nm -u` 0。実機は未実施と明記） |
+| 5g | 利用者向け文書 | **PASS**（本 commit。固定総数は書かず `--list-builds` を指す形にした） |
+| 5h | 本節と段分け表 | **PASS**（本 commit） |
+| 5i | `--list-builds` の内訳 | **PASS**（CoreS3 15・M5StickS3 15・M5Core 20・M5NanoC6 9・M5StampC5 9 = 68。表の直積からの導出であって固定値ではない） |
+| 5j | リリース形に C5 stage 2 本 | **PASS**（`toppers-esp32-0.4.2.zip` 8,195,024 B / 1,160 ファイル / `link-manifest.json` 11 本に `fmp3-prebuilt/esp32c5/{minimal,wifi-connect}` があり、index の `toolsDependencies` に `m5stack:esp-rv32@2601` と `m5stack:esp32c5-libs@3.3.8`） |
+| 5k | W-2 再取得 | **PASS（1/1、counts つき）** |
+| 5l | `prebuilt/lwip/README.md` の S5-4 | **PASS**（commit `402c950`） |
+| 5m | tree hash を前後で採る手順 | **PASS**（`BUILDING.md`「ステージを建て直すときは tree hash を前後で採る」。本段でも実際に前後で採り、`~/Arduino/hardware/toppers/esp32` が不変（`b05084f5...`）であること、`build/prebuilt/*` は `banner.o` のせいで変わって当然であることを記録した） |
+
+### 本数を古い数字と比べないこと
+
+`docs/c6-port.md` 段5 は **47 本**（4 板）と記録している。C5 とは無関係な 2 つの
+commit がそのあとに入っており、C5 統合の起点ではすでに 59 本だった。
+
+| ツリー | CoreS3 | StickS3 | M5Core | NanoC6 | StampC5 | 計 | 変化の中身 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| C6 段5（`docs/c6-port.md`） | 12 | 12 | 16 | 7 | -- | 47 | -- |
+| C6 段6 `801c68c` | 13 | 13 | 17 | 8 | -- | 51 | 例題 `NanoC6Gpio` を wificonnect へ |
+| `cb6901f`（Xtensa の GPIO） | 15 | 15 | 20 | 9 | -- | 59 | 例題 `GpioInterrupt` を m5 / wificonnect / btclassic へ |
+| **`90872e9` = C5 計画の起点** | 15 | 15 | 20 | 9 | -- | **59** | 段5 が一致を要求する行 |
+| **本ツリー** | 15 | 15 | 20 | 9 | **9** | **68** | M5StampC5 の追加のみ |
+
+正しい言明は「**Xtensa 3 板 + M5NanoC6 は C5 統合の前後で同じ 59 本**を出し、
+C5 が 9 本（minimal 3 + wificonnect 6）を足した」である。実際、verify の
+summary の非 C5 59 行は `git show 90872e9:scripts/verify_package.py` の表から
+再生した 59 行と**順序込みで完全一致**した（diff 空）。
+
+### リリース形で実際に測ったもの
+
+| 項目 | 値 |
+| --- | --- |
+| platform archive | `toppers-esp32-0.4.2.zip` 8,195,024 B（7.82 MiB）、1,160 ファイル、`link-manifest.json` 11 本 |
+| （参考）C6 段5 時点の同じアーカイブ | 6.3 MB、947 ファイル、9 stage。M5StampC5 の 2 stage が 213 ファイル・約 1.9 MB を足した |
+| C5 stage の内訳 | `esp32c5/minimal` と `esp32c5/wifi-connect`。うち `wifi-connect/lib/liblwip.a` が 473,586 B（C6 の物とバイト同一、S5-4 で重複を許容） |
+| index の tool 依存（0.4.2） | `esp-x32@2601` / `esptool_py@5.2.0` / `esp32s3-libs@3.3.8` / `esp32-libs@3.3.8` / `esp-rv32@2601` / `esp32c6-libs@3.3.8` / **`esp32c5-libs@3.3.8`** / `toppers:fmp3-link@0.4.2` |
+| ホストのパス混入 | zip 1,100 ファイル・staging 1,100 ファイル・組み立てた platform 1,074 ファイル、いずれも 0 件 |
+
+`check_release_artifacts.py` の負対照 2 本（C5 の SDK を index の
+`toolsDependencies` から落とす / `esp32c5/wifi-connect` stage をアーカイブから
+落とす）は、いずれも rc=1 で C5 を名指して失敗した。検査が実際に C5 を見ている
+ことの実演である。
+
+### `--config-file` で検証する（C6 段5 で踏んだ罠の、より安全な回避）
+
+`verify_package.py` は Boards Manager 経由で入れ直すが、**開発機の
+`~/Arduino/hardware/toppers/esp32`（`install_platform.py` が置くスケッチブック
+platform）が同じ ID `toppers:esp32` を持つので、Boards Manager 側を覆い隠す**。
+C6 段5 はこれを `mv` でどけて回避した。段5 では `--config-file` に
+`directories.user` だけを空の scratch へ向けた設定を渡し、**利用者の
+スケッチブックを一切動かさずに**同じことをした（`directories.data` は
+共有したままなので `esp-rv32` 約 2 GB と各 SDK の再取得は発生しない。実測でも
+7 つの tool がすべて `already installed`）。手順は `BUILDING.md`
+「リリース経路の検証」節。
+
+### 正直な観察・残る穴
+
+- **ON 像（`TOPPERS_C5_NET_DIAG=1`）は実機で一度も動かしていない**（S5-3）。
+- **W-4（`4WAY_HANDSHAKE_TIMEOUT` の対照）は依然 NOT-EXERCISED**。段4 でも
+  段5 の W-2 でも `reason=` が 1 件も出ず、対照を回す条件が発生しなかった。
+- **`GpioInterrupt` の真cold は未実施**（warm のみ。段4 から持ち越し）。
+- **WPA2-PSK 単独 AP・Open AP・5 GHz での association は未実測**（AP を
+  用意できない。段4 から持ち越し）。
+- **scan の記録上限 20 は上げていない**。真値（`esp_wifi_scan_get_ap_num()`）を
+  併記するかどうかも決めていない。`README.md` の「既知の制限」に
+  「20 は上限であって近隣の実数ではない」と書くに留めた。
+- **成果物のホスト間バイト一致は C5 でも未計測**（M5NanoC6 と同じ）。段5 は
+  1 ホスト（Linux x86_64）でしか建てていない。
+- **ROM `rand()` / `syscall_table_ptr` ハザード**は段1 / 段3 から変わっていない。
+  段5 では `README.md`「M5Stamp-C5 の既知の制限」に「M5NanoC6 と同じ」と
+  書くに留めた（コードでは直していない）。
+- **`docs/c6-port.md` 段4 の `authmode` 誤記**（段4 の入口条件の 1 つ）は、
+  段4 の fix wave の直後に別 commit（`ba92514` / `38dbf97`）で是正済みで、
+  段5 の守備範囲には残っていない。ただし `packaging/README.release.md` の
+  M5NanoC6 の行に同じ誤記（「WPA2-PSKのみ」）が残っていたので、本 commit で
+  そちらも「9/9 とも WPA3-SAE、WPA2-PSK 単独と Open は未実測」に直した。
+- **公開スナップショットは出ていない**。`portBaseCommitC5` は非公開の開発
+  リポジトリの `1d96bcba` を指したままで、公開リポジトリ `toppers/fmp3_esp_idf`
+  の現行 `fdd89f8` には C5 も C6 も無い。
+- **ステージを建て直すと、同じソースから建てた app イメージの sha256 は変わる**
+  （`objs/banner.o` が `__DATE__` / `__TIME__` を持つため）。段4 が記録した
+  ダミー像の `a79d63d5...` と、段5 が焼き直した同じソースの `3f007a0c...` は
+  この理由で違う（サイズは同じ 548,912 B、段5 の verify 行と一致）。
+  **イメージの sha256 を「ソースが同じことの証明」に使わないこと。**
+
+### 段6（任意）
+
+段5 で配布物としては成立しているので、以下はいずれも任意であり、
+ユーザーの判断で実施する。
+
+- 公開: GitHub release / tag / package index の push / `library.properties` の
+  版上げ。**段5 では一切行っていない。**
+- `TOPPERS_C5_NET_DIAG=ON` 像の実機 1 回（ping と port 7 echo が応答するか）。
+- `GpioInterrupt` の真cold、5 GHz association、WPA2-PSK 単独 AP、Open AP。
+- scan の記録上限 20 の扱い（真値の併記か上限引き上げか）。
+- C5 stage を X-check の baseline へ（C5 を凍結する段に入ったら）。
+- 成果物のホスト間バイト一致（Windows / macOS のホストが要る）。

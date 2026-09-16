@@ -100,6 +100,71 @@ CMake 呼び出しへ渡せます。
 `ON`/`OFF` を切り替えて作り直すと、直前に作った配布用ステージが対照用の
 ものに置き換わります。
 
+### M5Stamp-C5（ESP32-C5）のステージ
+
+```bash
+python scripts/build_prebuilt_stages.py --chip esp32c5
+```
+
+`--chip esp32c5` の既定 profile も `minimal` / `wifi-connect` の 2 つだけです
+（`m5-unified` / `bt-classic` は選べません。C5 計画 A10）。トゥールチェーンは
+M5NanoC6 と**同じ** `esp-rv32` 2601 で、SDK だけが `esp32c5-libs` 3.3.8 に
+変わります。どちらも M5Stack Arduino core 3.3.8 に同梱されているので、
+別途取得は要りません。
+
+C5 は `ports/m5stack_riscv/runtime` の**チップ分岐**であって、別ポートの
+複製ではありません（C5 計画 A2）。C6 と分かれているのは
+`arch/riscv_gcc/esp32c5` / `target/m5stampc5_gcc` / `config/esp32c5` /
+`seam/seam_c5_*` / `cmake/prebuilt_stage_c5.cmake` /
+`cmake/toolchain-riscv-esp32c5.cmake` と、Arduino の GPIO・割込み層
+（`arduino/arduino_gpio_c5.c`、`arduino/arduino_interrupt_c5.{c,cfg,h}`。
+C6 版は USB や MSPI のピン番号と割込みの配線が C6 決め打ちなので、
+共有せずチップごとに置いています）です。**C6 のステージのバイト列が
+変わっていないこと**は X-check（下記）が毎段示します。
+
+`wifi-connect` stage には Wi-Fi 一式と C5 の GPIO API（`pinMode` /
+`digitalWrite` / `digitalRead` / `attachInterrupt`）が入り、`minimal` には
+入りません（C6 と同じ切り分け）。**`rgbLedWrite` はありません**--
+M5Stamp-C5 に WS2812 系の on-board RGB LED が無いためで、同梱例題
+`NanoC6Gpio` は C5 では板ガードにより 1 行ログを出すだけの no-op です
+（C5 計画 S5-6）。
+
+| オプション | 既定 | 用途 |
+| --- | --- | --- |
+| `TOPPERS_C5_APM_UNBLOCK` | ON | LP/HP APM のロック解除。OFF にすると Wi-Fi scan が意図的に 0 件になる対照ステージが作れます（`docs/c5-port.md` 段4「APM 対照」） |
+| `TOPPERS_C5_WIFI_DIAG` | OFF | Wi-Fi 初期化の段階マーカー |
+| `TOPPERS_C5_NET_DIAG` | OFF | port 7 の TCP/UDP echo サーバ、DHCP 直後の gateway ping、`ip=`/`gw=` 付きログ行。**配布する stage では既定 OFF**（段5 判断 S5-3）。ON 経路は段5 で「今も建ってリンクできる」ことだけを机上で確認しています（同じスケッチで flash +2,224 B / RAM +64 B、最終 ELF の `nm -u` は ON / OFF とも空）。**ON 像の実機動作は未実測です** |
+
+C6 と同じく、対照ステージは `--output-directory <別の場所>` と
+`--work-directory <別の場所>` を必ず付けて、既定の
+`build/prebuilt/esp32c5/<profile>/` を**上書きしない**ようにしてください。
+
+### ステージを建て直すときは tree hash を前後で採る
+
+ステージを建て直す作業（対照ステージを作る、`--clean` で作り直す）では、
+**「触っていないはずのツリーが本当に動いていないか」を、作業の後で
+`diff -r` して確かめるのではなく、作業の前後で 1 行のハッシュとして
+採ってください。** 事後の `diff` は「今は同じ」しか言えず、「作業中に
+一度も変わらなかった」は言えません（C5 段4 の 4c がこの形で
+NOT-EXERCISED になりました）。
+
+```bash
+treehash() { (cd "$1" && find . -type f -print0 | LC_ALL=C sort -z \
+                | xargs -0 sha256sum | sha256sum | cut -d' ' -f1); }
+
+treehash build/prebuilt/esp32c5            # 作業前
+treehash ~/Arduino/hardware/toppers/esp32  # 作業前
+# ... 対照ステージを別の --output-directory へ建て、別の sketchbook へ入れて使う ...
+treehash build/prebuilt/esp32c5            # 作業後（同じ値であること）
+treehash ~/Arduino/hardware/toppers/esp32  # 作業後（同じ値であること）
+```
+
+**`--clean` で建て直した既定のステージ自身は、この tree hash が変わって
+当然です**（`objs/banner.o` がビルド時刻を持つため）。配布されるバイト列が
+変わっていないことの判定は X-check（`xcheck_compare.py`、`banner.o` を
+除外）であって、tree hash ではありません。tree hash は「触っていない
+はずのツリー」に対して使う道具です。
+
 ## 2. platform ディレクトリを組み立てる
 
 ```bash
@@ -115,7 +180,7 @@ sketchbook の `hardware/toppers/esp32` へ置きます。Arduino IDE を再起�
 チップ 1 つ分のディレクトリを渡せばそのボードだけになり、`--chip` で
 親から一部だけ選ぶこともできます。
 
-### M5NanoC6（`m5nanoc6_fmp3`）のイメージ形式
+### M5NanoC6（`m5nanoc6_fmp3`）と M5StampC5（`m5stampc5_fmp3`）のイメージ形式
 
 Xtensa 3 ボードは`paddrMode="runtime-mmu"`（ブート時に自分で MMU を
 設定する形式）ですが、M5NanoC6 は RISC-V の `paddrMode="fixed-vma"`
@@ -139,6 +204,17 @@ Xtensa 3 ボードは`paddrMode="runtime-mmu"`（ブート時に自分で MMU �
 
 C-1..C-8 はすべて `fmp3-link` 実行時に検査され、満たさなければリンクは
 失敗します（Xtensa の runtime-mmu 側にこの検査はありません）。
+
+**M5StampC5 も同じ fixed-vma 形式です**（C5 計画 A5）。`FIXED_VMA_LAYOUTS` に
+`esp32c5` の行（page 0x10000、drom `0x42000000-0x44000000`、iram
+`0x40800000-0x40860000`、`loader_seg` `0x4084E5A0`）を足してあり、C5 では
+C-1..C-8 に加えて **C-9**（app descriptor の `chip_id` が ESP32-C5 の
+`0x0017` で、revision がイメージの宣言と矛盾しないこと）も検査します。
+**bootloader の位置が C6 と違います**: M5StampC5 は **0x2000**（C6 は 0x0）で、
+スケッチビルドの `flash_args` もそう出ます。asp3 の Direct Boot 像を焼いた
+ことのある板は flash 0x0 に magic が残っていて ROM が 0x2000 の bootloader を
+起動しないので、その場合は 0x0-0x1FFF を消してください
+（`docs/c5-port.md` 段2）。
 
 ### この platform はライブラリを同梱しません
 
@@ -215,7 +291,8 @@ python scripts/check_host_paths.py <platform または zip>
 - `verify_package.py` … Boards Manager 経由で入れ直し、**既定で全ボードx
   対応する構成x例題を建てる**（下記「`verify_package.py` の板と構成」）
 - `check_release_artifacts.py` … index の checksum、ホストの網羅、ドライバの版、
-  各チップの stage・ツール依存（C6 なら `esp-rv32`/`esp32c6-libs`）
+  各チップの stage・ツール依存（C6 なら `esp-rv32`/`esp32c6-libs`、
+  C5 なら `esp-rv32`/`esp32c5-libs`）
 - `check_host_paths.py` … 配布物にビルド機の絶対パスが混入していないか
 
 ### `verify_package.py` の板と構成
@@ -229,10 +306,11 @@ python3 scripts/verify_package.py --list-builds   # 実行せず、計画だけ�
 ```
 
 `--list-builds` はパッケージも Boards Manager への出入れもせず、板x構成x例題の
-表と合計だけを表示します（2026-09-15 実測: CoreS3 15・M5StickS3 15・M5Core 20・
-M5NanoC6 9 = 計 59。導出の正本はコマンドそのもので、この数字は実測の一例です）。
+表と合計だけを表示します（2026-09-16 実測: CoreS3 15・M5StickS3 15・M5Core 20・
+M5NanoC6 9・M5StampC5 9 = 計 68。導出の正本はコマンドそのもので、この数字は
+実測の一例です。2026-09-15 時点は M5StampC5 の 9 本が無く 59 でした）。
 
-- **既定は 4 板すべて**です。`--boards`/`--profiles` で絞り込めます。
+- **既定は 5 板すべて**です。`--boards`/`--profiles` で絞り込めます。
 - **`verify_package.py` はローカルの package index を作って Boards Manager の
   設定を一時的に書き換えます。** これは開発機の `~/.arduino15/` にキャッシュ
   されている**公開 index（`package_toppers_index.json`）を同じファイル名で
@@ -396,6 +474,14 @@ PY
   - `.github/workflows/verify-package.yml` の chip ループ・板名検査・
     stage 存在検査の spec 文字列。
 
+  **「チップを足すのは表に行を足すだけ」が成り立つのは、この
+  `scripts/` と CI の表についてだけです**（段5 判断 S5-7）。
+  `ports/*/runtime` 側は表ではなくチップ分岐を持つので、実際には
+  arch / target / config / seam / toolchain / `prebuilt_stage_<chip>.cmake` と、
+  ピン番号や割込み配線がチップ決め打ちの Arduino 層
+  （`arduino_gpio_*.c` / `arduino_interrupt_*.c`）を足す作業が要ります
+  （C5 = 段1 の実績）。C3 / H2 を足すときも同じ量の作業になります。
+
   **このうち機械的に一致を強制されている（ドリフト検査がある）のは次だけです。**
   `scripts/test_check_release_artifacts.py:352-380` が、`packaging/
   release-allowlist.json` の `prebuiltStages`／`chipToolDependencies` と、
@@ -437,9 +523,9 @@ PY
   ヘッダはすべて M5Stack core から検出して使います。ツリーへ持ち込むと、
   利用者が入れた core との二重管理になります。
 
-  > **例外（M5NanoC6、D8、段5 判断 S5-2 で維持）。** `ports/m5stack_riscv/
-  > runtime/wifi/` は、この原則から逸脱する ESP-IDF 原本ファイルを計 9 本
-  > vendoring しています。
+  > **例外（M5NanoC6 と M5StampC5、D8 / C5 計画 A8、段5 判断 S5-2 で維持）。**
+  > `ports/m5stack_riscv/runtime/wifi/` は、この原則から逸脱する ESP-IDF
+  > 原本ファイルを C6 について計 9 本、C5 について 3 本 vendoring しています。
   >
   > - **esp-idf 原本 6 本**（Apache-2.0）: `periph_ctrl.c` `modem_clock.c`
   >   `modem_clock_hal.c` `efuse_hal.c` `efuse_hal_esp32c6.c`
@@ -455,7 +541,17 @@ PY
   > - **lwIP contrib ヘッダ 3 本**（BSD-3-Clause）: `ping.h` `tcpecho_raw.h`
   >   `udpecho_raw.h`。`netif_esp32s3.c` が include するが、M5Stack core の
   >   SDK は lwIP contrib apps のヘッダを含まない（実体は `liblwip.a` の
-  >   中にある）ため、ヘッダだけを補っている。
+  >   中にある）ため、ヘッダだけを補っている。C5 と共有する。
+  > - **C5 の同名原本 3 本**（Apache-2.0、C5 計画 A8、段3 で追加）:
+  >   `phy_init_data_esp32c5.c` `modem_clock_hal_esp32c5.c`
+  >   `efuse_hal_esp32c5.c`。理由は上の 6 本とまったく同じで、チップ固有の
+  >   3 本だけが C5 用に増えた（チップ非依存の `periph_ctrl.c` /
+  >   `modem_clock.c` / `efuse_hal.c` は C6 と共有する）。出自は
+  >   `packaging/release-allowlist.json` の `portBaseCommitC5`（`1d96bcba`）で、
+  >   1 本ごとの記録は
+  >   [`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE.md)
+  >   の「ESP32-C5」節（shim の分は
+  >   `runtime/wifi/shim/IMPORT_PROVENANCE_c5.md`）。
   >
   > **出自**は開発リポジトリ（`https://github.com/exshonda/
   > fmp3_esp_idf_dev.git`）で、内容は無改変・原ライセンスヘッダ保持。
@@ -507,6 +603,11 @@ PY
 - **資格情報を残さないでください。** Wi-Fi の SSID／パスワードを commit せず、
   実機ログを文書化するときは SSID、BSSID、割当 IP を書かないでください。
   `examples/WiFiConnect/WiFiConnect.ino` は公開前に空であることを確認します。
+- **`scripts/capture_c5_usj.sh` も同じく開発者向けで、配布しません。**
+  C6 台本の写しで、chip が `ESP32-C5`、bootloader が **0x2000**、毎回
+  flash `0x0-0x1FFF` を消してから焼きます（asp3 の Direct Boot magic 対策。
+  `docs/c5-port.md` 段2）。FORBIDDEN リストで M5NanoC6 を掴まないようにして
+  あります。伏字化の仕組みは C6 台本と同じです。
 - **`scripts/capture_c6_usj.sh` は開発者向けの採取台本で、配布しません。**
   M5NanoC6 の実機 USB Serial/JTAG からログを採り、`C6_REDACT_ONLY` モードで
   SSID／パスワード／割当 IP などを機械的に伏字化するためのものです
@@ -544,11 +645,18 @@ PY
   `THIRD_PARTY_NOTICES.md` が正で、`LICENSE` はこのリポジトリ向けに書かれた
   部分に適用されます。取り込んだファイルはヘッダを保持してください。
 
-## X-check -- 共有スクリプトが Xtensa 3 板の配布物を変えていないことの機械判定
+## X-check -- 共有スクリプトが既存板の配布物を変えていないことの機械判定
 
 M5NanoC6 の追加は `build_prebuilt_stages.py` / `install_platform.py` /
 `fmp3_link.py` など、Xtensa 3 板も使う共有スクリプトを触ります。「Xtensa は
-変えていない」をバイト列で示すのが X-check です。
+変えていない」をバイト列で示すのが X-check です。M5StampC5 の追加はさらに
+`ports/m5stack_riscv/runtime` を C6 と共有するので、**C5 の段では baseline に
+C6 の 2 stage も入れて 9 stage で回します**（C5 計画 A4）。
+
+```bash
+# C5 の段の起点で
+python scripts/xcheck_baseline.py --force --clean --chips esp32s3 esp32 esp32c6
+```
 
 ```bash
 # 作業前（作業ツリーが clean な段の起点で 1 回）
@@ -567,7 +675,15 @@ python scripts/test_xcheck.py                # 判定器自身の自己テスト
   （Xtensa の分も含む）を消して置き換えます。** C6 だけの baseline が欲しい
   ときは、既定のディレクトリへ `--force` するのではなく、
   `--baseline-directory <別の場所>` で完全に別の置き場所を指定してください。
-  C6 の golden を比較対象にするかどうかは今後の判断です（段5 時点では未定）。
+  C6 の golden を比較対象にするかどうかは今後の判断です（C6 段5 時点では未定。
+  C5 統合では上記のとおり **C6 を baseline に入れて 9 stage** で回しました）。
+- **C5 の stage（`build/prebuilt/esp32c5/`）は baseline に入れていません。**
+  `xcheck_compare.py` は `ignored (not in baseline): esp32c5` の 1 行で
+  読み飛ばします（比較対象にも失敗にもしません）。C5 統合の段5 では、
+  C5 自身が変更対象だったのでこのままにしました（C5 計画 段5 の判断）。
+  C5 を「これ以上変えない」段に入ったら、`--chips esp32s3 esp32 esp32c6 esp32c5`
+  で baseline を取り直せば 11 stage になります（`CHIPS` には既に
+  `esp32c5` が入っています）。
 - 比較するのは `link-manifest.json`（バイト一致。時刻系キーだけの差は注記つき
   MATCH）、`objects.rsp`、`objs/*.o` の sha256（`banner.o` は `--strict`
   無しでは除外）、`lib/*.a`、その他のファイル。stage が片側にしか無ければ
@@ -579,14 +695,14 @@ python scripts/test_xcheck.py                # 判定器自身の自己テスト
 ## リリース経路の検証（`scripts/verify_package.py`）
 
 パッケージを組み、Boards Manager 経由で入れ直し、対応するボードx構成を
-建て直す（既定は 4 板すべて、上記「`verify_package.py` の板と構成」参照）。
+建て直す（既定は 5 板すべて、上記「`verify_package.py` の板と構成」参照）。
 
 ```sh
 python3 -m venv ~/.venvs/toppers-verify
 ~/.venvs/toppers-verify/bin/pip install pyinstaller
 ~/.venvs/toppers-verify/bin/python scripts/verify_package.py \
     --platform-dir <プラットフォーム> --arduino-cli ~/bin/arduino-cli \
-    --skip-core --skip-libraries
+    --skip-core --skip-libraries --config-file <検証用の設定>
 ```
 
 PyInstaller はリンクドライバの凍結に要る。多くのディストリの Python は
@@ -595,8 +711,38 @@ PyInstaller はリンクドライバの凍結に要る。多くのディスト�
 **`--platform-dir` はスケッチブックの外を指すこと。** `<sketchbook>/hardware/
 toppers/esp32` に置いたままだと、arduino-cli はそれをスケッチブック
 プラットフォームとして扱い、Boards Manager 側の `toppers:esp32` を
-「見つからない」と言う（install も uninstall も効かない）。検証するときは
-別の場所へコピーして、スケッチブック側は一時的にどける。
+「見つからない」と言う（install も uninstall も効かない）。
+
+**開発機のスケッチブックに `hardware/toppers/esp32` が入っている状態
+（`install_platform.py` を一度でも走らせた機械）では、それだけでは足りません。**
+スケッチブックの platform は同じ ID `toppers:esp32` を持ち、Boards Manager 側の
+platform を覆い隠すからです。C6 段5 はこれを `~/Arduino/hardware/toppers` を
+一時的に `mv` してどける形で回避しましたが、**`--config-file` に空の
+`directories.user` を渡すほうが、利用者のスケッチブックを一切動かさずに済みます**
+（C5 段5 で実施）。
+
+```yaml
+# <検証用の設定>: directories.user だけを別の空ディレクトリへ向ける。
+# data は共有したままにする（ツールチェーンと SDK を再取得しないため）。
+directories:
+  user: /path/to/scratch/verify-sketchbook
+  data: /home/<user>/.arduino15
+```
+
+```bash
+mkdir -p /path/to/scratch/verify-sketchbook
+ln -s ~/Arduino/libraries /path/to/scratch/verify-sketchbook/libraries  # M5GFX / M5Unified
+arduino-cli --config-file <検証用の設定> core list    # toppers:esp32 が出ないことを確認
+```
+
+`libraries` を symlink するのは `--skip-libraries` で済ませるためで、
+これをしないと M5Unified 構成のビルドが落ちる。**`directories.data` は
+共有したままにする**--分けると `esp-rv32`（約 2 GB）と各 SDK を
+取り直すことになる。共有する代償として、検証が
+`~/.arduino15/package_toppers_index.json` をローカル index で上書きし
+`staging/packages/` を空にするので、**検証後に
+`arduino-cli core update-index` を 1 回実行して公開 index を復旧すること**
+（上記「`verify_package.py` の板と構成」の注意と同じ）。
 
 同じ理由で、`~/.arduino15/packages/` に `toppers` の Boards Manager 版が
 残っていると、その `installed.json` を arduino-cli が読み続けて古い index の
