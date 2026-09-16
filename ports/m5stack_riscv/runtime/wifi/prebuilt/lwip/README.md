@@ -118,3 +118,26 @@ Archive checksum (SHA-256) and size:
 
 `python3 scripts/check_host_paths.py` passes on it. Same licenses as above.
 Update the archive only together with this file and `lwipopts.h`.
+
+### Why the two chips keep their own copy (stage 5 decision S5-4, 2026-09-16)
+
+`esp32c5/liblwip.a` and `esp32c6/liblwip.a` are byte-identical, so the released
+platform archive carries the same 473,586 bytes twice, once per chip.  Stage 5
+decided to keep it that way rather than share one file:
+
+- The stage build reads exactly one directory per chip
+  (`runtime/CMakeLists.txt`, `LWIP_PREBUILT_ROOT` = `prebuilt/lwip/<chip>`), so
+  sharing would mean either a symlink (not preserved by every checkout, and not
+  by the Git-for-Windows default) or a chip-selection branch in the build,
+  which is the kind of coupling the chip branch exists to avoid.
+- They are identical today by coincidence of inputs, not by construction: lwIP
+  has no chip code and both chips are RV32IMAC with the same `-march` and the
+  same `lwipopts.h`.  Any of those three can change for one chip alone (a
+  different `-march`, a chip-specific option), and a shared file would then have
+  to be un-shared under time pressure.
+- The cost is bounded and known: 473,586 bytes of a platform archive whose C5
+  stage pair already contributes several MB, and the archive is fetched once by
+  Boards Manager.
+
+Re-open this only if a third RISC-V chip is added, when the cost stops being a
+constant.
