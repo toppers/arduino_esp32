@@ -93,9 +93,12 @@ prebuilt archive、include 配置に依存しています）。
   です。**Open AP/WPA3-SAE は AP が用意できず未実測、BLE は未着手、M5Unified 相当の
   profile はありません**（下記「M5NanoC6 の既知の制限」）。判断と到達点は
   [`docs/c6-port.md`](docs/c6-port.md)
-- **M5Stamp-C5（ESP32-C5）は統合作業中で、まだ配布物にありません**（2026-09-16、段2 まで =
+- **M5Stamp-C5（ESP32-C5）は統合作業中で、まだ配布物にありません**（2026-09-16、段4 まで =
   `minimal` の `Blink` が実機で warm 5/5・真cold 5/5、stock bootloader @0x2000、240 MHz。
-  Wi-Fi は段3/4）。判断 A0-A12 と段ごとの到達点は
+  Wi-Fi は scan 20 AP（2.4 GHz と 5 GHz の両方が見える）と、STA（**WPA2-PSK のみ**）->
+  DHCP -> DNS -> TCP がユーザーの実 AP に対して warm 3/3 と真cold 3/3。`attachInterrupt` の
+  自己駆動試験も `WiFi` 構成で PASS。**5 GHz での接続、Open AP、WPA3-SAE、BLE は未実測**）。
+  判断 A0-A12 と段ごとの到達点は
   [`docs/c5-port.md`](docs/c5-port.md)
 
 ## M5NanoC6 の既知の制限（2026-09-15）
