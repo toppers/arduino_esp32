@@ -85,7 +85,8 @@ prebuilt archive、include 配置に依存しています）。
 - **M5AtomS3 Lite 実機**で、minimal（`Blink` warm 5/5・真cold 5/5）、
   `GpioInterrupt`（G7 自己駆動、`rising=5 falling=5 change=10 detached=0
   dispatch=call=20 orphan=0`）、本体 RGB LED（G35、`AtomS3LiteRgb` で
-  `tx_done=8`。**色順の目視確認は未了**）、Wi-Fi スキャン（16 AP）。
+  `tx_done=8`。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認**）、
+  Wi-Fi スキャン（16 AP）。
   **STA 接続は現状この AP に繋がりません**（`reason=17` で 3/3 切断。
   同じ stage を使う CoreS3 / StickS3 で同じ AP を試していないため、
   板固有か Xtensa 共通かは未確定です。[`docs/atoms3lite-port.md`](docs/atoms3lite-port.md) F-3）
