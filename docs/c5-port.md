@@ -58,7 +58,7 @@ M5Stack Arduino core 3.3.8 を入れた利用者が、`ToppersFMP3` パッケー
 | 1 | runtime の chip 表化（C6 値不変）、C5 層の並置（arch / target / config / seam / prebuilt_stage_c5 / toolchain / arduino_*_c5）、scripts の表に C5 行、`--chip esp32c5 --profiles minimal` の stage、`m5stampc5_fmp3:FMP3Runtime=minimal` で Blink / LibraryInfo / TwoFile リンク、重複定義監査、X-check 9/9 | 不要 | 完了（下記「段1 の記録」） |
 | 2 | M5Stamp-C5 で Blink（stock bootloader @0x2000）、warm 5/5・真cold 5/5、`capture_c5_usj.sh` | 要 | 完了（下記「段2 の記録」。条件 A で warm 5/5・真cold 5/5、A1 = stock、A6 = 240 MHz を JTAG の PCR 読出しで確定） |
 | 3 | wifi-connect stage（shim C5 分岐 + clic shim、`.a` x4 vendored、idf_src C5 原本、DNS liblwip）、`nm -u` 空、ROM ld 勝者、移し漏れ表 | 不要 | 完了（下記「段3 の記録」。6 例題リンク、C6 objs 不変、未焼き） |
-| 4 | WiFiScan（2.4 / 5 GHz 可視）/ WiFiConnect（STA -> DHCP -> DNS -> TCP）真cold 3/3、APM OFF 対照 0 AP、GpioInterrupt（G1） | 要 | 完了（下記「段4 の記録」。scan 20 AP（うち 5 GHz 6）、WiFiConnect warm 3/3 と真cold 3/3、APM OFF 対照 0 AP、GpioInterrupt VERDICT PASS。板はダミー creds 像へ復帰） |
+| 4 | WiFiScan（2.4 / 5 GHz 可視）/ WiFiConnect（STA -> DHCP -> DNS -> TCP）真cold 3/3、APM OFF 対照 0 AP、GpioInterrupt（G1） | 要 | 完了（下記「段4 の記録」。scan は記録上限 20 本に飽和（うち 5 GHz 6）、WiFiConnect warm 3/3 と真cold 3/3（association は WPA3-SAE）、APM OFF 対照 0 AP、GpioInterrupt VERDICT PASS。板はダミー creds 像へ復帰） |
 | 5 | verify 5 板 68 本、`check_release_artifacts`、CI、README / BUILDING / README.release / THIRD_PARTY_NOTICES / allowlist、docs | 不要 | 未着手 |
 
 公開・tag・版上げは行わない（ユーザー判断）。
@@ -565,7 +565,7 @@ C6（150 KB）より小さい**: `.bss` の shim heap（98,784 B）と lwIP / sy
 | Low#2（dev） | `putchar` | -1 | C6 と同じ |
 | Low#3（dev） | `esp_clk_tree_enable_src` | 原本の未初期化経路と同値の `ESP_OK`、`pll_160m_clk_en`=0 なら syslog | ゲート管理は未実装 |
 | （設計） | `attachInterrupt()` の未対応モード | attach せず WARNING | C6 と同じ（`arduino_interrupt_c5.c`） |
-| （既知・未検証） | Open AP、WPA3、5 GHz 帯への接続 | driver に渡す（NOTICE の文言は C6 のまま） | 段4 は WPA2-PSK のみ実測 |
+| （既知・未検証） | Open AP、WPA2-PSK 専用 AP、5 GHz 帯への接続 | driver に渡す（NOTICE の文言は C6 のまま） | 段4 で実測できたのは **WPA3-SAE**（WPA2/WPA3 混在 AP）のみ。段4 の記録参照 |
 | （既存） | `toppers_wifi_optional_stubs.c` の weak 群 | Xtensa と同じ失敗値 | wifi-connect では本体が勝つ |
 
 C6 段3 の Low#1（DNS 名前解決 0）は無い（C6 段4 の DNS 実装と DNS 版 `liblwip.a` を最初から持つ）。
@@ -605,10 +605,13 @@ C6 段3 の Low#1（DNS 名前解決 0）は無い（C6 段4 の DNS 実装と D
 - 実機の入口: 板は段2 の条件 A（minimal Blink）のまま。書込みは `scripts/capture_c5_usj.sh`
   （`erase 0x0-0x1FFF` は冪等）。
 
-## 段4 の記録（2026-09-16、branch `feature/c5-arduino-stage4`、**コード変更なし**。本 commit = 記録のみ）
+## 段4 の記録（2026-09-16、branch `feature/c5-arduino-stage4`、**コード変更なし**。
+記録 `507028a` + **fix wave 1**（本 commit、レビュー `task-1-review.md` の F1-F10。
+記録の文言のみ、実機操作なし））
 
 M5Stamp-C5 の実機で `WiFiScan`（scan）、`WiFiConnect`（STA -> DHCP -> DNS -> TCP、ユーザーの
-実 AP、WPA2-PSK）、`GpioInterrupt`（G1）、`NanoC6Gpio`（C5 では no-op）を焼いて採った段。
+実 AP、WPA2/WPA3 混在で **association は WPA3-SAE**）、`GpioInterrupt`（G1）、`NanoC6Gpio`
+（C5 では no-op）を焼いて採った段。
 **段4 は計測の段であり、本リポジトリのコードは 1 行も変えていない**（`git diff` が空、
 X-check 9/9 MATCH）。証跡は開発リポジトリ
 `.steering/20260916-c5-arduino-plan/stage4/{AC.md,logs/}`（`task1-*` / `task2-*`、commit 済み）。
@@ -616,13 +619,23 @@ X-check 9/9 MATCH）。証跡は開発リポジトリ
 実機採取（Task 1 / Task 2）は先行セッションで完了しており、本セッションで行ったのは
 **(a) ダミー creds 像への復帰書込み 1 回**、**(b) 本節と `stage4/AC.md` の記録**の 2 つだけである。
 
+**fix wave 1 で直したこと**（`507028a` の記録が事実と食い違っていた点。実機は回していない）:
+**F1** association は WPA2-PSK ではなく **WPA3-SAE** だった（`authmode=6` の読み違い。
+過小申告）、**F2** 「20 AP」は adapter の記録上限への**飽和**であって安定ではない
+（飽和した計器を安定と読んでいた）、**F3** `ping=0` は既定 `TOPPERS_C5_NET_DIAG=OFF` の
+必然で**原因は特定済み**（解決済みを未解決として段5 へ送っていた）、
+F4 `no time event` の分母、F5 `tcp=` の行名、F6 RAM 値の出所、F7 NOT-EXERCISED の送り先、
+F8 APM 表の弁別軸、F9 軸表の診断オプション、F10 ch 116 の根拠。
+**同型の `authmode` 誤記が `docs/c6-port.md` 段4 にもある**が、C6 節は本 commit の
+守備範囲外なので別件として段5 以降へ送る（本 commit では C6 節を触っていない）。
+
 ### AC 4a-4l
 
 | # | 基準 | 判定 | 根拠（`stage4/logs/` のファイル名） |
 | --- | --- | --- | --- |
 | 4a | 入口: wifi-connect stage が導入済み platform にあり、4 例題が `m5stampc5_fmp3:FMP3Runtime=wificonnect` で rc=0。X-check 9/9 | PASS | `task1-compile-c5-WiFiScan-on.txt`、`task2-compile-live-on.txt`、`task2-compile-c5-GpioInterrupt-wificonnect.txt`、`task2-compile-c5-NanoC6Gpio-wificonnect.txt`、`task2-compile-dummy.txt`（すべて rc=0、`C-1 to C-9 satisfied`）。X-check = `xcheck_compare.py` 9/9 MATCH（非 strict、baseline head `90872e9`、C5 stage は `ignored (not in baseline)`） |
-| 4b | WiFiScan warm 3/3 で `found N APs` N>0、`ssidraw=0` | **PASS（warm 4/4）** | `task1-scan-warm{1,2,3,4}.sha.txt` = `scan=20 scanap=20 ssidraw=0 unexpected=0`。SSID 列は adapter が `<SSID-0>`..`<SSID-19>` に伏せている（`task1-ssid-leak-grep.txt`: placeholders 20 / nonplaceholder **0** を 4 ログとも） |
-| 4c | APM OFF 対照（真cold）で 0 AP + filter 有効の読み戻し、ON に戻して N>0 復帰。`build/prebuilt` / `~/Arduino` 不変 | **PASS（不変の示し方は tree hash ではない。下記）** | OFF warm 書込み = `task1-scan-apmoff-warm-write.sha.txt`（`scan=0`）、OFF **真cold** = `task1-scan-cold-apmoff.sha.txt`（`scan=0`、`lp_apm_func_ctrl=0x00000003` = pristine、HP_APM M1 ラッチ `status=0x00000001 info0=0x00130001`）、ON 復帰 = `task1-scan-warm4.sha.txt`（20 AP）。OFF stage は `--output-directory` / `--work-directory` / 別 sketchbook（`task1-build-apmoff.txt`、`task1-install-platform-apmoff.txt`）。**tree hash の before/after は採られていない**ので、記録時に代わりに `diff -r -q build/prebuilt/esp32c5/wifi-connect <installed platform>/fmp3-prebuilt/esp32c5/wifi-connect` = 差分 0（92 ファイル）、両者の `esp_wifi_adapter.o` に `before-unblock` 文字列 1 件（= ON ビルド）を実測した |
+| 4b | WiFiScan warm 3/3 で `found N APs` N>0、`ssidraw=0` | **PASS（warm 4/4。N>0 は飽和していても成立する）** | `task1-scan-warm{1,2,3,4}.sha.txt` = `scan=20 scanap=20 ssidraw=0 unexpected=0`。**20 は adapter の記録上限 `TOPPERS_WIFI_MAX_RECORDS` に張り付いた値**で近隣の実数ではない（下記「WiFiScan 結果表」）。SSID 列は adapter が `<SSID-0>`..`<SSID-19>` に伏せている（`task1-ssid-leak-grep.txt`: placeholders 20 / nonplaceholder **0** を 4 ログとも） |
+| 4c | APM OFF 対照（真cold）で 0 AP + filter 有効の読み戻し、ON に戻して N>0 復帰。`build/prebuilt` / `~/Arduino` 不変 | **PASS（不変の示し方は tree hash ではない。下記）** | OFF warm 書込み = `task1-scan-apmoff-warm-write.sha.txt`（`scan=0`）、OFF **真cold** = `task1-scan-cold-apmoff.sha.txt`（`scan=0`、`lp_apm_func_ctrl=0x00000003` = pristine、HP_APM M1 ラッチ `status=0x00000001 info0=0x00130001`）、ON 復帰 = `task1-scan-warm4.sha.txt`（記録 20 本 = 上限、0 からの復帰）。OFF stage は `--output-directory` / `--work-directory` / 別 sketchbook（`task1-build-apmoff.txt`、`task1-install-platform-apmoff.txt`）。**tree hash の before/after は採られていない**ので、記録時に代わりに `diff -r -q build/prebuilt/esp32c5/wifi-connect <installed platform>/fmp3-prebuilt/esp32c5/wifi-connect` = 差分 0（92 ファイル）、両者の `esp_wifi_adapter.o` に `before-unblock` 文字列 1 件（= ON ビルド）を実測した |
 | 4d | WiFiConnect warm 3/3: connected / DHCP bound / DNS / TCP の各 marker >= 1、`## Unexpected` / `mcause=` / `[LWIP-ASSERT]` 0 | PASS | `task2-live-warm{1,2,3}.sha.txt` = `connected=1 dhcp=1 dhcpdone=1 dnsok=2 dnsfail=0 tcp=1 disc=0 beginrej=0 unexpected=0`。16 本の採取ログ全件で `## Unexpected` / `mcause=` / `[LWIP-ASSERT]` / `Guru` / `panic` の一致行は **0** |
 | 4e | 真cold 3/3 で 4d と同じ marker | **PASS（3/3、無音採取 0 回）** | `task2-live-cold{1,2,3}.sha.txt`（同カウント）。`.cold.txt` / `.journal.txt` あり。C6 段4 の cold2（45 秒無音）に相当する回は C5 では出ていない |
 | 4f | 秘密: `git status` clean、`git diff --exit-code examples/` rc=0、全ログで creds 針 0、docs に SSID/IP/BSSID なし | PASS | 復帰書込みの前後とも `git diff --exit-code examples/` rc=0、`git status --porcelain` 0 行。記録時に `wifi_credentials.sh` を読み直して `grep -rlF` を掛け、**SSID 一致ファイル 0 / PASS 一致ファイル 0**（`WIFI_STA_BSSID` は空 = 針なし）、`.UNREDACTED` 0。`REDACTED_` トークンの実発火は **0**（1 件の一致は `task1-ssid-leak-grep.txt` の見出し文字列自身） |
@@ -643,6 +656,7 @@ X-check 9/9 MATCH）。証跡は開発リポジトリ
 | stage（APM） | ON = 導入済み platform（既定）/ OFF = `--cmake-define TOPPERS_C5_APM_UNBLOCK=OFF` を**別 `--output-directory` と別 sketchbook**へ | ON(warm1-3) -> OFF(warm 書込み + 真cold) -> ON(warm4 復帰) の順で 1 軸ずつ |
 | リセット | warm（初回は書込み、以後 `NOFLASH=1`）。OFF 対照のみ真cold（`COLD=1` + `uhubctl -l 2-3.3 -p 4`） | 真cold は Task 1 では 1 回だけ |
 | bootloader / ptable / boot_app0 | stock（`.bootloader.bin` @0x2000、`.partitions.bin` @0x8000、core の `boot_app0.bin` @0xe000）、段2 条件 A。`erase 0x0-0x1FFF` は台本が毎回 | 不変 |
+| 診断オプション | `TOPPERS_C5_NET_DIAG` / `TOPPERS_C5_WIFI_DIAG` とも**既定 OFF のまま**（A11）。動かしたのは APM だけ | 全 run 固定 |
 | 採取 | `CAPTURE_SEC=60`、`MARKERS='\[WiFiScan\] done|\[LWIP-ASSERT\]'` | 全 run 同一 |
 
 **Task 2（WiFiConnect / GpioInterrupt / NanoC6Gpio / ダミー復帰）**
@@ -653,23 +667,38 @@ X-check 9/9 MATCH）。証跡は開発リポジトリ
 | stage（APM） | ON のみ（OFF 対照は Task 1 で採る。S4-2） | 1 値 |
 | リセット | warm 3 回 -> 真cold 3 回 -> GpioInterrupt warm 1 -> NanoC6Gpio warm 1 -> W-2 変種 warm 1 -> ダミー復帰 warm 1 | -- |
 | scan-先行 / begin-only | 数える run は begin-only（W-1 条件）。scan-then-begin（W-2）は作業コピー変種 1 回のみ（参考） | -- |
-| 認証方式 | WPA2-PSK（ユーザーの実 AP、`authmode=6` で association） | 1 AP。WPA3-SAE / Open は AP を用意できず未実測 |
+| 認証方式 | ユーザーの実 AP 1 台（ch 10 の scan 行が `authmode=7` = `WIFI_AUTH_WPA2_WPA3_PSK` = 混在）。**association は 7/7 とも `authmode=6` = `WIFI_AUTH_WPA3_PSK`（SAE）** | 1 AP。**WPA2-PSK 専用 AP と Open AP は用意できず未実測** |
+| 診断オプション | `TOPPERS_C5_NET_DIAG` / `TOPPERS_C5_WIFI_DIAG` とも**既定 OFF のまま**（A11）。これが ping と port 7 echo と `ip=`/`gw=` 行の有無を決める（下記「正直な観察」） | 全 run 固定 |
 | 採取 | `CAPTURE_SEC=45`、`MARKERS='begin: rejected|LWIP-ASSERT|connection timeout'`（失敗系の終端行のみ = 成功 run は 45 s 全部採る）、`EXTRA_MARKERS='[C5-HEAP] peak='` | `LOG_DIR` = dev `stage4/logs` |
 
 ### WiFiScan 結果表（`.sha.txt` の `wifi:` 行と `.log` の `bands:` 行から転記）
 
-| run | stage | scan（N） | 2.4GHz / 5GHz | ssidraw | apm 行 | 判定 |
+**読む前に**: `scan` の数は adapter が**記録した本数**であって近隣 AP の実数ではない。
+`ports/m5stack_riscv/runtime/wifi/adapter/toppers_wifi_scan.c:38` の
+`TOPPERS_WIFI_MAX_RECORDS 20` が上限で、同 `:132-141` が `wanted = min(found, 20)` に切り、
+`:153` が印字するのは切った後の `record_count` である（真値 `found` =
+`esp_wifi_scan_get_ap_num()` はログに出ない）。
+
+| run | stage | 記録された AP 数（上限 20） | 記録 20 本の内訳 2.4GHz / 5GHz | ssidraw | apm 行 | 判定 |
 | --- | --- | --- | --- | --- | --- | --- |
-| warm1 | ON | **20** | 14 / 6 | 0 | 12 | OK |
-| warm2 | ON | **20** | 14 / 6 | 0 | 12 | OK |
-| warm3 | ON | **20** | 14 / 6 | 0 | 12 | OK |
+| warm1 | ON | **20（上限に飽和）** | 14 / 6 | 0 | 12 | OK |
+| warm2 | ON | **20（上限に飽和）** | 14 / 6 | 0 | 12 | OK |
+| warm3 | ON | **20（上限に飽和）** | 14 / 6 | 0 | 12 | OK |
 | apmoff-warm-write | **OFF** | **0** | 0 / 0 | 0 | 5 | 想定どおり 0 AP |
 | **cold-apmoff** | **OFF** | **0** | 0 / 0 | 0 | 5 | **対照成立（真cold、pristine 読み戻し）** |
-| warm4 | ON | **20** | 14 / 6 | 0 | 12 | OK（復帰） |
+| warm4 | ON | **20（上限に飽和）** | 14 / 6 | 0 | 12 | OK（復帰） |
 
-`unexpected=0` は 6 run とも。ON の 4 run が 20/20/20/20 と同数なのは、`WiFiScan` の
-リスト長ではなく実際の scan 結果が安定していたためで、20 は blob の上限ではない
-（C6 は 11-13 とばらついた）。
+`unexpected=0` は 6 run とも。
+
+**ON の 4 run が 20/20/20/20 と同数なのは、計器が上限に張り付いたからである**（安定していた
+からではない）。20 は `TOPPERS_WIFI_MAX_RECORDS`（adapter の記録上限）そのもので、真の近隣数は
+**20 以上**。決定的な対照が開発リポジトリ側にある: 同じ板、同じ AP 環境の前日に真値を採った
+C5 計画 3 段4（`.steering/20260915-c5-plan/stage4/README.md` 5-2 節）は
+**24 / 24 / 22 / 19 / 29 / 27 / 23 AP** とばらついており、7 回中 5 回が 20 を超えている。
+したがって表の `14 / 6` は**記録された 20 本の内訳**であって近隣全体の内訳ではなく、
+ログ自身の `(of 20 listed)` という書き方の方が正確である。
+C6 段4 が 11-13 とばらついたのは**上限に届かなかった**ためで、この読みと矛盾しない。
+AC 4b（`N>0`）と「5 GHz の AP が実在する」という存在主張は、飽和していても無傷である。
 
 ### WiFiConnect 結果表（`.sha.txt` の `markers:` / `wifi:` / `extra:` 行から転記）
 
@@ -684,14 +713,32 @@ X-check 9/9 MATCH）。証跡は開発リポジトリ
 | W-2 変種（scan-then-begin、作業コピー） | warm（書込み） | 1 | 1 | 1 | 2 | 0 | 1 | 0 | -- | -- | 74,384 | **参考のみ。採取が中断した**（下記） |
 | **restore-dummy**（repo のダミー像、板の最終状態） | warm（書込み） | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 44 | 0 | （出ない） | 期待どおり非接続 |
 
-- `tcp=1` は `[WiFiConnect] TCP request completed` の行数で、受信バイト数は 7/7 の接続 run
-  すべてで `[WiFiConnect] TCP received=255`（256 バイトバッファの終端 1 バイトを引いた値、
-  C6 と同値）。
+- `tcp=1` が数えているのは **`[WiFiConnect] TCP received=`**（`scripts/capture_c5_usj.sh` の
+  `n_tcp`。adapter が出す行）であって、スケッチ側の `[WiFiConnect] TCP request completed`
+  ではない。両方 7/7 で 1 行ずつ出ているので数値は変わらない。受信バイト数は 7/7 とも
+  `TCP received=255`（256 バイトバッファの終端 1 バイトを引いた値、C6 と同値）。
 - `dnsok=2` は `hostByName()`（スケッチ）と TCP 経路内部の名前解決の 2 回。`dnsfail` は
   全 run 0。
 - **`disconnected reason=` は 1 件も出ていない**（16 本の採取ログ全体で `reason=` に一致する
   Wi-Fi の行 0。`201 NO_AP_FOUND` も `4WAY_HANDSHAKE_TIMEOUT` も `AUTH_EXPIRE` も 0）。
   C6 段4 の warm1（初回 `NO_AP_FOUND`）に相当する事象は C5 では起きていない。
+- **association は WPA3-SAE である**（過小申告の訂正）。`[WiFiConnect] connected authmode=6`
+  の `authmode` は `wifi_event_sta_connected_t` の「その接続が使った方式」
+  （esp-idf v5.5.4 `esp_wifi_types_generic.h`、"Authentication mode used by the connection"）で、
+  `wifi_auth_mode_t` の 6 は **`WIFI_AUTH_WPA3_PSK`**（0 OPEN / 1 WEP / 2 WPA_PSK /
+  3 WPA2_PSK / 4 WPA_WPA2_PSK / 5 ENTERPRISE（`WPA2_ENTERPRISE` と同値で枠を消費しない）/
+  **6 WPA3_PSK** / 7 WPA2_WPA3_PSK）。adapter は値を加工せず `%u` で出している
+  （`toppers_wifi_connect.c`）。stage は `CONFIG_ESP_WIFI_ENABLE_WPA3_SAE 1` で建っている
+  （`config/esp32c5/sdkconfig.h`、SAE_PK / SAE_H2E は 0）。AP 側は ch 10 の scan 行が
+  `authmode=7`（= `WIFI_AUTH_WPA2_WPA3_PSK`、混在）で、**scan 行に `authmode=6` は 1 本も無い**
+  から、6 はビーコンの写しではなくネゴシエート結果である。
+  スケッチ側の `[WiFiConnect] config authmode=3` は `wifi_sta_config_t.threshold.authmode`
+  （**受け入れる下限**）の設定値にすぎず、実際に使われた方式ではない。
+  -> **7/7 の association は WPA3-SAE**。したがって本段で未実測なのは
+  **WPA2-PSK 専用 AP** と **Open AP**（および WPA3 専用 AP）であって、WPA3 ではない。
+  **同型の誤記が `docs/c6-port.md` 段4 にもある**（C6 も `authmode=6` を「WPA2-PSK」と
+  記録している）。C6 節は本 commit の守備範囲外なので**別件の follow-up**として段5 以降へ送る
+  （本 commit では C6 節を触っていない）。
 - **DHCP 再試行（S4-4）は 0 回**: `net: link up, starting DHCP` -> `net: DHCP bound` が
   7/7 で 1 対 1（再試行や NAK を示す行は無い）。dev 側 C5 計画 3 段4 の「2/7 で再試行」は
   本段では再現していない。
@@ -715,8 +762,8 @@ X-check 9/9 MATCH）。証跡は開発リポジトリ
 
 | 状態 | `hp_func_ctrl` | `lp_apm0_func_ctrl` | `lp_apm_func_ctrl` | `tee_m4(modem)` | HP_APM M1 ラッチ | scan |
 | --- | --- | --- | --- | --- | --- | --- |
-| ON、unblock **前**（warm / 真cold とも） | `0x0000001f` | `0x00000001` | `0x00000003`（真cold）/ `0x00000000`（warm 残留） | `0x00000003` | none または既存ラッチ | -- |
-| ON、unblock **後** | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | none | **20 AP / 接続 OK** |
+| ON、unblock **前** | `0x0000001f` | `0x00000001` | `0x00000003` または `0x00000000`（下記の弁別軸） | `0x00000003` | none または既存ラッチ | -- |
+| ON、unblock **後** | `0x00000000` | `0x00000000` | `0x00000000` | `0x00000000` | none | **記録 20 本（上限）/ 接続 OK** |
 | OFF、**warm**（ON 実行の残留から） | `0x0000001f` | `0x00000001` | `0x00000000`（残留） | `0x00000003` | `status=0x00000001 info0=0x00130001` | **0** |
 | OFF、**真cold**（pristine） | `0x0000001f` | `0x00000001` | **`0x00000003`** | `0x00000003` | `status=0x00000001 info0=0x00130001` | **0** |
 
@@ -730,6 +777,16 @@ OFF の define がバイナリまで届いていることの positive control �
 `strings esp_wifi_adapter.o | grep -c before-unblock` が ON=1 / OFF=0、および
 `task1-compile-c5-WiFiScan-apmoff.txt` の同じ比較（リンク後の app で ON=1 / OFF=0）。
 
+**`lp_apm_func_ctrl` の弁別軸は「採取が cold かどうか」ではない**（事実）。10 run の
+`before-unblock` 実測値は `0x3` が `task1-scan-warm1` / `task1-scan-warm4` /
+`task2-live-cold{1,2,3}`、`0x0` が `task1-scan-warm{2,3}` / `task2-live-warm{1,2,3}` で、
+**warm 採取の側にも `0x3` が 2 本ある**。分けているのは（推論）「その boot までに
+unblock が一度も走っていないか」= 直近の電源断以後にまだ ON 像が走っていないか、である:
+`warm4` は APM OFF の真cold（電源断）の直後の最初の boot で、間に走った OFF 像は unblock を
+しないので POR 値 `0x3` のまま残る。`warm2/warm3` と `live-warm*` は直前の ON 像の unblock が
+`0x0` にした値を hard reset 越しに引き継いでいる。AC.md 軸表の「LP_APM は真cold でしか
+POR 値に戻らない」は正しく、直っていないのは本表の括弧書きだけだった（判定には影響しない）。
+
 **ラッチの帰属**（C6 と同じ注意）: `before-unblock` の読み戻しで M1 ラッチが立っているのは
 OFF の run の直後だけでなく、**ON の run の直後（`task2-live-warm2` / `warm3`）にも現れる**。
 「unblock 前のラッチ = 直前の OFF run が残したもの」とは言えない。どちらも unblock が
@@ -739,9 +796,10 @@ OFF の run の直後だけでなく、**ON の run の直後（`task2-live-warm
 
 - ON の 4 run とも `[WiFiScan] bands: 2.4GHz=14 5GHz=6 (of 20 listed)`。W-2 変種の scan は
   `2.4GHz=12 5GHz=8 (of 20 listed)`。**5 GHz の AP が実際に見えている**（AC は N>0 で、
-  5 GHz は記録のみ）。
-- 観測された 5 GHz チャネル: **36, 44, 48, 52**（warm1）と **116**（W-2 変種）。
-  UNII-1 / UNII-2A / UNII-2C にまたがる。
+  5 GHz は記録のみ）。上記のとおりこれは**記録された 20 本の内訳**である。
+- 観測された 5 GHz チャネル: **36, 44, 48, 52**（`task1-scan-warm1.log`、数えた run）と
+  **116**（`task1-scan-warm3.log` の `AP[18] ch=116`。参考扱いの W-2 変種にも同じ ch がある
+  が、根拠は数えた run の方に置く）。UNII-1 / UNII-2A / UNII-2C にまたがる。
 - **association は 2.4 GHz だった**: 7/7 の接続 run が `[WiFiConnect] connected authmode=6
   channel=10`。どの帯で繋ぐかは AP と driver の選択で、本段では制御していない
   （S4-1 の決定どおり）。**5 GHz での association は未実測のまま**（dev 側計画 3 段4 の
@@ -761,9 +819,19 @@ OFF の run の直後だけでなく、**ON の run の直後（`task2-live-warm
 | `peak=74384 total=98304`（75.7 %） | warm2、W-2 変種 |
 
 最大でも **74,384 / 98,304 バイト（75.7 %）** で、shim heap は約 23.9 KB 余っていた。
-段3 の「RAM 余裕 33 KB」（リンク時の `Global variables use 287,768 / 320,928`、
-残り 33,160）とは別の指標である（shim heap はその 287 KB の**内側**の 96 KB プール）。
-ダミー像は接続まで行かないのでこの行を出さない。
+
+これは段3 が記録した「RAM 余裕 33 KB」とは別の指標である（shim heap はその内側の 96 KB
+プール）。**数字の出所を取り違えないこと**:
+
+| 指標 | 値 | 出所 |
+| --- | --- | --- |
+| 段3 の正本（`readelf -l` の LOAD 末尾 - 0x40800000） | 287,744 B 使用 / 余裕 **33,184 B** | 段3「size と RAM 余裕（AC-3g）」節、dev `stage3/logs/task2-size.txt` |
+| 本段の**実 creds 像**の IDE 表示 | 287,768 B / 余裕 33,160 B | `task2-compile-live-on.txt` |
+| 本段の**ダミー像**（板の最終状態）の IDE 表示 | 287,728 B / 余裕 33,200 B | `task2-compile-dummy.txt` |
+
+IDE 表示（`Global variables use ...`）と `readelf` はセクションの取り方が違うので数十バイト
+ずれる。C5 では分母 320,928 が ld の `RAM LENGTH` と同じ（A9）なので % はそのまま読める。
+ダミー像は接続まで行かないので `[C5-HEAP]` 行を出さない。
 
 ### GpioInterrupt（G1）と NanoC6Gpio（4i）
 
@@ -780,7 +848,7 @@ OFF の run の直後だけでなく、**ON の run の直後（`task2-live-warm
 | # | 内容 | 結果 |
 | --- | --- | --- |
 | W-1 | `begin()` は scan 無しで connect する。scan 無しの connect で `NO_AP_FOUND` が出るか | **出なかった**。begin-only の接続試行 6/6（warm 3 + 真cold 3）が初回で接続し、`disconnected reason=` は 0 件。C6 段4 の 1/9（warm1 の `NO_AP_FOUND`）に相当する事象は C5 では観測されていない。**6 回で再現しなかったという以上のことは言えない** |
-| W-2 | scan -> begin の driver サイクル（`stop` -> `set_config` -> `start` -> `connect`）が C5 で動くか | **参考: 1 回だけ動いた記録がある**。`task2-live-scanfirst-warm1.log` は scan 20 AP -> `esp_wifi_stop=0` -> `set_config` -> `esp_wifi_start=0` -> `connect` -> `connected authmode=6 channel=10` -> DHCP bound -> DNS -> `TCP request completed` まで並んでいる。**ただしこの run は採取台本が途中で中断されており、`.sha.txt` に `markers:` / `wifi:` の集計行が無い**（書込みの 4 点 verify は済んでいる）。したがって「counts で裏を取った run」としては数えない。C6 では 1/1 で実証済み |
+| W-2 | scan -> begin の driver サイクル（`stop` -> `set_config` -> `start` -> `connect`）が C5 で動くか | **参考: 1 回だけ動いた記録がある**。`task2-live-scanfirst-warm1.log` は scan 記録 20 本（上限）-> `esp_wifi_stop=0` -> `set_config` -> `esp_wifi_start=0` -> `connect` -> `connected authmode=6 channel=10` -> DHCP bound -> DNS -> `TCP request completed` まで並んでいる。**ただしこの run は採取台本が途中で中断されており、`.sha.txt` に `markers:` / `wifi:` の集計行が無い**（書込みの 4 点 verify は済んでいる）。したがって「counts で裏を取った run」としては数えない。C6 では 1/1 で実証済み |
 | W-3 | `attachInterrupt` の動作確認 | **段4 で実施し PASS**（上記 4i）。C6 は段6 で扱った項目で、C5 は A10 の決定により段4 に前倒しした |
 | W-4 | STA ハンドラ内 `logtask_flush(0)` が blob のタイムアウト系を遅らせるか | **不発、未計測**。7 回の接続 run すべてで `4WAY_HANDSHAKE_TIMEOUT` は 0 件のため、flush を外す対照を回す条件が発生しなかった（C6 と同じ結末） |
 
@@ -791,16 +859,32 @@ OFF の run の直後だけでなく、**ON の run の直後（`task2-live-warm
 - **`[Arduino] task start` の頭欠けは 16/16**（本段の全採取 run）。段2 (a) で記録済みの
   既知の現象（USJ TX FIFO の競合と推定）で、段4 でも 100 % 出ている。害は観測していない。
   heartbeat 行の文字落ちは本段では 0。
-- **`no time event is processed in hrt interrupt on PRC1.` は 2/16 でしか出ていない**
-  （`task1-scan-apmoff-warm-write`、`task2-nanoc6gpio-warm1`）。C6 段4 では ON の warm run
-  7/7 で出ていたのに対し、C5 では起動タイミング次第で出たり出なかったりする。段2 (c) の
-  既知の行で害は無いが、**「毎回出る」ではない**点が C6 と違う。
+- **`no time event is processed in hrt interrupt on PRC1.` は warm 2/12**
+  （`task1-scan-apmoff-warm-write`、`task2-nanoc6gpio-warm1`）。**真cold 4 本は分母に入れない**:
+  この行は `Processor 1 start.` の直後に出るが、真cold 4 本（`task2-live-cold{1,2,3}`、
+  `task1-scan-cold-apmoff`）は `Processor 1 start.` 自体が 1 行も残っていない（全 16 run で
+  数えると warm 12 本は 1、cold 4 本は 0）ので、**出なかったのか採れなかったのか区別できない**。
+  段2 の記録（本文書「段2 の記録」節）も同じ区別をしている。
+  なぜ warm でも 10/12 で出ないのかは**未特定**（対立仮説として、同節の
+  `[Arduino] task start` 頭欠け 16/16 と同じ初期出力の取りこぼし経路がありうる。潰していない）。
+  段2 (c) の既知の行で害は観測していない。**C6 との差として主張できるだけの分母は無い**
+  （C6 段4 は像も条件も違う）。
 - **真cold の先頭行は失われる**（`banner=0 smark=0`、`cold1-3` と `cold-apmoff`）。
   USB enumeration 中の出力が採れないためで、段2 の R11 どおり不成立の根拠にはしていない。
-- **接続 run で `ping=0`**: vendored `netif_esp32s3.c` の DHCP 完了直後の ping フックは
-  C5 の採取では 1 件も出ていない（C6 では出ていた）。原因は切り分けていない
-  （フックの条件、ゲートウェイ側の応答、どちらも候補）。**段5 で診断フックの出荷可否を
-  決めるときに、この差を一緒に見ること。**
+- **接続 run で `ping=0` なのは既定の設定どおりで、原因は特定済み**（「未切り分け」ではない）。
+  本段の stage は `TOPPERS_C5_NET_DIAG` を**既定の OFF のまま**建てている（A11、
+  `ports/m5stack_riscv/runtime/CMakeLists.txt` の `option(... NET_DIAG ... OFF)`）。
+  `ports/m5stack_riscv/runtime/wifi/net/netif_esp32s3.c` は C5 で
+  `TOPPERS_C5_NET_DIAG` が無ければ `TOPPERS_C6_NET_DIAG` を 0 に定義し、ゲートウェイ ping
+  （`netif_esp32s3_ping_gateway()`）も port 7 の echo サーバも**その `#if` の内側**にある。
+  -> **OFF の像には ping のコードが 1 バイトもリンクされていない。**
+  採取ログ自身が直接の判別子を持っている: 同ファイルの `netif_status_cb` は ON なら
+  `net: DHCP bound ip=... gw=...`、OFF なら `net: DHCP bound` を出すが、**C5 の接続 run は
+  7/7 とも `ip=`/`gw=` の無い方**（= OFF の腕）である。C6 段4 で ping が出ていたのは、
+  あの採取が S5-3（診断を既定 OFF にする決定）より前の ON 像だったためで、
+  C6 も OFF 像では ping=0 になる（`docs/c6-port.md` 段6 の記録）。
+  -> 段5 へ送るのは「なぜ C5 だけ ping が出ないか」ではなく、**ON 経路を実機で 1 回
+  確かめるかどうかの判断**である。
 - **`ssidraw=0` は「実 SSID がログに無い」の意味であって、creds の針が働いた証拠ではない。**
   針（SSID / PASS）は本段の実採取で **1 度も発火していない**（`REDACTED_` の実トークン 0）。
   スケッチが creds を印字しないので平文が元々出ない。針の経路の positive control は台本の
@@ -853,9 +937,29 @@ flash 0x0-0x1FFF は消去済み（全 0xFF を読み戻して確認）。**フ�
   `ignored (not in baseline): esp32c5`）。
 - **`prebuilt/lwip/esp32c5/liblwip.a` が C6 のものとバイト同一**（引継ぎ 4 節）なので、
   配布サイズを詰めるために 1 本にまとめるかを決める。
-- **診断フックの出荷可否**（C6 段5 から持ち越し、C5 でも同じ）: vendored `netif_esp32s3.c` の
-  port 7 echo と DHCP 完了直後の ping。上記「ping=0」の観察もここで扱う。
-- **W-2 の採り直し**（中断した 1 回を counts つきで採る）と、**GpioInterrupt の真cold**。
-- **5 GHz association の実測**: AP 側で 5 GHz 専用 SSID を用意できるなら 1 回。
+- **診断フック（`TOPPERS_C5_NET_DIAG`）の ON 経路を実機で 1 回確かめるかどうかの判断**
+  （C6 6g と同型）。既定 OFF の出荷判断そのものは S5-3 で済んでおり、段4 の `ping=0` は
+  その OFF 像の当然の結果である（上記「正直な観察」）。残っているのは「ON 像が今も
+  リンクでき、ping と port 7 echo と `ip=`/`gw=` 行が実際に出るか」を一度も確かめて
+  いないこと。
+- **段4 の NOT-EXERCISED 5 件をここで引き取る**（`stage4/AC.md`「判定の集計」と 1 対 1。
+  5 件目 = 5 GHz association は直下の独立した項目）:
+  1. **対照を採るときの tree hash before/after**（4c）: `build/prebuilt` と `~/Arduino` の
+     不変を、事後の `diff -r -q` ではなく書込みの前後で採る手順にする。
+  2. **W-2（scan-then-begin）の採り直し**: 段4 の 1 回は採取が中断して counts が無い。
+  3. **W-4（STA ハンドラ内 `logtask_flush(0)`）**: 段4 は `4WAY_HANDSHAKE_TIMEOUT` が
+     0 件で対照を回す条件が発生しなかった。条件を作れるかを含めて判断する。
+  4. **GpioInterrupt（G1）の真cold**: 段4 は warm 1 回のみ。
+- **5 GHz association の実測**: AP 側で 5 GHz 専用 SSID を用意できるなら 1 回
+  （段4 の association は 7/7 とも ch 10 = 2.4 GHz）。
+- **WPA2-PSK 専用 AP と Open AP での association**: 段4 の AP は WPA2/WPA3 混在で、
+  実際に張られたのは **WPA3-SAE** だった（上記「association は WPA3-SAE である」）。
+  WPA2-PSK 単独と Open は未実測のまま。
+- **`docs/c6-port.md` 段4 の `authmode` 誤記の是正**（本 commit の守備範囲外の別件）:
+  C6 も `connected authmode=6` を「WPA2-PSK」と記録している。同じ訂正を C6 節へ入れるか
+  判断する。
+- **scan の記録上限**: `TOPPERS_WIFI_MAX_RECORDS 20` に 4 run とも飽和した
+  （上記「WiFiScan 結果表」）。真値 `esp_wifi_scan_get_ap_num()` も併記するか、上限を
+  上げるかを決める。
 - **ROM `rand()` / `syscall_table_ptr` ハザード**（段1 / 段3 から継続、C6 と同文）。
 - **`upload.maximum_data_size` の分母**（C6 段5 の項目、C5 は 320,928 で宣言済み）。

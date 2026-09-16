@@ -95,9 +95,11 @@ prebuilt archive、include 配置に依存しています）。
   [`docs/c6-port.md`](docs/c6-port.md)
 - **M5Stamp-C5（ESP32-C5）は統合作業中で、まだ配布物にありません**（2026-09-16、段4 まで =
   `minimal` の `Blink` が実機で warm 5/5・真cold 5/5、stock bootloader @0x2000、240 MHz。
-  Wi-Fi は scan 20 AP（2.4 GHz と 5 GHz の両方が見える）と、STA（**WPA2-PSK のみ**）->
-  DHCP -> DNS -> TCP がユーザーの実 AP に対して warm 3/3 と真cold 3/3。`attachInterrupt` の
-  自己駆動試験も `WiFi` 構成で PASS。**5 GHz での接続、Open AP、WPA3-SAE、BLE は未実測**）。
+  Wi-Fi は scan が 2.4 GHz と 5 GHz の両方を拾い（記録は adapter の上限 20 本に飽和したので
+  近隣の実数はこれ以上）、STA -> DHCP -> DNS -> TCP がユーザーの実 AP に対して warm 3/3 と
+  真cold 3/3。その AP は WPA2/WPA3 混在で、**実際に張られた接続は 7/7 とも WPA3-SAE**
+  （`authmode=6`）。`attachInterrupt` の自己駆動試験も `WiFi` 構成で PASS。
+  **WPA2-PSK 専用 AP、Open AP、5 GHz での接続、BLE は未実測**）。
   判断 A0-A12 と段ごとの到達点は
   [`docs/c5-port.md`](docs/c5-port.md)
 
