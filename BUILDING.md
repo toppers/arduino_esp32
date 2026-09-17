@@ -306,13 +306,13 @@ python3 scripts/verify_package.py --list-builds   # 実行せず、計画だけ�
 ```
 
 `--list-builds` はパッケージも Boards Manager への出入れもせず、板x構成x例題の
-表と合計だけを表示します（2026-09-17 実測: CoreS3 16・M5StickS3 16・
-M5AtomS3 Lite 10・M5Core 21・M5NanoC6 10・M5StampC5 10 = 計 83。導出の正本は
-コマンドそのもので、この数字は実測の一例です。2026-09-16 時点は
-M5AtomS3Lite の 10 本と例題 AtomS3LiteRgb（各 wificonnect 板に 1 本）が無く
-68 でした）。
+表と合計だけを表示します（2026-09-17 実測: CoreS3 17・M5StickS3 17・
+M5AtomS3 Lite 11・M5Core 22・M5AtomLite 16・M5NanoC6 11・M5StampC5 11 = 計 105。
+導出の正本はコマンドそのもので、この数字は実測の一例です。同日午前は
+M5AtomLite の 16 本と例題 AtomLiteRgb（各 wificonnect 板に 1 本）が無く 83、
+2026-09-16 時点は M5AtomS3Lite の 10 本と例題 AtomS3LiteRgb も無く 68 でした）。
 
-- **既定は 6 板すべて**です。`--boards`/`--profiles` で絞り込めます。
+- **既定は 7 板すべて**です。`--boards`/`--profiles` で絞り込めます。
 - **`verify_package.py` はローカルの package index を作って Boards Manager の
   設定を一時的に書き換えます。** これは開発機の `~/.arduino15/` にキャッシュ
   されている**公開 index（`package_toppers_index.json`）を同じファイル名で
@@ -711,7 +711,7 @@ python scripts/test_xcheck.py                # 判定器自身の自己テスト
 ## リリース経路の検証（`scripts/verify_package.py`）
 
 パッケージを組み、Boards Manager 経由で入れ直し、対応するボードx構成を
-建て直す（既定は 6 板すべて、上記「`verify_package.py` の板と構成」参照）。
+建て直す（既定は 7 板すべて、上記「`verify_package.py` の板と構成」参照）。
 
 ```sh
 python3 -m venv ~/.venvs/toppers-verify

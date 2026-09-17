@@ -1,6 +1,6 @@
 # ToppersFMP3-M5Stack
 
-M5Stack の 6 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
+M5Stack の 7 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
 Arduinoボードパッケージです。
 
 | ボード | チップ | `Tools > Board` |
@@ -9,15 +9,20 @@ Arduinoボードパッケージです。
 | M5StickS3 | ESP32-S3 / Xtensa LX7 | `M5StickS3 (TOPPERS/FMP3)` |
 | M5AtomS3 Lite | ESP32-S3 / Xtensa LX7 | `M5AtomS3Lite (TOPPERS/FMP3)` |
 | M5Stack Basic | ESP32 / Xtensa LX6 | `M5Core (TOPPERS/FMP3)` |
+| M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 | `M5AtomLite (TOPPERS/FMP3)`（**実機未確認**） |
 | M5NanoC6 | ESP32-C6 / RISC-V | `M5NanoC6 (TOPPERS/FMP3)` |
 | M5Stamp-C5 | ESP32-C5 / RISC-V | `M5StampC5 (TOPPERS/FMP3)` |
 
-1つのパッケージに6つとも入っています。M5NanoC6・M5Stamp-C5・M5AtomS3 Liteは
+1つのパッケージに7つとも入っています。M5NanoC6・M5Stamp-C5・M5AtomS3 Liteは
 `Tools > FMP3 Runtime`に`Minimal`と`WiFi`の2つしかありません
 （`M5Unified + Dual Core`は画面を持つCoreS3・M5StickS3・M5Stack Basicのみ、
-`Bluetooth Classic (SPP)`はM5Stack Basicのみ）。M5AtomS3 Liteで実機確認したのは
-`Blink`・`GpioInterrupt`・本体RGB LED・Wi-Fiスキャンで、**STA接続は未達**です
-（詳細はdocs/atoms3lite-port.md）。
+`Bluetooth Classic (SPP)`はESP32の2機種＝M5Stack BasicとATOM Liteのみ）。
+M5AtomS3 Liteで実機確認したのは`Blink`・`GpioInterrupt`・本体RGB LED・
+Wi-Fiスキャンで、**STA接続は未達**です（詳細はdocs/atoms3lite-port.md）。
+**M5Stack ATOM Liteは実機で一度も動かしていません**（板の無い機械で追加し、
+コンパイル・リンクまでの確認。`Minimal`・`WiFi`・`Bluetooth Classic (SPP)`の
+3つが出ます。本体RGB LED（SK6812、G27）の例題は`AtomLiteRgb`。詳細は
+docs/atomlite-port.md）。
 
 Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカーネルの
 タスクとして動きます。ブート、割込み、スケジューラはFMP3が所有します。
@@ -169,6 +174,7 @@ Linux    ~/.arduino15/packages/toppers
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5CoreS3 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StickS3 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5Core (TOPPERS/FMP3)
+Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5AtomLite (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5NanoC6 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StampC5 (TOPPERS/FMP3)
 ```
@@ -178,8 +184,14 @@ Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StampC5 (TOPPERS/FMP3)
 PWM（GPIO32）で点きます。
 
 **M5StickS3にはtouchがありません**（LCDは240x135で、IMUとPMICは使えます）。
-`Bluetooth Classic (SPP)`はM5Coreだけの構成です。ESP32-S3にBR/EDR無線が
-無いため、他の2機種では選択肢に出ません。
+`Bluetooth Classic (SPP)`はESP32の2機種（M5Core・M5AtomLite）だけの構成です。
+ESP32-S3にBR/EDR無線が無いため、S3の3機種では選択肢に出ません。
+
+**M5AtomLite（ATOM Lite）で選べるFMP3 Runtimeは`Minimal`・`WiFi`・
+`Bluetooth Classic (SPP)`です。** LCDが無いため`M5Unified + Dual Core`は
+ありません。本体RGB LED（SK6812、G27）は`WiFi`構成の`rgbLedWrite()`で
+点きます（例題`AtomLiteRgb`。`Minimal`／`Bluetooth Classic`ではリンクされず、
+例題は`#error`で止まります）。**この機種は実機で未確認です**（上記）。
 
 **M5NanoC6とM5Stamp-C5で選べるFMP3 Runtimeは`Minimal`と`WiFi`だけです。**
 LCDが無いため`M5Unified + Dual Core`は無く、BR/EDR無線が無いため
@@ -426,6 +438,11 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
   ではありません。**RGB LEDはありません**（例題`NanoC6Gpio`はno-op）。
   BLEと802.15.4は未着手。ホスト間のバイト単位一致はM5NanoC6と同じく未計測です。
   判断と到達点はソースリポジトリの`docs/c5-port.md`
+
+- **M5Stack ATOM Lite（M5AtomLite）は実機未確認**（2026-09-17 に板の無い機械で
+  追加。3構成 x 例題の14本がリンクし、`Blink`／`BluetoothSPP`の`.bin`が
+  M5Stack Basicとバイト一致することまで。ソースリポジトリの
+  `docs/atomlite-port.md` 6節に実機で見る項目と期待値）
 
 未確認: **macOS**でのVerifyとUpload、OTA書き込み、
 WPA2-PSK／WPA3-SAEの追加アクセスポイントでの互換性。
