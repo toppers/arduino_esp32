@@ -1,6 +1,6 @@
 # ToppersFMP3-M5Stack
 
-M5Stack の 7 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
+M5Stack の 8 機種向けに、ArduinoスケッチとTOPPERS/FMP3を統合する
 Arduinoボードパッケージです。
 
 | ボード | チップ | `Tools > Board` |
@@ -12,8 +12,9 @@ Arduinoボードパッケージです。
 | M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 | `M5AtomLite (TOPPERS/FMP3)`（**実機未確認**） |
 | M5NanoC6 | ESP32-C6 / RISC-V | `M5NanoC6 (TOPPERS/FMP3)` |
 | M5Stamp-C5 | ESP32-C5 / RISC-V | `M5StampC5 (TOPPERS/FMP3)` |
+| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア | `M5StampP4 (TOPPERS/FMP3)`（**Minimal のみ・実機未確認**） |
 
-1つのパッケージに7つとも入っています。M5NanoC6・M5Stamp-C5・M5AtomS3 Liteは
+1つのパッケージに8つとも入っています。M5NanoC6・M5Stamp-C5・M5AtomS3 Liteは
 `Tools > FMP3 Runtime`に`Minimal`と`WiFi`の2つしかありません
 （`M5Unified + Dual Core`は画面を持つCoreS3・M5StickS3・M5Stack Basicのみ、
 `Bluetooth Classic (SPP)`はESP32の2機種＝M5Stack BasicとATOM Liteのみ）。
@@ -22,7 +23,9 @@ Wi-Fiスキャンで、**STA接続は未達**です（詳細はdocs/atoms3lite-p
 **M5Stack ATOM Liteは実機で一度も動かしていません**（板の無い機械で追加し、
 コンパイル・リンクまでの確認。`Minimal`・`WiFi`・`Bluetooth Classic (SPP)`の
 3つが出ます。本体RGB LED（SK6812、G27）の例題は`AtomLiteRgb`。詳細は
-docs/atomlite-port.md）。
+docs/atomlite-port.md）。**M5Stamp-P4 も実機で未確認です**（`Minimal` のみ。2コア SMP で
+起動し、PRC2 が`[P4-CORE2] alive N`を出します。Wi-Fi は AddOn C6 経由の hosted 方式で、
+その層は次の段。詳細は docs/p4-port.md）。
 
 Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカーネルの
 タスクとして動きます。ブート、割込み、スケジューラはFMP3が所有します。
@@ -177,6 +180,7 @@ Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5Core (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5AtomLite (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5NanoC6 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StampC5 (TOPPERS/FMP3)
+Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StampP4 (TOPPERS/FMP3)
 ```
 
 **M5Stack Basicにはtouch・IMU・RTCがありません。** `M5Unified` profileの
@@ -196,6 +200,11 @@ ESP32-S3にBR/EDR無線が無いため、S3の3機種では選択肢に出ませ
 **M5NanoC6とM5Stamp-C5で選べるFMP3 Runtimeは`Minimal`と`WiFi`だけです。**
 LCDが無いため`M5Unified + Dual Core`は無く、BR/EDR無線が無いため
 `Bluetooth Classic (SPP)`もありません。
+
+**M5Stamp-P4で選べるFMP3 Runtimeは`Minimal`だけです**（2コア SMP）。GPIO API も
+まだありません。`Tools > ChipVariant`はこの板にはありません（stage が
+`esp32p4_es`＝rev v3未満のsilicon用SDKで建っているため固定）。bootloaderはflashの
+0x2000に置きます。**実機未確認**です。
 
 **M5Stamp-C5にはon-boardのRGB LEDがありません。** 例題`NanoC6Gpio`は
 M5Stamp-C5では1行ログを出すだけの no-op です。M5Stamp-C5のGPIOを動かして
@@ -439,6 +448,9 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
   BLEと802.15.4は未着手。ホスト間のバイト単位一致はM5NanoC6と同じく未計測です。
   判断と到達点はソースリポジトリの`docs/c5-port.md`
 
+- **M5Stamp-P4（M5StampP4）は実機未確認**（2026-09-17 に板の無い機械で追加。
+  `Minimal`の3本がリンクし、リンクドライバの像検査 C-1..C-9 を通るまで。ソース
+  リポジトリの`docs/p4-port.md` 6節に実機で見る項目と期待値）
 - **M5Stack ATOM Lite（M5AtomLite）は実機未確認**（2026-09-17 に板の無い機械で
   追加。3構成 x 例題の14本がリンクし、`Blink`／`BluetoothSPP`の`.bin`が
   M5Stack Basicとバイト一致することまで。ソースリポジトリの

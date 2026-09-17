@@ -1,6 +1,6 @@
 # Arduino on TOPPERS/FMP3 for M5Stack
 
-M5Stack の 7 機種で、Arduino の `setup()` / `loop()` を
+M5Stack の 8 機種で、Arduino の `setup()` / `loop()` を
 **TOPPERS/FMP3 SMP カーネルの上で**動かすための Arduino ボードパッケージです。
 
 | ボード | チップ |
@@ -12,8 +12,9 @@ M5Stack の 7 機種で、Arduino の `setup()` / `loop()` を
 | M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 |
 | M5NanoC6 | ESP32-C6 / RISC-V |
 | M5Stamp-C5 | ESP32-C5 / RISC-V |
+| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア（**Minimal のみ・実機未確認**、下記） |
 
-1 つのパッケージに 7 つとも入り、`Tools > Board` で選びます。M5NanoC6 ・
+1 つのパッケージに 8 つとも入り、`Tools > Board` で選びます。M5NanoC6 ・
 M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` の
 2 構成しかありません（`M5Unified + Dual Core` と `Bluetooth Classic (SPP)` は
 ありません。前 2 者は画面も BR/EDR も無いため、M5AtomS3 Lite は画面が無く
@@ -21,7 +22,9 @@ M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` �
 確認したためです。下記「確認済みの範囲」参照）。M5Stack ATOM Lite は
 `Minimal`・`WiFi`・`Bluetooth Classic (SPP)` の 3 構成で、`M5Unified + Dual Core`
 だけありません（画面が無い。この 1 点だけは実機ではなく AtomS3 Lite からの類推です。
-[`docs/atomlite-port.md`](docs/atomlite-port.md) 4 節）。
+[`docs/atomlite-port.md`](docs/atomlite-port.md) 4 節）。M5Stamp-P4 は
+`Minimal` だけです（2 コア SMP で起動します。Wi-Fi は P4 自身には無く、C6 add-on
+経由の hosted Wi-Fi は次の段。[`docs/p4-port.md`](docs/p4-port.md)）。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
 スケッチは静的に構成された FMP3 タスクから呼ばれます。
@@ -74,11 +77,12 @@ prebuilt archive、include 配置に依存しています）。
   **対応するすべてのボードでビルドできること**
   （`python3 scripts/verify_package.py --list-builds` が導出する本数、
   2026-09-17 実測: CoreS3 17・M5StickS3 17・M5AtomS3 Lite 11・M5Core 22・
-  M5AtomLite 16・M5NanoC6 11・M5Stamp-C5 11 の計 105 本。`Bluetooth Classic` は
-  ESP32 の 2 板専用、M5NanoC6・M5Stamp-C5・M5AtomS3 Lite は minimal と
-  wifi-connect のみ。**M5AtomLite を足した 2026-09-17 の 105 本は Boards Manager
-  経由ではなく、導入済み platform に対する直接 compile で 96 PASS / 0 FAIL /
-  9 SKIP（生成例題）を確認**）。Xtensa 3 ボード分については
+  M5AtomLite 16・M5NanoC6 11・M5Stamp-C5 11・M5Stamp-P4 3 の計 108 本。
+  `Bluetooth Classic` は ESP32 の 2 板専用、M5NanoC6・M5Stamp-C5・M5AtomS3 Lite は
+  minimal と wifi-connect のみ、M5Stamp-P4 は minimal のみ。**M5AtomLite を足した
+  2026-09-17 の 105 本は Boards Manager 経由ではなく、導入済み platform に対する
+  直接 compile で 96 PASS / 0 FAIL / 9 SKIP（生成例題）を確認**。同日の M5Stamp-P4 の
+  3 本も同じ形で 3/3 リンク）。Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
   （**M5NanoC6 の成果物はホスト間バイト一致の対象外**: 3 ホストでの
@@ -106,6 +110,14 @@ prebuilt archive、include 配置に依存しています）。
   ペアリングは未実施）。**STA 接続はこの板でも未達**ですが、症状は AtomS3 Lite と
   違い `reason=201 (NO_AP_FOUND) rssi=-128`（AP を見つけられない）です。
   詳細と切り分けの次の一手は [`docs/atomlite-port.md`](docs/atomlite-port.md) 6-7 節。
+- **M5Stamp-P4（`M5StampP4 (TOPPERS/FMP3)`）は実機未確認です**（2026-09-17 に
+  板の無い機械で追加。実機は別の PC で確認する予定）。確認済みなのは、`Minimal`
+  （2 コア SMP）の stage が建ち `Blink` / `LibraryInfo` / 2 ファイルスケッチが
+  リンクすること、リンクドライバの像検査 C-1..C-9（bootloader が課す flash
+  セグメント 2 本・app descriptor 先頭・RAM の bootloader 予約域回避など）を
+  通ること、既存 7 板の配布物が X-check で不変なことまでです。dev 側では同じ
+  seam 経路（`seam-p4-smp`）が M5Stamp ESP32P4 rev v1.3 の実機で起動しています。
+  実機で見る項目と期待値は [`docs/p4-port.md`](docs/p4-port.md) 6 節。
 - M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
   M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
   当初この機種だけ M5Unified が動かなかった経緯と原因は
@@ -132,6 +144,27 @@ prebuilt archive、include 配置に依存しています）。
   PASS することです。判断 A0-A12 と段ごとの到達点は
   [`docs/c5-port.md`](docs/c5-port.md)（下記「M5Stamp-C5 の既知の制限」も
   読んでください）
+
+## M5Stamp-P4 の既知の制限（2026-09-17）
+
+- **`Tools > FMP3 Runtime` は `Minimal` だけです。** P4 自身に無線が無く、Wi-Fi は
+  Stamp AddOn C6 経由の hosted 方式（SDIO + esp-hosted）になりますが、その Arduino
+  向けの層はまだありません（`docs/p4-port.md` 4 節、次の段）。画面も無いので
+  `M5Unified + Dual Core` もありません。**GPIO API（`pinMode` など）もまだありません**
+  （他の RISC-V 板と同じく `WiFi` 構成側に付ける予定）。
+- **2 コア（SMP）で起動します。** スケッチは PRC1 で、PRC2 では runtime 側の小さな
+  タスクが 1 秒ごとに `[P4-CORE2] alive N` を出します（core1 が動いている証拠。
+  消し方は今のところありません）。
+- **CPU は 360 MHz 固定**（bootloader が残す 90 MHz から seam が昇圧）。
+- **bootloader は flash の 0x2000**（M5Stamp-C5 と同じ）。**`Tools > ChipVariant` は
+  ありません**（上流 core にはある。stage が `esp32p4_es`＝rev v3 未満の silicon 用 SDK で
+  建っているため、この板は `esp32p4_es` に固定してあります。rev v3 以降の P4 では
+  動かない可能性があります）。
+- **M5Stack core 3.3.8 自体の欠陥を回避しています**: 上流の `m5stack_stamp_p4` 板は
+  空のスケッチでも `esp32-hal-spi.c` のコンパイルで落ちます（`BOARD_SDMMC_POWER_CHANNEL`
+  未定義）。本板は `-DBOARD_SDMMC_POWER_CHANNEL=4` を足して回避しています（FMP3 の
+  リンクは core のオブジェクトを取らないので値は使われません）。
+- **実機未確認**（上記「確認済みの範囲」）。
 
 ## M5Stamp-C5 の既知の制限（2026-09-16）
 
@@ -269,7 +302,7 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 | --- | --- |
 | `src/` | Arduino builder が再帰コンパイルする領域。`Arduino.h` だけに依存 |
 | `ports/m5stack_xtensa/runtime/` | FMP3 の Xtensa ポート（ESP32-S3 / LX7 と ESP32 / LX6。板ごとの差は `arduino/arduino_rgb_led*.c` のようにチップ単位） |
-| `ports/m5stack_riscv/runtime/` | FMP3 の RISC-V ポート（ESP32-C6 と ESP32-C5。チップ分岐で 1 ポート） |
+| `ports/m5stack_riscv/runtime/` | FMP3 の RISC-V ポート（ESP32-C6・ESP32-C5・ESP32-P4。チップ分岐で 1 ポート） |
 | `fmp_app/` | 開発ツリーでのみ使う FMP3 アプリケーション |
 | `examples/` | 同梱例題 |
 | `scripts/` | ビルド・パッケージング |
@@ -280,7 +313,8 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 ESP32-C6（M5NanoC6）の判断と到達点は [`docs/c6-port.md`](docs/c6-port.md)、
 ESP32-C5（M5Stamp-C5）は [`docs/c5-port.md`](docs/c5-port.md)、
 M5AtomS3 Lite は [`docs/atoms3lite-port.md`](docs/atoms3lite-port.md)、
-M5Stack ATOM Lite は [`docs/atomlite-port.md`](docs/atomlite-port.md)。
+M5Stack ATOM Lite は [`docs/atomlite-port.md`](docs/atomlite-port.md)、
+ESP32-P4（M5Stamp-P4）は [`docs/p4-port.md`](docs/p4-port.md)。
 
 ## ライセンス
 

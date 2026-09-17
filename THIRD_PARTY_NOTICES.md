@@ -109,6 +109,26 @@ were newly written for this repository from their C6 counterparts. At build time
 port uses the RISC-V toolchain (`esp-rv32`) and the ESP32-C5 SDK (`esp32c5-libs`) of the
 M5Stack Arduino core 3.3.8, which are not copied into this repository or the Release ZIP.
 
+## ESP32-P4 (M5Stamp-P4) port
+
+The same `ports/m5stack_riscv/runtime` also holds, as a third chip branch (StampP4 plan
+stage A1), the ESP32-P4 chip layer (`arch/riscv_gcc/esp32p4`), the M5Stamp ESP32P4
+target layer (`target/m5stamp_esp32p4_gcc`, with the Tab5 / Unit PoE-P4 kit headers it
+selects between by board macro) and the seam boot glue (`seam/seam_p4_*`), selected from
+the same development repository `https://github.com/exshonda/fmp3_esp_idf_dev.git` at
+commit `a745318658e2ef77cd94c126c2d0ce942f92925a` (2026-09-17; the layer itself was last
+changed there in August 2026). The chip layer is that repository's byte-identical copy of
+the TOPPERS/FMP3 `arch/riscv_gcc/esp32p4` (fmp3_core, TOPPERS license), and the target
+layer is its import of the TOPPERS/FMP3 svn `target/m5stamp_esp32p4_gcc` plus files
+written there; the license headers of every file are kept. The only modification is the
+`.init_array`/`.ctors` and `.eh_frame` linker input in `esp32p4_xip.ld`, recorded file by
+file in [`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE_p4.md`](ports/m5stack_riscv/runtime/IMPORT_PROVENANCE_p4.md).
+`cmake/prebuilt_stage_p4.cmake`, `cmake/toolchain-riscv-esp32p4.cmake` and
+`app/phase3_p4/` were newly written for this repository from their C5 counterparts. At
+build time the port uses the RISC-V toolchain (`esp-rv32`) and the ESP32-P4 SDK
+(`esp32p4_es-libs`: its second-stage bootloader is what the board is flashed with) of the
+M5Stack Arduino core 3.3.8, which are not copied into this repository or the Release ZIP.
+
 ### 段3: wifi-connect profile の追加出典（2026-09-15）
 
 `ports/m5stack_riscv/runtime/wifi/` の Wi-Fi shim は、`ports/m5stack_xtensa/runtime/wifi/shim`

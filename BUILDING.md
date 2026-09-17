@@ -139,6 +139,36 @@ C6 と同じく、対照ステージは `--output-directory <別の場所>` と
 `--work-directory <別の場所>` を必ず付けて、既定の
 `build/prebuilt/esp32c5/<profile>/` を**上書きしない**ようにしてください。
 
+### M5Stamp-P4（ESP32-P4）のステージ
+
+```bash
+python scripts/build_prebuilt_stages.py --chip esp32p4
+```
+
+`--chip esp32p4` の profile は **`minimal` だけ**です（StampP4 計画 段A。`wifi-connect`
+＝AddOn C6 経由の hosted Wi-Fi は段B）。トゥールチェーンは C6 / C5 と同じ `esp-rv32`
+2601 で、SDK は **`esp32p4_es-libs` 3.3.8**（rev v3 未満の silicon 用。上流の
+`m5stack_stamp_p4` 行の既定 `chip_variant`。`scripts/arduino_sdk.py` の
+`SDK_TOOL_NAMES` が chip 名から引く）。P4 の chip 層（dev 由来）は IDF ヘッダを読まず
+ROM ld も要らないので、SDK からは bootloader と存在証明だけを使います。
+
+P4 も `ports/m5stack_riscv/runtime` の**チップ分岐**です（`arch/riscv_gcc/esp32p4` /
+`target/m5stamp_esp32p4_gcc` / `seam/seam_p4_*` / `cmake/prebuilt_stage_p4.cmake` /
+`cmake/toolchain-riscv-esp32p4.cmake` / `app/phase3_p4`。出典と改変は
+`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE_p4.md`）。C5 に無かった論点——**SMP
+（2 コア）**、newlib syscall を target 層が持つ、chip_start.S が無い、seam の昇圧
+define 名、xip ld の `INCLUDE` 断片——は `runtime/CMakeLists.txt` の chip 表の
+**新しい列**で吸収してあり、C6 / C5 の列は書き換えていません（既定値 = 従来の挙動。
+X-check 11/11 MATCH）。`prebuilt_stage_p4.cmake` は xip ld の `INCLUDE` 断片を stage の
+写しへインラインします（GNU ld は INCLUDE をカレントと -L からしか探さず、利用者側の
+リンクはどちらも持たない）。
+
+**上流 core 3.3.8 の欠陥**: `m5stack_stamp_p4` は空のスケッチでも
+`esp32-hal-spi.c:299` の `BOARD_SDMMC_POWER_CHANNEL` 未定義で落ちます（実測）。本板の
+行は `build.extra_flags.esp32p4` に `-DBOARD_SDMMC_POWER_CHANNEL=4` を足して回避
+（`install_platform.BOARD_BUILD_OVERRIDES`。値は FMP3 のリンクに入りません）。
+core の版を上げるときに要再確認。
+
 ### ステージを建て直すときは tree hash を前後で採る
 
 ステージを建て直す作業（対照ステージを作る、`--clean` で作り直す）では、
@@ -215,6 +245,16 @@ C-1..C-8 に加えて **C-9**（app descriptor の `chip_id` が ESP32-C5 の
 ことのある板は flash 0x0 に magic が残っていて ROM が 0x2000 の bootloader を
 起動しないので、その場合は 0x0-0x1FFF を消してください
 （`docs/c5-port.md` 段2）。
+
+**M5StampP4 も fixed-vma 形式です**（StampP4 計画 P6）。`FIXED_VMA_LAYOUTS` の
+`esp32p4` 行（page 0x10000、drom `0x40000000-0x44000000`＝D/I 共有窓、iram
+`0x4ff00000-0x4ffc0000`、`loader_seg` `0x4ff2cbd0`、C-9 の chip_id `0x0012` /
+rev 103）。C-1 / C-2（flash セグメントちょうど 2 本・app descriptor 先頭）は
+P4 の bootloader（`bootloader_utility.c` の `SOC_MMU_DI_VADDR_SHARED` 枝）のために
+書かれた形そのものです。**C-6 は P4 で一般化しました**: RAM セグメントの参照を
+`.data` 単独から alloc PROGBITS セクション全体にしてあります（P4 の seam entry は
+RAM の `.iram_text` にあり、esptool が `.data` と併合し得る。C6 / C5 は `.data` に
+収まるので結果は従来どおり）。bootloader は C5 と同じ **0x2000**。
 
 ### この platform はライブラリを同梱しません
 
@@ -307,12 +347,13 @@ python3 scripts/verify_package.py --list-builds   # 実行せず、計画だけ�
 
 `--list-builds` はパッケージも Boards Manager への出入れもせず、板x構成x例題の
 表と合計だけを表示します（2026-09-17 実測: CoreS3 17・M5StickS3 17・
-M5AtomS3 Lite 11・M5Core 22・M5AtomLite 16・M5NanoC6 11・M5StampC5 11 = 計 105。
+M5AtomS3 Lite 11・M5Core 22・M5AtomLite 16・M5NanoC6 11・M5StampC5 11・
+M5StampP4 3 = 計 108。
 導出の正本はコマンドそのもので、この数字は実測の一例です。同日午前は
 M5AtomLite の 16 本と例題 AtomLiteRgb（各 wificonnect 板に 1 本）が無く 83、
 2026-09-16 時点は M5AtomS3Lite の 10 本と例題 AtomS3LiteRgb も無く 68 でした）。
 
-- **既定は 7 板すべて**です。`--boards`/`--profiles` で絞り込めます。
+- **既定は 8 板すべて**です。`--boards`/`--profiles` で絞り込めます。
 - **`verify_package.py` はローカルの package index を作って Boards Manager の
   設定を一時的に書き換えます。** これは開発機の `~/.arduino15/` にキャッシュ
   されている**公開 index（`package_toppers_index.json`）を同じファイル名で
@@ -629,6 +670,12 @@ PY
   （`Scan] found`、`duino] loop heartbeat`）。**スキャンが近隣 AP の実 SSID を
   印字する**ため（同 F-2）、SSID 列をマスクし、マスク漏れがあれば採取ファイルを
   隔離します。FORBIDDEN に M5NanoC6 と M5Stamp-C5 を入れてあります。
+- **`scripts/capture_p4_usj.sh` も同じく開発者向けで、配布しません。**
+  M5Stamp-P4（ESP32-P4）用。C5 台本の写しではなく、**書込みの可否を決めるゲート**
+  （`DUT_MAC` 必須・FORBIDDEN・boards.txt の bootloader 番地 0x2000・書込み後の
+  bootloader 領域 readback 一致）と `stty`+`cat` の採取、マーカー計数
+  （`heartbeat` / `[P4-CORE2] alive` / `Processor 2 start.`）、selftest だけの小さな
+  台本です。板が別 PC にあるので既定の DUT はありません（`docs/p4-port.md` 3 節・6 節）。
 - **`scripts/capture_c5_usj.sh` も同じく開発者向けで、配布しません。**
   C6 台本の写しで、chip が `ESP32-C5`、bootloader が **0x2000**、毎回
   flash `0x0-0x1FFF` を消してから焼きます（asp3 の Direct Boot magic 対策。
@@ -721,7 +768,7 @@ python scripts/test_xcheck.py                # 判定器自身の自己テスト
 ## リリース経路の検証（`scripts/verify_package.py`）
 
 パッケージを組み、Boards Manager 経由で入れ直し、対応するボードx構成を
-建て直す（既定は 7 板すべて、上記「`verify_package.py` の板と構成」参照）。
+建て直す（既定は 8 板すべて、上記「`verify_package.py` の板と構成」参照）。
 
 ```sh
 python3 -m venv ~/.venvs/toppers-verify
