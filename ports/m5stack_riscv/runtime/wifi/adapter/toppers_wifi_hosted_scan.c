@@ -107,6 +107,33 @@ toppers_fmp3_wifi_scan_networks(void)
 			   (uint_t) p4hosted_rpc_scan_ap_num(),
 			   (int_t) TOPPERS_HOSTED_MAX_RECORDS);
 	}
+
+	/*
+	 *  結果を印字する。**これが examples/WiFiScan の観測可能な出力のすべて
+	 *  である**——スケッチ自身は何も印字せず、`WiFi.scanNetworks()` を呼ぶ
+	 *  だけだからだ（実測 2026-09-18: ここを書き忘れていたため、RPC 層は
+	 *  13 件を解析できているのに `[WiFiScan]` 行が 1 行も出ず、採取ログから
+	 *  は「スキャンできていない」と読めた）。
+	 *
+	 *  綴りは native 側（toppers_wifi_scan.c）と同じにする。板が違っても
+	 *  同じ台本・同じ計数器で読めるようにするためで、**SSID は
+	 *  `<SSID-N>` の placeholder** にするのも同じ理由である（第三者の
+	 *  ネットワーク名を採取ログへ焼かない）。スケッチ API
+	 *  （`WiFi.SSID(i)`）は実名を返す——それが WiFiScan の契約である。
+	 */
+	syslog(LOG_NOTICE, "[WiFiScan] found %d APs", (int_t) hosted_ap_count);
+	{
+		uint8_t		i;
+
+		for (i = 0U; i < hosted_ap_count; i++) {
+			syslog(LOG_NOTICE,
+				   "[WiFiScan] AP[%d] rssi=%d ch=%d authmode=%d SSID=<SSID-%d>",
+				   (int_t) i, (int_t) hosted_aps[i].rssi,
+				   (int_t) hosted_aps[i].chan,
+				   (int_t) hosted_aps[i].authmode, (int_t) i);
+		}
+	}
+	syslog(LOG_NOTICE, "[WiFiScan] done");
 	return((int16_t) hosted_ap_count);
 }
 

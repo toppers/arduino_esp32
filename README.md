@@ -110,14 +110,20 @@ prebuilt archive、include 配置に依存しています）。
   ペアリングは未実施）。**STA 接続はこの板でも未達**ですが、症状は AtomS3 Lite と
   違い `reason=201 (NO_AP_FOUND) rssi=-128`（AP を見つけられない）です。
   詳細と切り分けの次の一手は [`docs/atomlite-port.md`](docs/atomlite-port.md) 6-7 節。
-- **M5Stamp-P4（`M5StampP4 (TOPPERS/FMP3)`）は実機未確認です**（2026-09-17 に
-  板の無い機械で追加。実機は別の PC で確認する予定）。確認済みなのは、`Minimal`
-  （2 コア SMP）の stage が建ち `Blink` / `LibraryInfo` / 2 ファイルスケッチが
-  リンクすること、リンクドライバの像検査 C-1..C-9（bootloader が課す flash
-  セグメント 2 本・app descriptor 先頭・RAM の bootloader 予約域回避など）を
-  通ること、既存 7 板の配布物が X-check で不変なことまでです。dev 側では同じ
-  seam 経路（`seam-p4-smp`）が M5Stamp ESP32P4 rev v1.3 の実機で起動しています。
-  実機で見る項目と期待値は [`docs/p4-port.md`](docs/p4-port.md) 6 節。
+- **M5Stamp-P4 実機**（2026-09-18、ESP32-P4 rev v1.3 + Stamp AddOn C6）で、
+  minimal（`Blink` warm 5/5・真cold 5/5。**2 コア SMP** が `Processor 2 start.` と
+  `[P4-CORE2] alive` で確認できます）、`GpioInterrupt`（G16 自己駆動、
+  `rising=5 falling=5 change=10 detached=0 dispatch=call=20 orphan=0`）、
+  **hosted Wi-Fi のスキャン**（14〜16 AP）。この板の無線は P4 自身ではなく
+  **SDIO で繋いだ ESP32-C6（Stamp AddOn）**が担い、`[WiFiHosted] companion INIT
+  chip_id=0x0d` が相手と話せている一次証拠です。
+  **STA 接続は「会合まで成功、DHCP 未達」**です（`connected_ap ssid_match=1
+  rssi=-72 ch=10` の後、受信ポンプのスレッドが走らず 30 秒待って諦める）。
+  切り分けの一次証拠と次の一手は
+  [`docs/p4-port.md`](docs/p4-port.md) 2-8 節。実機でしか出なかった欠陥
+  （SDK の bootloader が仕掛けたウォッチドッグによる起動ループ、
+  `[WiFiScan]` の印字漏れ、PRC2 の 1 kHz ログ、採取台本 5 件）も同節に記録して
+  あります。
 - M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
   M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
   当初この機種だけ M5Unified が動かなかった経緯と原因は

@@ -219,3 +219,92 @@ hosted 用の別ブロックを置きました。
   残渣が 1 行でもあればファイルを `*.UNREDACTED` へ改名して非 0 終了）。
   selftest は 10 群で、**positive control**（マスクしていないファイルを検査器が
   ちゃんと 4 と数えること、隔離が実際に起きること）を含む。
+
+## 2-8. 段 A4 / B4（実機、2026-09-18）
+
+板がこの機械へ来たので、6 節が「未実施・期待値つき」としていた段A4 と、段B の
+実機（B4）を実施しました。板は **M5Stamp-P4 rev v1.3**（MAC `30:ed:a0:ea:98:0e`、
+内蔵 USB-Serial/JTAG、flash 16MB。**Stamp AddOn C6 が載っている**ことも実測で
+判明しました——下の B-10 の行が一次証拠です）。
+
+### 結果
+
+| 対象 | 構成 | 結果 |
+|---|---|---|
+| `Blink` warm | minimal | **5/5 PASS**（`heartbeat` / `[P4-CORE2] alive` とも計数、`romboot=1`＝意図したリセットのみ） |
+| `Blink` 真cold（USB 給電断） | minimal | **5/5 PASS**（`banner=1 prc2_start=1`＝電源断からの起動で 2 コアが上がる） |
+| `GpioInterrupt`（G16 自己駆動） | wificonnect | **VERDICT PASS** `pin=16 rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=8` |
+| hosted の立ち上げ | wificonnect | **`[WiFiHosted] companion INIT chip_id=0x0d caps=0x0d`**。計画 B-10 が「最初に見る 1 行」と決めたものが、期待どおりの値で出ました |
+| `WiFiScan` | wificonnect | **14〜16 AP**（3 回。`authmode` つき、SSID は `<SSID-N>` placeholder） |
+| `WiFiConnect` | wificonnect | **STA の会合までは成功、DHCP に到達せず**（下記） |
+
+### 実機でしか出なかった欠陥 5 件（すべて修正済み・1 件は未解決）
+
+1. **起動ループ（修正済み）**。M5Stack の SDK が配る bootloader は
+   `bootloader_config_wdt()` で **RWDT を約 9 秒で仕掛けたまま**アプリへ渡す
+   （ESP-IDF のアプリは起動処理で止めるが FMP3 は止めない）。開発リポジトリの
+   P4 は**自前の bootloader**（`esp/boot/seam_p4/sdkconfig` に
+   `# CONFIG_BOOTLOADER_WDT_ENABLE is not set`）なので踏んでいません。
+   `hardware_init_hook` で LP_WDT + super WDT を止めて解消
+   （`A1_P4_DISABLE_BOOT_WDT`。C6 / C5 の target が同じ理由で同じことをしている）。
+   **名前で犯人を決めないこと**: ROM は `rst:0x7 (HP_SYS_HP_WDT_RESET)` と印字し、
+   SDK の `soc/reset_reasons.h` は 0x07 を `RESET_REASON_CORE_MWDT` と呼びますが、
+   TIMG0 の MWDT を止めても直らず、**RWDT を止めて直りました**（1 軸ずつ変えて
+   帰属を取った結果）。
+2. **`[WiFiScan]` の行が 1 行も出ていなかった（修正済み）**。`examples/WiFiScan` は
+   **自分では何も印字しません**——観測できる出力はすべて runtime 側の scan
+   アダプタが出しています。hosted 版にその印字を書き忘れていたため、RPC 層は
+   13 件を解析できているのに採取ログからは「スキャンできていない」と読めました。
+   native 側と同じ綴り（`found N APs` / `AP[i] ... SSID=<SSID-i>` / `done`）を追加。
+3. **PRC2 の alive タスクが 1 kHz で回っていた（修正済み）**。
+   `app/wifi_connect_p4` の `CORE2_ALIVE_PERIOD_MS 1000U` にコメントで
+   「1 秒」と書いてありましたが、**この移植の `RELTIM` はマイクロ秒**です
+   （minimal 側の同じタスクは `1000000U` を渡している）。25 秒の採取に
+   **24,589 行**出てコンソールを埋めていました。
+4. **採取台本の 5 件（修正済み）**——(a) `--flash-mode qio` を明示すると esptool が
+   ヘッダと末尾 SHA を書き換え、readback 照合が 33 バイト食い違って**正しい書込みを
+   失敗と判定**していた → platform の upload recipe と同じ `keep` に。
+   (b) `boot_app0`(0xe000) を書いていなかった。(c) マーカー文字列が実際の出力と
+   違い（`loop heartbeat <N>` / `setup()` は存在しない）、**動いている板で 0 を
+   数えて**いた。(d) `cat` / `stty` の blocking open が真cold で固まり、リセットで
+   USB が落ちると再オープンできない → python の O_NONBLOCK + CLOCAL 再オープン式
+   リーダへ。(e) 既定を `RESET_MODE=watchdog-reset` に（hard-reset は USB が落ちて
+   **初期ログを丸ごと失う**。同じ像で banner=0/prc2_start=0 対 1/1）。
+5. **DHCP に到達しない（未解決）**。会合までは通ります——
+   `R4-4 set_config resp=0` / `R4-5 wifi_connect resp=0` /
+   `R4-6 connected_ap ssid_match=1 rssi_neg=72 chan=10` / MAC 取得 OK。
+   そこから 30 秒の DHCP 待ちが空振りし、計器はすべて 0 のままです:
+   `rx_total=0 tx_ok=0 tx_fail=0 rx_frame=0 **pump_loops=0** slave_avail=20`。
+   **`pump_loops=0` が効く手掛かり**で、`p4hosted_net_rx_thread_start()` は
+   true を返している（返さなければ待ちに入らない）のに、スレッド本体の
+   1 行目 `RPROBE R2-a rx_thread_entered` が**採取ログに 1 行も無い**
+   ——つまり `_h_thread_create` は成功を返したがタスクが走っていません。
+   次の一手は osi（`hosted/osi/p4hosted_osi.c`）の `_h_thread_create` が
+   hosted 優先度 24 を FMP3 のどの優先度・どのクラス（PRC1/PRC2）へ写すかを
+   実測すること。dev の probe は同じコードで通っている（段7f）ので、
+   差分はアプリ側の文脈（プローブ専用タスク 対 Arduino タスク＋2 コア）にあります。
+
+### コンソールが行頭を落とす（F-1 の P4 版・未解決）
+
+この板の USB-Serial/JTAG コンソールは**行の先頭を落とします**。多くは 1 文字
+（`[P4-CORE2] alive 2` → `[4-CORE2] alive 2`、`[WiFiScan] found 14 APs` →
+`[iFiScan] found 14 APs`）ですが、1 文字とは限りません——
+`[WiFiHosted] companion ready (STA)` が `on ready (STA)` として着いた実例が
+あります（13 文字欠落）。頻度も低くありません（ある採取では alive 60 行中 52 行）。
+⇒ `capture_p4_usj.sh` の計数は**タグの尾側に錨を打って**います。厳密な綴りで
+数えると**動いている板を壊れていると報告する**ためです。欠落そのものは
+`core2_full`（完全な綴りだけを数える）で**測り続けます**——寛容なパターンで
+隠さないこと。
+
+### この板の運用
+
+```bash
+# 建てる
+arduino-cli compile --fqbn toppers:esp32:m5stampp4_fmp3:FMP3Runtime=minimal \
+    --library . --output-dir /tmp/p4-blink examples/Blink
+# 焼いて採取（ゲート -> 書込み -> readback -> watchdog-reset -> 採取 -> 計数 -> mask）
+DUT_MAC=30:ed:a0:ea:98:0e OUT_DIR=/tmp/p4-blink bash scripts/capture_p4_usj.sh
+# 真cold（電源断はこの機械では hub 1-1.4 の port 3）
+sudo -n uhubctl -l 1-1.4 -p 3 -a off; sleep 3; sudo -n uhubctl -l 1-1.4 -p 3 -a on
+NORESET=1 DUT_MAC=30:ed:a0:ea:98:0e bash scripts/capture_p4_usj.sh
+```

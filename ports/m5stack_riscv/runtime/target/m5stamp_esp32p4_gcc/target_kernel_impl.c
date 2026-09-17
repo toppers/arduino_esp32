@@ -72,12 +72,100 @@ extern void target_fput_initialize(void);
  */
 extern void start(void);
 
+#ifdef A1_P4_DISABLE_BOOT_WDT
+/*
+ *  【本 repo による意図的な乖離】M5Stamp-P4 Arduino 統合 段B4（2026-09-18）
+ *  出典と乖離の申告: ../../IMPORT_PROVENANCE_p4.md §2
+ *
+ *  開発リポジトリの P4 は**自前の 2nd-stage bootloader**（esp/boot/seam_p4、
+ *  その sdkconfig は `# CONFIG_BOOTLOADER_WDT_ENABLE is not set`）から起動する
+ *  ので、FMP3 側がウォッチドッグに触る必要が無かった。本 repo は C6 / C5 と
+ *  同じく **M5Stack の SDK が配る bootloader** をそのまま使うため、その
+ *  bootloader が仕掛けたウォッチドッグが生きたまま FMP3 に渡ってくる。
+ *  ESP-IDF のアプリはこれを起動処理で止めるが、FMP3 は止めない。
+ *
+ *  実測（M5Stamp-P4 rev v1.3・2026-09-18）: Blink は正しく動き、
+ *  `[Arduino] loop heartbeat` と `[P4-CORE2] alive` を約 7〜9 秒出したあと
+ *  `rst:0x7 (HP_SYS_HP_WDT_RESET)` で再起動する、という**起動ループ**になる。
+ *  0x07 は `RESET_REASON_CORE_MWDT`（SDK の soc/reset_reasons.h）＝タイマ
+ *  グループの WDT である。
+ *
+ *  ⇒ C6 / C5 の target（同じ理由で同じことをしている）と同じ形で、
+ *    ここで止める。TIMG1 には触らない——**この構成で動いているのは TIMG0**
+ *    であり（それが今リセットを掛けてきた）、クロックゲートされたままの
+ *    ペリフェラルへ書くとバスストールになるためである。RTC/super WDT も
+ *    触らない: リセット要因が 0x09 / 0x0D ではないので、**効いている証拠の
+ *    無いものを同時に変えない**（効いたかどうかの帰属が取れなくなる）。
+ */
+#define A1_P4_TIMG0_BASE		0x500C2000U
+#define A1_P4_TIMG_WDTCONFIG0	0x48U
+#define A1_P4_TIMG_WDTWPROTECT	0x64U
+#define A1_P4_TIMG_WDT_WKEY		0x50D83AA1U	/* soc/wdt_periph.h */
+
+/*
+ *  LP_WDT（RWDT・super WDT）。always-on ドメインなのでクロックゲートの心配は
+ *  無い。番地は SDK の soc/esp32p4/register/hw_ver1/soc/{reg_base,lp_wdt_reg}.h
+ *  （DR_REG_LPAON_BASE 0x50110000 + 0x6000）、鍵は hal/esp32p4/lpwdt_ll.h の
+ *  LP_WDT_WKEY_VALUE / LP_WDT_SWD_WKEY_VALUE（どちらも 0x50D83AA1）。
+ *
+ *  **これが実際に効いた方**である（2026-09-18 の実測）。ESP-IDF の
+ *  bootloader_config_wdt()（bootloader_init.c）は
+ *    - RWDT を CONFIG_BOOTLOADER_WDT_TIME_MS（既定 9000 ms）で**有効にし**、
+ *    - MWDT0 は flashboot 保護を外すだけ
+ *  という順に書く。したがって FMP3 へ渡ってくる生きた番犬は RWDT である。
+ *  ROM が印字するリセット要因の綴りは `rst:0x7 (HP_SYS_HP_WDT_RESET)` で、
+ *  SDK の soc/reset_reasons.h は 0x07 を `RESET_REASON_CORE_MWDT` と呼ぶ
+ *  ——**名前は MWDT を指しているが、実際に止めて効いたのは RWDT** という
+ *  食い違いがあるので、名前から犯人を決めないこと。
+ */
+#define A1_P4_LP_WDT_BASE		0x50116000U
+#define A1_P4_LP_WDT_CONFIG0	0x00U
+#define A1_P4_LP_WDT_WPROTECT	0x18U
+#define A1_P4_LP_WDT_SWD_CONFIG	0x1CU
+#define A1_P4_LP_WDT_SWD_WPROT	0x20U
+#define A1_P4_LP_WDT_WKEY		0x50D83AA1U
+#define A1_P4_LP_WDT_SWD_AUTO_FEED_EN	(1U << 18)	/* lp_wdt_reg.h */
+#define A1_P4_LP_WDT_SWD_DISABLE		(1U << 30)	/* lp_wdt_reg.h */
+
+static void
+a1_p4_disable_mwdt(uint32_t timg_base)
+{
+	sil_wrw_mem((void *)(timg_base + A1_P4_TIMG_WDTWPROTECT),
+				A1_P4_TIMG_WDT_WKEY);			/* 書込み保護の解除 */
+	sil_wrw_mem((void *)(timg_base + A1_P4_TIMG_WDTCONFIG0), 0U);
+	sil_wrw_mem((void *)(timg_base + A1_P4_TIMG_WDTWPROTECT), 0U);
+}
+
+static void
+a1_p4_disable_rwdt(void)
+{
+	sil_wrw_mem((void *)(A1_P4_LP_WDT_BASE + A1_P4_LP_WDT_WPROTECT),
+				A1_P4_LP_WDT_WKEY);
+	sil_wrw_mem((void *)(A1_P4_LP_WDT_BASE + A1_P4_LP_WDT_CONFIG0), 0U);
+	sil_wrw_mem((void *)(A1_P4_LP_WDT_BASE + A1_P4_LP_WDT_WPROTECT), 0U);
+
+	sil_wrw_mem((void *)(A1_P4_LP_WDT_BASE + A1_P4_LP_WDT_SWD_WPROT),
+				A1_P4_LP_WDT_WKEY);
+	/*  read-modify-write。P4 の chip 層には C6 の sil_orw が無いので直に書く。 */
+	sil_wrw_mem((void *)(A1_P4_LP_WDT_BASE + A1_P4_LP_WDT_SWD_CONFIG),
+				sil_rew_mem((uint32_t *)(A1_P4_LP_WDT_BASE + A1_P4_LP_WDT_SWD_CONFIG))
+				| A1_P4_LP_WDT_SWD_AUTO_FEED_EN | A1_P4_LP_WDT_SWD_DISABLE);
+	sil_wrw_mem((void *)(A1_P4_LP_WDT_BASE + A1_P4_LP_WDT_SWD_WPROT), 0U);
+}
+#endif /* A1_P4_DISABLE_BOOT_WDT */
+
 /*
  *  ハードウェアの初期化
  */
 void
 hardware_init_hook(void)
 {
+#ifdef A1_P4_DISABLE_BOOT_WDT
+	/*  SDK の bootloader が仕掛けた番犬を止める（上のコメント参照）  */
+	a1_p4_disable_mwdt(A1_P4_TIMG0_BASE);
+	a1_p4_disable_rwdt();
+#endif /* A1_P4_DISABLE_BOOT_WDT */
+
 #ifdef TOPPERS_SUPPORT_HWLP
     /*
      *  HWLP コプロセッサコンテキスト管理(eager)の起動時初期化．

@@ -440,7 +440,15 @@ elseif(A1_CHIP STREQUAL "esp32p4")
     #  evidence as the seam entry's 'S'.
     set(A1_CHIP_PRC_NUM 2)
     set(A1_CHIP_SEAM_EXTRA_SOURCES seam_p4_core1.c seam_p4_core1_entry.S)
-    set(A1_CHIP_EXTRA_DEFS TOPPERS_SEAM_P4_CORE1=1 SEAM_P4_CORE1_MARK=0x43)
+    #  A1_P4_DISABLE_BOOT_WDT: stop the watchdog the M5Stack SDK's bootloader
+    #  leaves running. The development repository boots from its OWN
+    #  bootloader, whose sdkconfig has CONFIG_BOOTLOADER_WDT_ENABLE off, so
+    #  its P4 never had to; this port uses the stock SDK bootloader like the
+    #  C6 and C5 do, and measured the boot loop it causes (StampP4 plan
+    #  stage B4; the deviation is in target_kernel_impl.c's
+    #  hardware_init_hook and declared in IMPORT_PROVENANCE_p4.md).
+    set(A1_CHIP_EXTRA_DEFS TOPPERS_SEAM_P4_CORE1=1 SEAM_P4_CORE1_MARK=0x43
+        A1_P4_DISABLE_BOOT_WDT=1)
     #  wifi-connect for the P4 is stage B of the plan: hosted Wi-Fi, where
     #  the radio is a companion ESP32-C6 on the Stamp add-on reached over
     #  SDIO (esp_hosted). None of the native block applies - there is no

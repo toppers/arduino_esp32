@@ -19,8 +19,16 @@
 const char toppers_phase9_wifi_connect_application[] =
     "Arduino WiFi connect bridge";
 
-/*  One second at the kernel's tick (TIC_NUME/TIC_DENO are 1/1 here). */
-#define CORE2_ALIVE_PERIOD_MS 1000U
+/*
+ *  One second. RELTIM is MICROSECONDS in this port, not milliseconds - the
+ *  minimal profile's copy of this task (../phase3_p4/phase3_arduino_app.c)
+ *  says so and passes 1000000U. This file was written with 1000U and a
+ *  comment that called it one second; on hardware the task ran at ~1 kHz
+ *  and printed 24,589 "alive" lines in a 25 s capture (measured
+ *  2026-09-18), which floods the console the Wi-Fi evidence has to come
+ *  out of.
+ */
+#define CORE2_ALIVE_PERIOD_US 1000000U
 
 void
 toppers_p4_core2_alive_task(EXINF exinf)
@@ -36,6 +44,6 @@ toppers_p4_core2_alive_task(EXINF exinf)
     for (;;) {
         count++;
         syslog(LOG_NOTICE, "[P4-CORE2] alive %u", count);
-        (void) dly_tsk(CORE2_ALIVE_PERIOD_MS);
+        (void) dly_tsk(CORE2_ALIVE_PERIOD_US);
     }
 }
