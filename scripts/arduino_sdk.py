@@ -47,7 +47,49 @@ ARCH_HEADERS = {
     "esp32c6": ("riscvCsr", ("riscv", "include", "riscv", "csr.h")),
     #  Same layout as the C6 (checked against esp32c5-libs 3.3.8).
     "esp32c5": ("riscvCsr", ("riscv", "include", "riscv", "csr.h")),
+    #  ESP32-P4 (RISC-V, dual core). Same include layout (checked against
+    #  esp32p4_es-libs 3.3.8).
+    "esp32p4": ("riscvCsr", ("riscv", "include", "riscv", "csr.h")),
 }
+
+#  The M5Stack core's SDK tool directory of a chip, below
+#  <arduino data>/packages/m5stack/tools/. For every chip so far it was
+#  "<chip>-libs", which is what resolve() used to build from the chip name.
+#  The ESP32-P4 is the first chip whose SDK is not named after the chip:
+#  the core ships two P4 SDKs, esp32p4_es-libs for silicon below revision
+#  v3 (boards.txt 3.3.8 m5stack_stamp_p4.build.chip_variant=esp32p4_es,
+#  the default; the ChipVariant menu offers esp32p4 for v3 and later), and
+#  the stages are built against the one the board's default selects
+#  (StampP4 plan P2). A chip absent here uses "<chip>-libs" as before.
+SDK_TOOL_NAMES = {
+    "esp32p4": "esp32p4_es-libs",
+}
+
+#  Archives resolve() requires beyond the chip-neutral set, keyed by chip;
+#  (item name, path below <sdk>/lib or, for libphy.a, <sdk>/ld). The set
+#  below is the one resolve() required for every chip before the P4 row
+#  existed, so the other chips' checks are unchanged. The ESP32-P4 has no
+#  radio: its SDK has no libphy.a and no libcoexist.a (the Wi-Fi it links is
+#  esp_wifi_remote over esp_hosted), so its row leaves the two out.
+_RADIO_ARCHIVES = (
+    ("wifiArchive", ("lib", "libesp_wifi.a")),
+    ("coexistArchive", ("lib", "libcoexist.a")),
+    ("phyArchive", ("ld", "libphy.a")),
+)
+CHIP_ARCHIVES = {
+    "esp32s3": _RADIO_ARCHIVES,
+    "esp32": _RADIO_ARCHIVES,
+    "esp32c6": _RADIO_ARCHIVES,
+    "esp32c5": _RADIO_ARCHIVES,
+    "esp32p4": (
+        ("wifiArchive", ("lib", "libesp_wifi.a")),
+    ),
+}
+
+
+def sdk_tool_name(chip: str) -> str:
+    """The SDK tool directory name of a chip (see SDK_TOOL_NAMES)."""
+    return SDK_TOOL_NAMES.get(chip, f"{chip}-libs")
 
 
 class SdkError(RuntimeError):
@@ -92,7 +134,7 @@ def resolve(arduino_data: Path | None = None,
 
     package_root = data / "packages" / "m5stack"
     core_root = package_root / "hardware" / "esp32" / core_version
-    sdk_root = package_root / "tools" / f"{chip}-libs" / core_version
+    sdk_root = package_root / "tools" / sdk_tool_name(chip) / core_version
     include_root = sdk_root / "include"
     library_root = sdk_root / "lib"
     linker_root = sdk_root / "ld"
@@ -111,12 +153,11 @@ def resolve(arduino_data: Path | None = None,
         "peripheralLinkerScript": linker_root / f"{chip}.peripherals.ld",
         "romLinkerScript": linker_root / f"{chip}.rom.ld",
         "socArchive": library_root / "libsoc.a",
-        "wifiArchive": library_root / "libesp_wifi.a",
-        "coexistArchive": library_root / "libcoexist.a",
-        "phyArchive": linker_root / "libphy.a",
         "lwipArchive": library_root / "liblwip.a",
         "mbedtlsArchive": library_root / "libmbedtls.a",
     }
+    for name, (subdir, file_name) in CHIP_ARCHIVES[chip]:
+        required[name] = sdk_root / subdir / file_name
     for name, path in required.items():
         if not path.exists():
             raise SdkError(

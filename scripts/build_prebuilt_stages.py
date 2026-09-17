@@ -63,6 +63,9 @@ APPLICATIONS = {
 #  .cfg is passed, and that is a directory of its own.
 CHIP_APPLICATIONS = {
     ("esp32c5", "wifi-connect"): ("phase9_wifi_connect_app", "wifi_connect_c5", False),
+    #  The esp32p4 minimal application is the C6 one with the SMP cfg (the
+    #  Arduino task on PRC1, a heartbeat task on PRC2: StampP4 plan P4).
+    ("esp32p4", "minimal"): ("phase3_arduino_app", "phase3_p4", False),
 }
 #  Only m5-unified has a self-test application; the others build the same thing
 #  either way. The self-test adds a monitor task that prints PASS or FAILED, and
@@ -141,6 +144,19 @@ CHIPS = {
                     toolchain="toolchain-riscv-esp32c5.cmake",
                     sdk_headers_always=True,
                     profiles=frozenset({"minimal", "wifi-connect"})),
+    #  ESP32-P4 (RISC-V, dual core, CLIC). Same tool directory and compiler
+    #  as the C6 / C5; the SDK is esp32p4_es-libs 3.3.8 (arduino_sdk
+    #  SDK_TOOL_NAMES: the pre-v3-silicon variant the M5Stamp-P4's default
+    #  ChipVariant selects), the port directory is the same chip branch
+    #  (StampP4 plan stage A1), its own toolchain file. minimal only for
+    #  now: wifi-connect is stage B (hosted Wi-Fi over the C6 add-on). The
+    #  chip layer reads no SDK header, but the runtime's configure still
+    #  requires the SDK roots (the existence proofs), so the flag is ON.
+    "esp32p4": Chip(tool="esp-rv32", gcc="riscv32-esp-elf-gcc",
+                    port="m5stack_riscv",
+                    toolchain="toolchain-riscv-esp32p4.cmake",
+                    sdk_headers_always=True,
+                    profiles=frozenset({"minimal"})),
 }
 
 

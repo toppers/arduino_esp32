@@ -14,6 +14,10 @@
   "portBaseRepositoryC5": "https://github.com/exshonda/fmp3_esp_idf_dev.git",
   "portBaseCommitC5": "1d96bcba32a043eb7066126550b0dbe598e4aad6",
   "portBaseCommitDateC5": "2026-09-16",
+  "_portCommentP4": "ESP32-P4 (M5Stamp-P4) port, a chip branch of ports/m5stack_riscv beside the C6 and C5 (StampP4 plan stage A1: arch/riscv_gcc/esp32p4, target/m5stamp_esp32p4_gcc, seam/seam_p4_*, cmake/prebuilt_stage_p4.cmake, toolchain-riscv-esp32p4.cmake, app/phase3_p4; file-by-file record in ports/m5stack_riscv/runtime/IMPORT_PROVENANCE_p4.md). Its provenance is the PRIVATE development repository directly, like the C6 and C5 rows: portBaseCommitP4 (a7453186) is the dev main commit the P4 layer was copied from - the layer itself was last changed there in August 2026 (the seam-p4-smp preset, booted on the M5Stamp ESP32P4 rev v1.3 hardware at dev stages 2-6; hosted Wi-Fi at stages 7a-7g on the Tab5). Replace portBaseRepositoryP4 / portBaseCommitP4 with the public repository and its next snapshot once published. What the release carries for the M5StampP4 board has the same shape as for the other boards: the runtime SOURCES under ports/m5stack_riscv are not distributed, the esp32p4/minimal stage is (fmp3-prebuilt/esp32p4/minimal), and every example is shared across the boards. minimal only at stage A (the board has no display and the P4 no radio of its own; wifi-connect over the esp-hosted C6 add-on is stage B). The SDK the stage is built against is esp32p4_es-libs (chipToolDependencies.esp32p4), the pre-v3-silicon variant that the M5Stack core's m5stack_stamp_p4 row selects by default; the board's ChipVariant menu is dropped by install_platform.py so that a sketch cannot be linked against the other variant's ROM scripts. The board was added without hardware at hand (stage A1-A3 are compile / link / X-check only; stage A4 is the hardware run on another machine).",
+  "portBaseRepositoryP4": "https://github.com/exshonda/fmp3_esp_idf_dev.git",
+  "portBaseCommitP4": "a745318658e2ef77cd94c126c2d0ce942f92925a",
+  "portBaseCommitDateP4": "2026-09-17",
   "entries": [
     {
       "source": "examples/LibraryInfo/LibraryInfo.ino",
@@ -95,7 +99,8 @@
         "esp32s3": ["minimal", "m5-unified", "wifi-connect"],
         "esp32": ["minimal", "m5-unified", "wifi-connect", "bt-classic"],
         "esp32c6": ["minimal", "wifi-connect"],
-        "esp32c5": ["minimal", "wifi-connect"]
+        "esp32c5": ["minimal", "wifi-connect"],
+        "esp32p4": ["minimal"]
       },
       "_chipToolDependenciesComment": "chip -> M5Stack tools the current platform entry's toolsDependencies must name whenever the archive holds that chip's stages (R9 of the C6 plan). The Xtensa tools are unconditional in the index and are not listed here; the RISC-V toolchain and the ESP32-C6 / ESP32-C5 SDKs are declared by make_package_index.py only when fmp3-prebuilt/<chip> is packaged, so that a release without those boards does not make every user download them - and this row is what catches the gate silently ceasing to fire while the stages still ship. esp-rv32 is shared by the two RISC-V chips and appears once in the index. The values mirror CHIP_TOOL_DEPENDENCIES in scripts/make_package_index.py; scripts/test_check_release_artifacts.py holds the two together.",
       "chipToolDependencies": {
@@ -106,6 +111,10 @@
         "esp32c5": [
           {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
           {"packager": "m5stack", "name": "esp32c5-libs", "version": "3.3.8"}
+        ],
+        "esp32p4": [
+          {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
+          {"packager": "m5stack", "name": "esp32p4_es-libs", "version": "3.3.8"}
         ]
       }
     },

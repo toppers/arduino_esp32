@@ -196,6 +196,10 @@ SDK_FALLBACKS = {
     "esp32": ("esp-x32", "xtensa-esp32-elf-gcc", "esp32-libs"),
     "esp32c6": ("esp-rv32", "riscv32-esp-elf-gcc", "esp32c6-libs"),
     "esp32c5": ("esp-rv32", "riscv32-esp-elf-gcc", "esp32c5-libs"),
+    #  The P4 SDK is named for the silicon variant, not the chip (esp32p4_es
+    #  = below revision v3, the M5Stamp-P4's default; see arduino_sdk.py
+    #  SDK_TOOL_NAMES).
+    "esp32p4": ("esp-rv32", "riscv32-esp-elf-gcc", "esp32p4_es-libs"),
 }
 
 
@@ -774,10 +778,14 @@ def write_partition_table(csv_path: Path, bin_path: Path) -> None:
 #    C-5  no RAM segment reaches the bootloader's own iram_loader_seg
 #         (loading over it kills the loader; bootloader.ld asserts the
 #          address)
-#    C-6  every RAM segment's bytes equal the ELF .data bytes at that address
+#    C-6  every RAM segment's bytes equal the ELF bytes at that address
 #         (esptool builds segments from section headers; this is the direct
 #          check that .data went in with its contents, and it fails closed
-#          when either .data or the RAM segment list is empty)
+#          when either .data or the RAM segment list is empty. The reference
+#          is the allocated PROGBITS sections as a whole: on the C6 / C5 a
+#          RAM segment lies within .data, on the P4 the seam entry's
+#          .iram_text is a RAM section of its own that esptool may merge
+#          with .data into one segment)
 #    C-7  the two mapped segments' MMU page ranges do not overlap
 #    C-8  the image fits the app partition it is flashed to
 #         (the length comes from the build's partitions.csv, not a constant:
@@ -846,6 +854,25 @@ FIXED_VMA_LAYOUTS = {
                            loader_seg=0x4084E5A0,
                            chip_id=0x0017,
                            board_rev_full=100),
+    #  esp32p4 (StampP4 plan P6): soc.h:152-155 (SOC_IROM_LOW/HIGH ==
+    #  SOC_DROM_LOW/HIGH 0x40000000/0x44000000, one shared D/I window),
+    #  soc.h:167-170 (SOC_IRAM_LOW/HIGH 0x4ff00000/0x4ffc0000, 768 KiB),
+    #  bootloader_qio_80m.elf of esp32p4_es-libs 3.3.8 (.iram_loader.text at
+    #  0x4ff2cbd0 = bootloader_iram_loader_seg_start, the same value the dev
+    #  repository's esp32p4_xip.ld and its own bootloader assert), sdkconfig
+    #  of esp32p4_es-libs 3.3.8 (CONFIG_MMU_PAGE_SIZE=0x10000). C-9: chip_id
+    #  ESP_CHIP_ID_ESP32P4 = 0x0012 (esp_app_format.h:27); the M5Stamp-P4 is
+    #  chip revision v1.3 = 103 (dev P4 stage 2 efuse readout; the ES SDK is
+    #  built for REV_MIN_FULL 1, REV_MAX_FULL 199). The P4 is the chip whose
+    #  bootloader the C-1 / C-2 shape (exactly two flash segments, app
+    #  descriptor first) was written for (bootloader_utility.c:805-853 under
+    #  SOC_MMU_DI_VADDR_SHARED, which only the P4 defines).
+    "esp32p4": ImageLayout(page=0x10000,
+                           drom=(0x40000000, 0x44000000),
+                           iram=(0x4ff00000, 0x4ffc0000),
+                           loader_seg=0x4ff2cbd0,
+                           chip_id=0x0012,
+                           board_rev_full=103),
 }
 
 IMAGE_MAGIC = 0xE9
@@ -940,6 +967,68 @@ def elf_section(elf: bytes, name: str) -> tuple[int, bytes] | None:
             continue
         return sh_addr, elf[sh_offset:sh_offset + sh_size]
     return None
+
+
+def elf_alloc_progbits(elf: bytes) -> list[tuple[str, int, bytes]]:
+    """(name, sh_addr, bytes) of every allocated, non-empty PROGBITS section.
+
+    The same header walk as elf_section(); C-6 uses it for the RAM segments
+    a linker script builds from more than one section (the P4's .iram_text
+    and .data), where a single named section cannot be the reference.
+    """
+    if elf[:4] != b"\x7fELF" or elf[4] != 1 or elf[5] != 1:
+        raise LinkError("C-6: the ELF is not a 32-bit little-endian ELF")
+    (shoff, shentsize, shnum,
+     shstrndx) = struct.unpack("<I", elf[32:36]) + struct.unpack(
+        "<HHH", elf[46:52])
+    if shnum == 0 or shstrndx >= shnum:
+        raise LinkError("C-6: the ELF has no section headers")
+
+    def header(index: int) -> tuple:
+        start = shoff + index * shentsize
+        return struct.unpack("<IIIIIIIIII", elf[start:start + 40])
+
+    _, _, _, _, str_offset, str_size, _, _, _, _ = header(shstrndx)
+    strings = elf[str_offset:str_offset + str_size]
+    sections = []
+    for index in range(shnum):
+        sh_name, sh_type, sh_flags, sh_addr, sh_offset, sh_size, *_ = header(index)
+        #  SHT_PROGBITS with SHF_ALLOC (0x2); an empty one covers nothing.
+        if sh_type != 1 or not (sh_flags & 0x2) or sh_size == 0:
+            continue
+        end = strings.find(b"\0", sh_name)
+        name = strings[sh_name:end].decode("ascii", "replace")
+        sections.append((name, sh_addr, elf[sh_offset:sh_offset + sh_size]))
+    return sections
+
+
+def elf_bytes_at(sections: list[tuple[str, int, bytes]], address: int,
+                 length: int) -> tuple[bytes, list[str]] | None:
+    """The ELF bytes of [address, address+length) and the sections they come
+    from, in order; None when some byte of the range is in no section.
+
+    esptool merges sections that abut in the address space into one image
+    segment, so a RAM segment can span several ELF sections: the reference
+    is their concatenation. A gap between sections is one esptool does not
+    merge across, so a segment reaching into a gap is a failure, not zero
+    fill.
+    """
+    out = bytearray()
+    names: list[str] = []
+    cursor = address
+    stop = address + length
+    while cursor < stop:
+        hit = next(((name, addr, data) for name, addr, data in sections
+                    if addr <= cursor < addr + len(data)), None)
+        if hit is None:
+            return None
+        name, addr, data = hit
+        take = min(stop, addr + len(data)) - cursor
+        out += data[cursor - addr:cursor - addr + take]
+        if not names or names[-1] != name:
+            names.append(name)
+        cursor += take
+    return bytes(out), names
 
 
 def app_partition_length(csv_path: Path,
@@ -1037,21 +1126,29 @@ def check_fixed_vma_image(image: bytes, elf: bytes, layout: ImageLayout,
         raise LinkError(
             "C-6: the image carries no RAM segment although the ELF .data is "
             f"{len(data_bytes)} bytes; esptool dropped it")
+    #  The reference is every allocated PROGBITS section, not .data alone
+    #  (StampP4 plan stage A2): on the C6 / C5 a RAM segment lies within
+    #  .data, and the result is the check as it was; on the P4 the seam
+    #  entry's .iram_text is a RAM section of its own that esptool may merge
+    #  with .data into one segment. The .data precondition above stays: a
+    #  linker script that put nothing there would still be a check that
+    #  cannot be made.
+    sections = elf_alloc_progbits(elf)
     for seg in ram:
-        offset = seg.load - data_vma
-        if offset < 0 or offset + seg.length > len(data_bytes):
+        reference = elf_bytes_at(sections, seg.load, seg.length)
+        if reference is None:
             raise LinkError(
                 f"C-6: ram seg{seg.index} [0x{seg.load:08x},+{seg.length}) "
-                f"is not within the ELF .data [0x{data_vma:08x},"
-                f"+{len(data_bytes)})")
-        expected = data_bytes[offset:offset + seg.length]
+                "is not covered by the ELF's allocated PROGBITS sections "
+                f"(.data is [0x{data_vma:08x},+{len(data_bytes)}))")
+        expected, names = reference
         actual = image[seg.file_offset:seg.file_offset + seg.length]
         if actual != expected:
             raise LinkError(
-                f"C-6: ram seg{seg.index} differs from the ELF .data bytes "
-                f"at 0x{seg.load:08x} ({seg.length} bytes)")
-        lines.append(f"  C-6 OK: ram seg{seg.index} equals ELF "
-                     f".data[0x{offset:x}:0x{offset + seg.length:x}]")
+                f"C-6: ram seg{seg.index} differs from the ELF bytes at "
+                f"0x{seg.load:08x} ({seg.length} bytes; {'+'.join(names)})")
+        lines.append(f"  C-6 OK: ram seg{seg.index} [0x{seg.load:08x},"
+                     f"+{seg.length}) equals ELF {'+'.join(names)}")
     #  C-7
     def page_range(seg: ImageSegment) -> tuple[int, int]:
         return (seg.load & ~(page - 1),

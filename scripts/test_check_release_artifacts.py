@@ -54,6 +54,7 @@ STAGES = {
     "esp32": ["minimal", "m5-unified", "wifi-connect", "bt-classic"],
     "esp32c6": ["minimal", "wifi-connect"],
     "esp32c5": ["minimal", "wifi-connect"],
+    "esp32p4": ["minimal"],
 }
 CHIP_TOOLS = {
     "esp32c6": [
@@ -64,20 +65,26 @@ CHIP_TOOLS = {
         {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
         {"packager": "m5stack", "name": "esp32c5-libs", "version": "3.3.8"},
     ],
+    "esp32p4": [
+        {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
+        {"packager": "m5stack", "name": "esp32p4_es-libs", "version": "3.3.8"},
+    ],
 }
 XTENSA_BOARDS = {"m5cores3_fmp3": "esp32s3", "m5sticks3_fmp3": "esp32s3",
                  "m5atoms3lite_fmp3": "esp32s3", "m5core_fmp3": "esp32",
                  "m5atomlite_fmp3": "esp32"}
 C6_BOARD = {"m5nanoc6_fmp3": "esp32c6"}
 C5_BOARD = {"m5stampc5_fmp3": "esp32c5"}
+P4_BOARD = {"m5stampp4_fmp3": "esp32p4"}
 #  The release shapes the cases below build: every chip of STAGES with its
 #  board and tools (the shape a full release has), and the C6-only shape
 #  the cases were written against before the C5 row existed (the C5 stage
 #  left out, so that a case about the C6 tools does not also trip over the
 #  C5 ones).
-ALL_BOARDS = {**XTENSA_BOARDS, **C6_BOARD, **C5_BOARD}
+ALL_BOARDS = {**XTENSA_BOARDS, **C6_BOARD, **C5_BOARD, **P4_BOARD}
 ALL_CHIP_TOOLS = CHIP_TOOLS["esp32c6"] + [
-    row for row in CHIP_TOOLS["esp32c5"] if row not in CHIP_TOOLS["esp32c6"]]
+    row for row in CHIP_TOOLS["esp32c5"] if row not in CHIP_TOOLS["esp32c6"]] + [
+    row for row in CHIP_TOOLS["esp32p4"] if row not in CHIP_TOOLS["esp32c6"]]
 STAGES_WITHOUT_C5 = {chip: profiles for chip, profiles in STAGES.items()
                      if chip != "esp32c5"}
 

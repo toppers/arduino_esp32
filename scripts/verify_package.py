@@ -148,6 +148,10 @@ BOARD_PROFILES = {
     "m5atomlite_fmp3": {"minimal", "wificonnect", "btclassic"},
     "m5nanoc6_fmp3": {"minimal", "wificonnect"},
     "m5stampc5_fmp3": {"minimal", "wificonnect"},
+    #  The M5StampP4 (ESP32-P4, RISC-V, dual core) offers minimal only at
+    #  StampP4 plan stage A; wificonnect (hosted Wi-Fi over the C6 add-on)
+    #  is stage B. No display, no BR/EDR radio of its own.
+    "m5stampp4_fmp3": {"minimal"},
 }
 
 #  Every board the platform offers, in the order they are verified.

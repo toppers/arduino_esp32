@@ -115,7 +115,10 @@ TIME_KEYS = frozenset({
 #  whatever its BASELINE.json records.
 #  esp32c5 likewise (C5 plan A4: the C5 stages are ignorable until a C5
 #  baseline is wanted); the C5 plan's baseline is --chips esp32s3 esp32 esp32c6.
-CHIPS = ["esp32s3", "esp32", "esp32c6", "esp32c5"]
+#  esp32p4 likewise (StampP4 plan stage A0: the 11-stage baseline is
+#  --chips esp32s3 esp32 esp32c6 esp32c5, and the P4 stage is ignorable
+#  while the P4 is the chip being worked on).
+CHIPS = ["esp32s3", "esp32", "esp32c6", "esp32c5", "esp32p4"]
 DEFAULT_CHIPS = ["esp32s3", "esp32"]
 
 

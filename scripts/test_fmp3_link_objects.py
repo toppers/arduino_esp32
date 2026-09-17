@@ -471,6 +471,123 @@ def image_cases(failures: list) -> None:
                  "C-9")
 
 
+def synthetic_elf_sections(sections: list) -> bytes:
+    """A 32-bit little-endian ELF with the given [(name, flags, vma, bytes)]
+    PROGBITS sections (in that order) and .shstrtab; the P4 cases' ELF,
+    whose RAM is more than one section."""
+    shstrtab = b"\0" + b"".join(name.encode() + b"\0" for name, *_ in sections) + b".shstrtab\0"
+    ehdr_size, shdr_size = 52, 40
+    body = bytearray()
+    headers = [(0, 0, 0, 0, 0, 0)]
+    offset = ehdr_size
+    name_offset = 1
+    for name, flags, vma, data in sections:
+        headers.append((name_offset, 1, flags, vma, offset, len(data)))
+        body += data
+        offset += len(data)
+        name_offset += len(name) + 1
+    str_off = offset
+    headers.append((name_offset, 3, 0, 0, str_off, len(shstrtab)))
+    shoff = str_off + len(shstrtab)
+    shstrndx = len(headers) - 1
+    ehdr = (b"\x7fELF" + bytes([1, 1, 1, 0]) + b"\0" * 8
+            + struct.pack("<HHIIIIIHHHHHH", 2, 243, 1, ENTRY, 0, shoff, 0,
+                          ehdr_size, 0, 0, shdr_size, len(headers),
+                          shstrndx))
+    out = ehdr + bytes(body) + shstrtab
+    for name, kind, flags, addr, off, size in headers:
+        out += struct.pack("<IIIIIIIIII", name, kind, flags, addr, off,
+                           size, 0, 0, 1, 0)
+    return out
+
+
+def p4_cases(failures: list) -> None:
+    """The esp32p4 row (StampP4 plan P6 / stage A2): C-9 with chip_id 0x0012
+    and board revision 103, and C-6 with a RAM segment esptool merged from
+    two ELF sections (.iram_text, the seam entry, followed by .data)."""
+    p4 = FIXED_VMA_LAYOUTS["esp32p4"]
+    check(failures, "esp32p4 layout names chip_id 0x0012, board rev 103, "
+                    "the shared D/I window and the 0x4ff2cbd0 loader segment",
+          p4.chip_id == 0x0012 and p4.board_rev_full == 103
+          and p4.drom == (0x40000000, 0x44000000)
+          and p4.iram == (0x4ff00000, 0x4ffc0000)
+          and p4.loader_seg == 0x4ff2cbd0, str(p4))
+    text_vaddr = 0x40000020
+    rodata_vaddr = 0x40100020
+    iram_vaddr = 0x4ff00000
+    iram = bytes(range(64, 128)) * 4                # .iram_text, 256 B
+    data = bytes(range(256)) * 2                    # .data, 512 B, adjacent
+    data_vaddr = iram_vaddr + len(iram)
+    entry = text_vaddr + 0x40
+    elf = synthetic_elf_sections([(".iram_text", 6, iram_vaddr, iram),
+                                  (".data", 3, data_vaddr, data)])
+    text = struct.pack("<I", APP_DESC_MAGIC) + b"T" * 0x200
+
+    def p4_segments(ram_segments: list) -> list:
+        #  layout_segments() pads for the C6 window; do the same by hand for
+        #  the P4 window (page 0x10000 for both), text first (C-2).
+        laid = []
+        offset = 24
+        for load, blob in [(text_vaddr, text), (rodata_vaddr, b"R" * 0x100)] + ram_segments:
+            mapped = p4.drom[0] <= load < p4.drom[1]
+            if mapped and (offset + 8) % p4.page != load % p4.page:
+                pad = (load - offset - 16) % p4.page or p4.page
+                laid.append((0, b"\0" * pad))
+                offset += 8 + pad
+            laid.append((load, blob))
+            offset += 8 + len(blob)
+        return laid
+
+    merged = synthetic_image(p4_segments([(iram_vaddr, iram + data)]),
+                             entry=entry, chip_id=0x0012, min_rev=0, max_rev=65535)
+    try:
+        lines = check_fixed_vma_image(merged, elf, p4, 0x640000)
+    except LinkError as error:
+        failures.append(f"the well-formed P4 image (merged RAM segment) should pass: {error}")
+        lines = []
+    check(failures, "esp32p4: C-6 accepts a RAM segment spanning .iram_text+.data",
+          any("C-6 OK" in line and ".iram_text+.data" in line for line in lines),
+          f"lines={lines}")
+    check(failures, "esp32p4: C-9 OK and C-1 to C-9 satisfied",
+          any("C-9 OK: chip_id=0x0012" in line and "board rev 103" in line
+              for line in lines)
+          and lines[-1:] == ["fixed-vma image: C-1 to C-9 satisfied"],
+          f"lines={lines}")
+    #  Two RAM segments, one per section, pass as well (esptool does not
+    #  merge when the sections do not abut).
+    split = synthetic_image(p4_segments([(iram_vaddr, iram), (data_vaddr, data)]),
+                            entry=entry, chip_id=0x0012, min_rev=0, max_rev=65535)
+    try:
+        check_fixed_vma_image(split, elf, p4, 0x640000)
+    except LinkError as error:
+        failures.append(f"the P4 image with two RAM segments should pass: {error}")
+    #  Negative controls: bytes that differ in the .iram_text half, a
+    #  segment that runs past the end of .data into no section, and the
+    #  C5's chip_id in the header.
+    wrong = bytes(reversed(iram)) + data
+    expect_error(failures, "esp32p4 C-6: .iram_text bytes differ from the ELF",
+                 lambda: check_fixed_vma_image(
+                     synthetic_image(p4_segments([(iram_vaddr, wrong)]), entry=entry,
+                                     chip_id=0x0012, min_rev=0, max_rev=65535),
+                     elf, p4, 0x640000), "C-6")
+    expect_error(failures, "esp32p4 C-6: a RAM segment reaching past every section",
+                 lambda: check_fixed_vma_image(
+                     synthetic_image(p4_segments([(iram_vaddr, iram + data + b"Z" * 16)]),
+                                     entry=entry, chip_id=0x0012, min_rev=0, max_rev=65535),
+                     elf, p4, 0x640000), "C-6")
+    expect_error(failures, "esp32p4 C-9: chip_id of another chip (0x0017 = ESP32-C5)",
+                 lambda: check_fixed_vma_image(
+                     synthetic_image(p4_segments([(iram_vaddr, iram + data)]), entry=entry,
+                                     chip_id=0x0017, min_rev=0, max_rev=65535),
+                     elf, p4, 0x640000), "C-9")
+    #  C-5: a RAM segment that ends inside the bootloader's loader segment.
+    expect_error(failures, "esp32p4 C-5: RAM reaching the bootloader's iram_loader_seg",
+                 lambda: check_fixed_vma_image(
+                     synthetic_image(p4_segments([(p4.loader_seg - 16, b"L" * 32)]), entry=entry,
+                                     chip_id=0x0012, min_rev=0, max_rev=65535),
+                     elf, p4, 0x640000), "C-5")
+
+
 #  The M5Stack core's tools/partitions/default.csv, which the C6 boards use.
 DEFAULT_CSV = """\
 # Name,   Type, SubType, Offset,  Size, Flags
@@ -616,6 +733,7 @@ def main() -> int:
 
     manifest_cases(failures)
     image_cases(failures)
+    p4_cases(failures)
     partition_cases(failures)
     strip_cases(failures)
 

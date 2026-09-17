@@ -124,6 +124,51 @@ endif()
 #    A1_CHIP_WIFI           ON when this file can stage wifi-connect for the
 #                           chip
 #    A1_ROM_LDS_<profile>   the ROM linker scripts per profile (below)
+#  Rows the ESP32-P4 added (StampP4 plan, stage A1). Each has a default that
+#  is what the C6 and C5 rows did before the field existed, set right below
+#  this comment, so those two rows do not spell them and their stages are
+#  unchanged (X-check):
+#    A1_CHIP_PRC_NUM        FMP3_PRC_NUM (TNUM_PRCID). 1 = single core. The
+#                           P4 is 2 (SMP): its target_kernel.h takes 1..4,
+#                           and the seam starts core1 (below)
+#    A1_CHIP_START_FILE     the startup file linked in front of everything
+#                           (seam_start). Empty = the chip's chip_start.S
+#                           (C6 / C5: the common start.S issues FPU
+#                           instructions their rv32imac assembler rejects).
+#                           The P4 (rv32imafc) links fmp3_core's common
+#                           start.S itself, as the dev seam does
+#    A1_CHIP_SEAM_EXTRA_SOURCES
+#                           more seam sources (P4: seam_p4_core1.c and
+#                           seam_p4_core1_entry.S, the core1 wake-up)
+#    A1_CHIP_EXTRA_DEFS     more FMP3_COMPILE_DEFS, reaching the kernel
+#                           library as well as the runtime objects (P4:
+#                           TOPPERS_SEAM_P4_CORE1, read by the target's
+#                           target_mprc_initialize - dev learned the hard
+#                           way that a definition given to the executable
+#                           target alone silently leaves that code out)
+#    A1_CHIP_CLK_BOOST_DEFINE
+#                           the definition that turns the seam clock boost
+#                           on. Empty = SEAM_<TAG>_CLK_BOOST=1 (C6 / C5);
+#                           the P4 seam entry reads SEAM_P4_CLK360
+#    A1_CHIP_CORE_CLK_DEFINE
+#                           ON = pass -DCORE_CLK_MHZ=<freq> (C6 / C5, whose
+#                           esp32c<N>.h derive their timing from it). OFF
+#                           for the P4, whose kit header defines it itself
+#                           (m5stamp_esp32p4_kit.h: 360)
+#    A1_CHIP_NEWLIB_SYSCALLS
+#                           ON = link seam/newlib_syscalls.c (_exit, _kill,
+#                           _getpid, _write, __getreent for newlib-nano).
+#                           OFF for the P4: its target_kernel_impl.c defines
+#                           the same names (and _sbrk) already, and the
+#                           stage's duplicate-symbol audit is strict
+#    A1_CHIP_LDFRAG_DIR     directory the XIP linker script INCLUDEs its
+#                           fragments from (P4: p4_mem_high.ld etc. beside
+#                           esp32p4_xip.ld). Added as -Wl,-L for the cfg
+#                           pass-1 link; prebuilt_stage_p4.cmake inlines
+#                           the fragments into the staged copy so the
+#                           sketch link needs no search path
+#    A1_CHIP_USBJTAG_HAL    may be empty (P4: chip_serial.c drives the
+#                           USB-Serial/JTAG console itself)
 #  wifi-connect only (the block "wifi-connect" further down reads them; the
 #  C6 values are the strings that block used to spell inline, so the C6
 #  wifi-connect stage is byte-identical to what it was before the C5 row):
@@ -149,6 +194,15 @@ endif()
 if(NOT DEFINED A1_CHIP OR A1_CHIP STREQUAL "")
     set(A1_CHIP esp32c6)
 endif()
+#  Defaults of the fields the P4 row added (see the table comment).
+set(A1_CHIP_PRC_NUM 1)
+set(A1_CHIP_START_FILE "")
+set(A1_CHIP_SEAM_EXTRA_SOURCES)
+set(A1_CHIP_EXTRA_DEFS)
+set(A1_CHIP_CLK_BOOST_DEFINE "")
+set(A1_CHIP_CORE_CLK_DEFINE ON)
+set(A1_CHIP_NEWLIB_SYSCALLS ON)
+set(A1_CHIP_LDFRAG_DIR "")
 if(A1_CHIP STREQUAL "esp32c6")
     set(A1_CHIP_TAG C6)
     set(A1_CHIP_TARGET_NAME m5nanoc6_gcc)
@@ -337,9 +391,55 @@ elseif(A1_CHIP STREQUAL "esp32c5")
     set(A1_CHIP_WIFI_ARDUINO_SOURCES
         arduino_interrupt_c5.c
         arduino_gpio_c5.c)
+elseif(A1_CHIP STREQUAL "esp32p4")
+    #  ESP32-P4 (RISC-V RV32IMAFC, dual core, CLIC), M5Stamp-P4. The chip,
+    #  target, linker-script and seam files are the dev repository's
+    #  fmp3/arch/riscv_gcc/esp32p4, fmp3/target/m5stamp_esp32p4_gcc and
+    #  esp/boot/seam_p4_* as they are (StampP4 plan, stage A1; the dev
+    #  seam-p4-smp preset booted on the M5Stamp ESP32P4 rev v1.3). Unlike
+    #  the C6 / C5 layers the P4 chip layer reads no ESP-IDF header and
+    #  links no ROM linker script: esp32p4.h carries the registers it
+    #  needs. The SDK (esp32p4_es-libs, the pre-v3-silicon variant the
+    #  board's default ChipVariant selects) is still required: the
+    #  bootloader the board is flashed with comes from it, and its
+    #  esp32p4.rom.ld is the existence proof below.
+    set(A1_CHIP_TAG P4)
+    set(A1_CHIP_TARGET_NAME m5stamp_esp32p4_gcc)
+    set(A1_CHIP_ARCH_NAME esp32p4)
+    set(A1_XIP_LD_NAME esp32p4_xip.ld)
+    set(A1_CHIP_ROM_LD esp32p4.rom.ld)
+    set(A1_CHIP_USBJTAG_HAL "")
+    set(A1_CHIP_SEAM_APPDESC seam_p4_appdesc.c)
+    set(A1_CHIP_SEAM_CLK seam_p4_clk.c)
+    set(A1_CHIP_SEAM_ENTRY seam_p4_entry.S)
+    set(A1_CHIP_PREBUILT_SCRIPT prebuilt_stage_p4.cmake)
+    #  360 MHz only: the value the dev seam runs at (seam_p4_clk.c raises
+    #  the bootloader's 90 MHz to 360; the kernel's MTIMER_FREQ_MHZ in
+    #  esp32p4.h is 360 and the kit header's CORE_CLK_MHZ too). No 90 MHz
+    #  fallback: dev measured the kernel's time base 4x slow there.
+    set(A1_CHIP_CPU_FREQ_CHOICES 360)
+    set(A1_CHIP_CPU_FREQ_DEFAULT 360)
+    set(A1_CHIP_CPU_FREQ_BOOST 360)
+    set(A1_CHIP_CLK_BOOST_DEFINE SEAM_P4_CLK360=1)
+    set(A1_CHIP_CORE_CLK_DEFINE OFF)
+    set(A1_CHIP_NEWLIB_SYSCALLS OFF)
+    set(A1_CHIP_START_FILE "${FMP3_CORE_ROOT}/arch/riscv_gcc/common/start.S")
+    set(A1_CHIP_LDFRAG_DIR "${RUNTIME_ROOT}/target/m5stamp_esp32p4_gcc")
+    #  SMP: 2 cores (StampP4 plan P4). core1 (hart1 / PRC2) is woken by the
+    #  target's target_mprc_initialize when TOPPERS_SEAM_P4_CORE1 is
+    #  defined (dev stage 6); seam_p4_core1_entry.S is what it runs first,
+    #  and SEAM_P4_CORE1_MARK (0x43 'C') is one raw byte it writes to the
+    #  USB-Serial/JTAG FIFO before entering the kernel - the same kind of
+    #  evidence as the seam entry's 'S'.
+    set(A1_CHIP_PRC_NUM 2)
+    set(A1_CHIP_SEAM_EXTRA_SOURCES seam_p4_core1.c seam_p4_core1_entry.S)
+    set(A1_CHIP_EXTRA_DEFS TOPPERS_SEAM_P4_CORE1=1 SEAM_P4_CORE1_MARK=0x43)
+    #  wifi-connect is stage B of the StampP4 plan (hosted Wi-Fi over the
+    #  C6 add-on); until then the P4 stages minimal only.
+    set(A1_CHIP_WIFI OFF)
 else()
     message(FATAL_ERROR
-        "ports/m5stack_riscv/runtime builds the esp32c6 or the esp32c5 (got A1_CHIP='${A1_CHIP}')")
+        "ports/m5stack_riscv/runtime builds the esp32c6, the esp32c5 or the esp32p4 (got A1_CHIP='${A1_CHIP}')")
 endif()
 if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND NOT A1_CHIP_WIFI)
     message(FATAL_ERROR
@@ -429,6 +529,15 @@ elseif(A1_CHIP STREQUAL "esp32c5")
         esp32c5.rom.phy.ld
         esp32c5.rom.systimer.ld
         esp32c5.rom.coexist.ld)
+elseif(A1_CHIP STREQUAL "esp32p4")
+    #  None: the dev seam-p4-smp links no ROM script (the P4 chip layer is
+    #  self-contained, and the sketch side takes libc from libc_nano.a - the
+    #  minimal-profile reasoning above for the C6 applies with nothing to
+    #  bind). The empty list is legal for prebuilt_stage_p4.cmake, which
+    #  writes romLinkerScripts as [] for the driver. (set() with no value
+    #  unsets the variable, and the check below wants it DEFINED; the empty
+    #  string is a defined, empty list.)
+    set(A1_ROM_LDS_minimal "")
 endif()
 if(NOT DEFINED A1_ROM_LDS_${FMP3_RUNTIME_PROFILE})
     message(FATAL_ERROR
@@ -493,10 +602,22 @@ set(A1_SEAM_ENTRY_MARK "${${A1_SEAM_ENTRY_MARK_VAR}}")
 #  reach the runtime objects through the fmp3 target's PUBLIC properties (see
 #  seam_common below), so the kernel and the runtime cannot drift apart.
 #
-set(FMP3_COMPILE_DEFS
-    CORE_CLK_MHZ=${A1_CPU_FREQ_MHZ})
+set(FMP3_COMPILE_DEFS)
+if(A1_CHIP_CORE_CLK_DEFINE)
+    list(APPEND FMP3_COMPILE_DEFS CORE_CLK_MHZ=${A1_CPU_FREQ_MHZ})
+endif()
 if(A1_CPU_FREQ_MHZ STREQUAL "${A1_CHIP_CPU_FREQ_BOOST}")
-    list(APPEND FMP3_COMPILE_DEFS SEAM_${A1_CHIP_TAG}_CLK_BOOST=1)
+    if(A1_CHIP_CLK_BOOST_DEFINE STREQUAL "")
+        list(APPEND FMP3_COMPILE_DEFS SEAM_${A1_CHIP_TAG}_CLK_BOOST=1)
+    else()
+        list(APPEND FMP3_COMPILE_DEFS ${A1_CHIP_CLK_BOOST_DEFINE})
+    endif()
+endif()
+list(APPEND FMP3_COMPILE_DEFS ${A1_CHIP_EXTRA_DEFS})
+if(NOT A1_CHIP_LDFRAG_DIR STREQUAL "")
+    #  The XIP linker script's INCLUDE fragments (P4), for the cfg pass-1
+    #  link; the staged copy is self-contained (prebuilt_stage_p4.cmake).
+    list(APPEND FMP3_LINK_OPTIONS "-Wl,-L,${A1_CHIP_LDFRAG_DIR}")
 endif()
 if(NOT A1_SEAM_ENTRY_MARK STREQUAL "")
     list(APPEND FMP3_COMPILE_DEFS SEAM_${A1_CHIP_TAG}_ENTRY_MARK=${A1_SEAM_ENTRY_MARK})
@@ -651,8 +772,9 @@ set(A1_XIP_LD "${FMP3_TARGET_DIR}/${A1_XIP_LD_NAME}")
 #  a warning only.
 set(A1_${A1_CHIP_TAG}_LDSCRIPT "${A1_XIP_LD}")
 set(FMP3_LIBRARY_ONLY ON)
-#  Single core: target_kernel.h refuses any other TNUM_PRCID.
-set(FMP3_PRC_NUM 1)
+#  C6 / C5: single core (their target_kernel.h refuse any other
+#  TNUM_PRCID). P4: 2 (chip table).
+set(FMP3_PRC_NUM ${A1_CHIP_PRC_NUM})
 set(FMP3_APPLDIR "${FMP3_APPLICATION_DIR}")
 set(FMP3_APPLNAME "${FMP3_APPLICATION_NAME}")
 
@@ -707,16 +829,26 @@ add_library(seam_objects OBJECT
     #  fmp3_add_syssvc() would add from FMP3_SYSSVC_TARGET_C_FILES in a
     #  non-library build.
     "${FMP3_CHIP_DIR}/chip_serial.c"
-    "${FMP3_TARGET_DIR}/${A1_CHIP_USBJTAG_HAL}"
     #  esp_app_desc at the head of the DROM segment; the bootloader reads it.
     "${RUNTIME_ROOT}/seam/${A1_CHIP_SEAM_APPDESC}"
     #  80 -> 160 (C6) / 240 (C5) MHz, called from the seam entry when
-    #  SEAM_<TAG>_CLK_BOOST.
-    "${RUNTIME_ROOT}/seam/${A1_CHIP_SEAM_CLK}"
+    #  SEAM_<TAG>_CLK_BOOST; P4: 90 -> 360 (SEAM_P4_CLK360).
+    "${RUNTIME_ROOT}/seam/${A1_CHIP_SEAM_CLK}")
+if(NOT A1_CHIP_USBJTAG_HAL STREQUAL "")
+    target_sources(seam_objects PRIVATE
+        "${FMP3_TARGET_DIR}/${A1_CHIP_USBJTAG_HAL}")
+endif()
+foreach(src IN LISTS A1_CHIP_SEAM_EXTRA_SOURCES)
+    target_sources(seam_objects PRIVATE "${RUNTIME_ROOT}/seam/${src}")
+endforeach()
+if(A1_CHIP_NEWLIB_SYSCALLS)
     #  _exit / _kill / _getpid / _write / __getreent for newlib-nano's
     #  __stack_chk_fail path: the M5Stack core builds every sketch with
     #  -fstack-protector, so a sketch with a local char array needs them.
-    "${RUNTIME_ROOT}/seam/newlib_syscalls.c")
+    #  Not for the P4 (chip table): its target layer defines them.
+    target_sources(seam_objects PRIVATE
+        "${RUNTIME_ROOT}/seam/newlib_syscalls.c")
+endif()
 target_link_libraries(seam_objects PRIVATE seam_common)
 add_dependencies(seam_objects generate_cfg_gen_files)
 
@@ -731,8 +863,13 @@ add_dependencies(seam_objects generate_cfg_gen_files)
 #  linkBaseFlags (see XIP_LINK_BASE_FLAGS below) - seam_c5_entry_boost
 #  (clock boost, then seam_c5_entry) at 240 MHz, seam_c5_entry at 80.
 #
+if(A1_CHIP_START_FILE STREQUAL "")
+    set(A1_START_FILE "${FMP3_CHIP_DIR}/chip_start.S")
+else()
+    set(A1_START_FILE "${A1_CHIP_START_FILE}")
+endif()
 add_library(seam_start OBJECT
-    "${FMP3_CHIP_DIR}/chip_start.S"
+    "${A1_START_FILE}"
     "${RUNTIME_ROOT}/seam/${A1_CHIP_SEAM_ENTRY}")
 target_link_libraries(seam_start PRIVATE seam_common)
 target_include_directories(seam_start PRIVATE

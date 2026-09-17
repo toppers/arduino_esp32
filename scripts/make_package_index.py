@@ -87,6 +87,12 @@ CHIP_TOOL_DEPENDENCIES = {
         ("m5stack", "esp-rv32", "2601"),
         ("m5stack", "esp32c5-libs", "3.3.8"),
     ],
+    #  The P4 SDK is the pre-v3-silicon variant (esp32p4_es-libs), the one
+    #  the stage is built against (arduino_sdk.SDK_TOOL_NAMES).
+    "esp32p4": [
+        ("m5stack", "esp-rv32", "2601"),
+        ("m5stack", "esp32p4_es-libs", "3.3.8"),
+    ],
 }
 
 STAGE_ROOT_NAME = "fmp3-prebuilt"

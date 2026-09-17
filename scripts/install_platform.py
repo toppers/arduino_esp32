@@ -106,6 +106,16 @@ BOARDS = {
     #  f_cpu=240000000L, the clock the stage is built for). C5 plan A9.
     "m5stampc5_fmp3": ("esp32c5", "m5stack_stamp_c5",
                        "M5StampC5 (TOPPERS/FMP3)", "m5stack_stamp_c5"),
+    #  ESP32-P4 (RISC-V, dual core). Derived from the M5Stack core's
+    #  m5stack_stamp_p4 (boards.txt 3.3.8: tarch=riscv32, mcu=esp32p4,
+    #  chip_variant=esp32p4_es, 16MB qio flash, bootloader_addr=0x2000,
+    #  f_cpu=360000000L - the clock the stage is built for). The
+    #  ChipVariant menu the row inherits is dropped (BOARD_DROP_MENUS) and
+    #  build.chip_variant pinned (BOARD_BUILD_OVERRIDES): the stage is built
+    #  against esp32p4_es-libs and its ROM linker scripts. StampP4 plan
+    #  P3 / P8. Installed only when esp32p4 stages are present.
+    "m5stampp4_fmp3": ("esp32p4", "m5stack_stamp_p4",
+                       "M5StampP4 (TOPPERS/FMP3)", "m5stack_stamp_p4"),
 }
 
 #  Board-level build properties that must NOT be inherited from the board we
@@ -120,6 +130,48 @@ BOARDS = {
 #  anywhere (grep, 3.3.8-era checkouts).
 BOARD_BUILD_OVERRIDES = {
     "m5atoms3lite_fmp3": {"build.board": "M5STACK_ATOMS3LITE"},
+    #  The M5StampP4 keeps its inherited build.board; what it pins is the
+    #  SDK variant. Upstream sets build.chip_variant=esp32p4_es on the row
+    #  and offers a ChipVariant menu that can switch it to esp32p4 (v3
+    #  silicon: other ROM, other bootloader). The FMP3 stage is one build
+    #  against esp32p4_es-libs, so the menu is dropped (BOARD_DROP_MENUS)
+    #  and the value restated here - the same key as upstream, replaced in
+    #  place, so the pin is visible next to the other build.* lines.
+    "m5stampp4_fmp3": {
+        "build.chip_variant": "esp32p4_es",
+        #  The M5Stack core 3.3.8 does not compile for its own
+        #  m5stack_stamp_p4 board: cores/esp32/esp32-hal-spi.c:299 reads
+        #  BOARD_SDMMC_POWER_CHANNEL under SOC_SDMMC_IO_POWER_EXTERNAL (P4),
+        #  and the variant's pins_arduino.h does not define it (the Tab5's
+        #  does: 4). Measured: `arduino-cli compile -b
+        #  m5stack:esp32:m5stack_stamp_p4` fails on an empty sketch with
+        #  "'BOARD_SDMMC_POWER_CHANNEL' undeclared". Arduino compiles the
+        #  whole core for every sketch, so this board would fail the same
+        #  way. The board-level build.extra_flags.esp32p4 (which takes
+        #  precedence over the platform's) restates the platform value and
+        #  adds the define. The value is never used: the FMP3 link takes no
+        #  object of the M5Stack core, so setLDOPower() is compiled and
+        #  discarded. Re-check when the core version moves.
+        "build.extra_flags.esp32p4":
+            "-DARDUINO_USB_MODE={build.usb_mode} "
+            "-DARDUINO_USB_CDC_ON_BOOT={build.cdc_on_boot} "
+            "-DARDUINO_USB_MSC_ON_BOOT={build.msc_on_boot} "
+            "-DARDUINO_USB_DFU_ON_BOOT={build.dfu_on_boot} "
+            "-DBOARD_SDMMC_POWER_CHANNEL=4",
+    },
+}
+
+#  Inherited menus a board must not offer, keyed by our board id. A menu
+#  the source board declares is copied line by line with the board; for the
+#  M5StampP4 the ChipVariant menu would let the user switch
+#  build.chip_variant to esp32p4 (the v3-silicon SDK), under which the
+#  sketch would link against another ROM linker script set than the one
+#  the stage was built with - silently, since the stage carries no image.
+#  The menu's board lines are dropped; the platform-wide `menu.ChipVariant=`
+#  declaration stays (other boards of the same platform are unaffected by
+#  a declared menu no board line uses).
+BOARD_DROP_MENUS = {
+    "m5stampp4_fmp3": {"ChipVariant"},
 }
 
 #  Menu entries a board does not offer although its chip ships the stage,
@@ -206,6 +258,11 @@ EXPECTED_PROFILES = {
     #  M5Stamp-C5 has no display. The drift test holds this row against
     #  build_prebuilt_stages.CHIPS and the release allowlist.
     "esp32c5": {"minimal", "wifi-connect"},
+    #  The P4 port offers minimal only for now (StampP4 plan stage A;
+    #  wifi-connect - hosted Wi-Fi over the C6 add-on - is stage B).
+    #  m5-unified never (the M5Stamp-P4 has no display) and no bt-classic
+    #  (no BR/EDR radio on the P4 itself).
+    "esp32p4": {"minimal"},
 }
 
 #  recipe.size.regex per chip, for a chip whose linker script does not use
@@ -229,6 +286,13 @@ SIZE_REGEX_OVERRIDES = {
     #  output section names (docs/c5-port.md, stage 1).
     "esp32c5": (r"^(?:\.text|\.flash\.appdesc|\.flash\.rodata)\s+([0-9]+).*",
                 r"^(?:\.data|\.bss|\.tbss)\s+([0-9]+).*"),
+    #  The P4 port's esp32p4_xip.ld (the dev seam script): .flash_text,
+    #  .flash.appdesc, .flash_rodata in flash; .iram_text (the seam entry,
+    #  RAM-resident), .data, .sbss, .bss in RAM (its .kernel_data_CLS_* /
+    #  .stack_CLS_* input sections are collected into .data / .bss; .sbss is
+    #  an output section of its own in this script, unlike the C6 / C5).
+    "esp32p4": (r"^(?:\.flash_text|\.flash\.appdesc|\.flash_rodata)\s+([0-9]+).*",
+                r"^(?:\.iram_text|\.data|\.sbss|\.bss|\.tbss)\s+([0-9]+).*"),
 }
 
 #  upload.maximum_size / upload.maximum_data_size per chip: the denominators
@@ -259,6 +323,15 @@ UPLOAD_SIZE_OVERRIDES = {
     #  1310720 (the M5Stamp-C5's default partition scheme, same as the C6).
     "esp32c5": {"upload.maximum_size": "1310720",
                 "upload.maximum_data_size": "320928"},
+    #  esp32p4 (StampP4 plan P8): the P4 port's esp32p4_xip.ld gives RAM
+    #  LENGTH = 0x4FF2CBD0 - 0x4FF00000 = 0x2CBD0 = 183,248 bytes (the
+    #  bootloader's iram_loader_seg starts at 0x4ff2cbd0; the script keeps
+    #  the app below it and does not use the sram_high region), against the
+    #  inherited 327680 - larger than what the linker allows, the C5 case
+    #  again. upload.maximum_size is the stock default_16MB scheme's app0,
+    #  0x640000 = 6553600 (the M5Stamp-P4's default partition scheme).
+    "esp32p4": {"upload.maximum_size": "6553600",
+                "upload.maximum_data_size": "183248"},
 }
 
 
@@ -373,6 +446,19 @@ def board_lines(source_boards: Path, board_id: str,
     if not board:
         raise SystemExit(
             f"{source_boards} has no board '{source_id}' to derive from")
+
+    #  Menus this board must not offer (BOARD_DROP_MENUS): every
+    #  <board>.menu.<name>.* line goes; a name that matches no line is an
+    #  error, so a renamed upstream menu cannot leave the dangerous entries
+    #  in silently.
+    for menu_name in sorted(BOARD_DROP_MENUS.get(board_id, set())):
+        marker = f"{prefix}menu.{menu_name}."
+        kept_lines = [line for line in board if not line.startswith(marker)]
+        if len(kept_lines) == len(board):
+            raise SystemExit(
+                f"{source_boards}: '{source_id}' has no menu '{menu_name}' "
+                f"to drop for {board_id}")
+        board = kept_lines
 
     #  Board-level overrides: replace the inherited line of the same key, in
     #  place, so the board keeps one definition per key and the
