@@ -1245,6 +1245,44 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
         "${RUNTIME_ROOT}/arduino/arduino_interrupt_p4.c")
     target_link_libraries(wifi_objects PRIVATE seam_common)
     add_dependencies(wifi_objects generate_cfg_gen_files)
+
+    #
+    #  Pre-include the GENERATED kernel_cfg.h into the two pool files.
+    #
+    #  Neither file includes it. Both carry a fallback list of kernel object
+    #  ids under `#ifndef`, correct for the cfg ORDER they were written
+    #  against and wrong for this port's: measured on this build,
+    #  HOSTED_TSK1..8 are off by one, HOSTED_SEM1..16 by two, and the lwIP
+    #  pool's tasks and semaphores by the same amounts - 48 wrong ids of
+    #  111, with the mutexes and data queues agreeing, which is what makes
+    #  it hard to see. The hardware symptom was the receive pump never
+    #  running while _h_thread_create() reported success (stage B4;
+    #  hosted/osi/p4_cfgid_guard.h has the whole account). The development
+    #  tree does the same thing in cmake/a1_p4_stage1.cmake, for the same
+    #  two files, and reached it the same way.
+    #
+    #  The second -include is the guard: it fails the build if the first one
+    #  ever goes away, instead of letting the fallbacks quietly return.
+    #  A1_P4_HOSTED_NO_CFGID_FIX is the negative control - it removes the
+    #  pre-include, so the guard must stop the build. Without a way to run
+    #  that, "the fix works" is an assertion rather than a measurement.
+    #
+    option(A1_P4_HOSTED_NO_CFGID_FIX
+        "Negative control: do NOT pre-include kernel_cfg.h into the P4 hosted / lwIP pool files"
+        OFF)
+    if(A1_P4_HOSTED_NO_CFGID_FIX)
+        message(STATUS
+            "wifi-connect (hosted): NEGATIVE CONTROL - kernel_cfg.h is not pre-included; the guard must stop the build")
+        set_source_files_properties(
+            "${HOSTED_ROOT}/osi/p4hosted_pools.c"
+            "${RUNTIME_ROOT}/eth/lwip_port/fmp3_lwip_pools.c"
+            PROPERTIES COMPILE_OPTIONS "-include;p4_cfgid_guard.h")
+    else()
+        set_source_files_properties(
+            "${HOSTED_ROOT}/osi/p4hosted_pools.c"
+            "${RUNTIME_ROOT}/eth/lwip_port/fmp3_lwip_pools.c"
+            PROPERTIES COMPILE_OPTIONS "-include;kernel_cfg.h;-include;p4_cfgid_guard.h")
+    endif()
 endif()
 
 #

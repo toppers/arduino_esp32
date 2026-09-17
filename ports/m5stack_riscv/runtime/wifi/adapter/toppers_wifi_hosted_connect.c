@@ -169,23 +169,32 @@ toppers_fmp3_wifi_subnet_mask(void)
 	return(netif_esp_hosted_get_netmask());
 }
 
+/*
+ *  **戻り値は 1 が成功・0 が失敗**（Arduino の WiFi.hostByName の約束。
+ *  src/ToppersFMP3_WiFi.cpp の hostByName がこの値をそのまま返し、
+ *  native 側の同名関数も 1/0 を返す）。最初の版はここを 0=成功 / -1=失敗
+ *  で書いており、**解決できているのにスケッチが「DNS failed」と印字した**
+ *  ——実機で見つけた（2026-09-18。下の層は `R9-a dns err=0 addr=... 22ms` と
+ *  成功を記録していた）。下の層（p4hosted_netops_dns_resolve）の約束も
+ *  1/0 なので、ここは**そのまま返すのが正しい**。
+ */
 int
 toppers_fmp3_wifi_host_by_name(const char *host, uint32_t *address)
 {
 	uint32_t	addr_be = 0U;
 
 	if ((host == NULL) || (address == NULL)) {
-		return(-1);
+		return(0);
 	}
 	if (!hosted_link_up) {
-		return(-1);
+		return(0);
 	}
-	/*  5 秒（出典の既定）。**戻り値は 1 が成功**（0 = 解決しなかった）。 */
+	/*  5 秒は印字のための目安（待ち時間は lwIP の DNS 側が持つ）。 */
 	if (p4hosted_netops_dns_resolve(host, 5000U, &addr_be, "[WiFiHosted]") != 1) {
-		return(-1);
+		return(0);
 	}
 	*address = addr_be;
-	return(0);
+	return(1);
 }
 
 int
@@ -205,7 +214,7 @@ toppers_fmp3_wifi_tcp_request(const char *host, uint16_t port,
 	if (!hosted_link_up) {
 		return(-1);
 	}
-	if (toppers_fmp3_wifi_host_by_name(host, &resolved) != 0) {
+	if (toppers_fmp3_wifi_host_by_name(host, &resolved) != 1) {
 		return(-1);
 	}
 	memset(&address, 0, sizeof(address));

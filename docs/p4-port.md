@@ -308,3 +308,72 @@ DUT_MAC=30:ed:a0:ea:98:0e OUT_DIR=/tmp/p4-blink bash scripts/capture_p4_usj.sh
 sudo -n uhubctl -l 1-1.4 -p 3 -a off; sleep 3; sudo -n uhubctl -l 1-1.4 -p 3 -a on
 NORESET=1 DUT_MAC=30:ed:a0:ea:98:0e bash scripts/capture_p4_usj.sh
 ```
+
+## 2-9. DHCP 未達の切り分け（2026-09-18）
+
+2-8 節が「未解決」として残した DHCP 未達は**解けました**。原因は 2 件で、
+どちらも「返り値を見ても捕まらない」型です。
+
+### 原因 1: cfg のオブジェクト ID が**フォールバック値**で固まっていた
+
+`hosted/osi/p4hosted_pools.c` と `eth/lwip_port/fmp3_lwip_pools.c` は
+`kernel_cfg.h` を include せず、`#ifndef HOSTED_TSK1` のような**フォールバックの
+ID 一覧**を自前で持っています。その値は「書かれた当時の cfg の並び」に対して
+正しかったもので、**この移植の並びでは違います**。実測（この build の
+`kernel_cfg.h` と突合せ）:
+
+| 記号 | フォールバック | 生成値 | 差 |
+|---|---|---|---|
+| `HOSTED_TSK1..8` | 2..9 | 1..8 | **+1（8 本すべて）** |
+| `HOSTED_SEM1..16` | 5..20 | 3..18 | **+2（16 本すべて）** |
+| `FMP3_LWIP_TSK1..8` | 11..18 | 10..17 | **+1（8 本すべて）** |
+| `FMP3_LWIP_SEM1..16` | 21..36 | 19..34 | **+2（16 本すべて）** |
+| 両ファイルのミューテックス・データキュー | — | — | 一致 |
+
+**111 個中 48 個が違い、残り 63 個は合っている**——この「一部だけ合っている」が
+いちばん危険です。ビルドは通り、コードは動き、**一部だけが別のオブジェクトを
+掴みます**。
+
+実害はまさに観測した症状でした。`_h_thread_create()` はプールのスロット i を
+取って `act_tsk(HOSTED_TSK<i+1>)` を撃ちますが、フォールバック値ではそれが
+**隣のタスク**を指します。隣のタスクは実在して DORMANT なので
+**`act_tsk` は `E_OK` を返し**、起きたタスクはスロット i+1（未使用・
+`start_routine == NULL`）を見て何もせず終了します。呼んだ側は「スレッドを
+作れた」と信じて先へ進む——`pump_loops=0` / `rx_total=0` / `tx_ok=0` のまま
+30 秒待って DHCP を諦める、という形です。**戻り値の検査では捕まりません。**
+
+**対処**（開発リポジトリの `cmake/a1_p4_stage1.cmake` と同じ）: 生成された
+`kernel_cfg.h` を 2 ファイルの**先頭へ前置 include** し、`#ifndef` のフォールバックを
+負けさせる。cfg の並びが変わっても自動で追随します。
+
+**効いていることの実測**: コンパイラが実際に使った値を `-dM -E` で採り、
+`kernel_cfg.h` と全数突合せ——**113 個中 不一致 0**（前は 48）。
+
+**negative control**: `-DA1_P4_HOSTED_NO_CFGID_FIX=ON` で前置 include を外すと、
+新設した `hosted/osi/p4_cfgid_guard.h`（2 本目の `-include`）が
+**ビルドを止めます**。止まることを実演してあります——止まらない番人は番人では
+ありません。
+
+### 原因 2: `host_by_name` の戻り値の向きが逆だった
+
+原因 1 を直すと DHCP は通り（`lease_sec=14400 waited_ms=8300`）、次に
+`[WiFiConnect] DNS failed` が出ました。**下の層は成功していました**——
+`R9-a dns name=example.com err=0 addr=... elapsed_ms=22`。
+
+`toppers_fmp3_wifi_host_by_name()` の約束は **1 = 成功 / 0 = 失敗**
+（Arduino の `WiFi.hostByName` の約束。native 側の同名関数も 1/0）。
+hosted 版を **0 = 成功 / -1 = 失敗**で書いていたのが誤りでした。
+
+### 直した後（実機）
+
+```
+[WiFiConnect] connected and DHCP completed
+RPROBE R9-a dns [WiFiHosted] name=example.com err=0 addr=<IPv4> elapsed_ms=24
+[WiFiConnect] DNS completed
+[WiFiConnect] TCP received=255
+[WiFiConnect] TCP request completed
+```
+
+**STA 接続 -> DHCP -> DNS -> TCP が P4 で通りました**（無線は SDIO の先の
+ESP32-C6 が担っています）。`rx_thread_entered=1`＝受信ポンプのスレッドが
+実際に走っています（前は 1 行も出ませんでした）。

@@ -117,13 +117,13 @@ prebuilt archive、include 配置に依存しています）。
   **hosted Wi-Fi のスキャン**（14〜16 AP）。この板の無線は P4 自身ではなく
   **SDIO で繋いだ ESP32-C6（Stamp AddOn）**が担い、`[WiFiHosted] companion INIT
   chip_id=0x0d` が相手と話せている一次証拠です。
-  **STA 接続は「会合まで成功、DHCP 未達」**です（`connected_ap ssid_match=1
-  rssi=-72 ch=10` の後、受信ポンプのスレッドが走らず 30 秒待って諦める）。
-  切り分けの一次証拠と次の一手は
-  [`docs/p4-port.md`](docs/p4-port.md) 2-8 節。実機でしか出なかった欠陥
-  （SDK の bootloader が仕掛けたウォッチドッグによる起動ループ、
-  `[WiFiScan]` の印字漏れ、PRC2 の 1 kHz ログ、採取台本 5 件）も同節に記録して
-  あります。
+  **STA 接続 -> DHCP -> DNS -> TCP** も通ります（`connected and DHCP completed`、
+  `TCP received=255`）。実機でしか出なかった欠陥——SDK の bootloader が仕掛けた
+  ウォッチドッグによる起動ループ、`[WiFiScan]` の印字漏れ、PRC2 の 1 kHz ログ、
+  採取台本 5 件——は [`docs/p4-port.md`](docs/p4-port.md) 2-8 節に、
+  DHCP が通らなかった原因 2 件（cfg のオブジェクト ID がフォールバック値で
+  固まっていた／`host_by_name` の戻り値の向きが逆）は同 2-9 節にあります。
+  どちらも**戻り値を見ても捕まらない**型でした。
 - M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
   M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
   当初この機種だけ M5Unified が動かなかった経緯と原因は

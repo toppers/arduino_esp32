@@ -160,7 +160,8 @@ p4_count_markers() {   # file
 #    ssidraw    scan lines whose SSID column is NOT a placeholder; must be 0
 #               (the transform masks them; a file that still has one is
 #               quarantined by the residue check, not stored)
-#    connected/dhcpdone/dnsok/dnsfail/tcp/disc  the WiFiConnect sketch's lines
+#    connected/dhcpdone/dnsok/dnsfail/tcp  the WiFiConnect sketch's lines
+#    disc       the sketch's failure lines (disconnect / timeout / TCP failed)
 p4_count_wifi() {   # file
     local f="$1"
     _wcnt() { $GREP -acE "$1" "$f" || true; }
@@ -174,12 +175,16 @@ p4_count_wifi() {   # file
     n_scan="${n_scan:--1}"
     n_scanap="$(_wcnt '\[W?iFiScan\] AP\[[0-9]+\]')"
     n_ssidraw="$({ $GREP -aE 'SSID=' "$f" || true; } | { $GREP -avcE 'SSID=(<SSID-[0-9]+>|<SSID-redacted>)' || true; })"
-    n_conn="$(_wcnt '\[W?iFiConnect\] connected')"
+    n_conn="$(_wcnt '\[W?iFiConnect\] connected and DHCP completed')"
     n_dhcpdone="$(_wcnt '\[W?iFiConnect\] DHCP completed|connected and DHCP completed')"
-    n_dnsok="$(_wcnt '\[W?iFiConnect\] DNS resolved')"
+    #  The strings are the sketch's, checked against examples/WiFiConnect
+    #  rather than guessed: it prints "DNS completed" / "DNS failed" and
+    #  "TCP request completed" / "TCP request failed". The runtime's own
+    #  "[WiFiConnect] TCP received=N" is counted separately as tcp.
+    n_dnsok="$(_wcnt '\[W?iFiConnect\] DNS completed')"
     n_dnsfail="$(_wcnt '\[W?iFiConnect\] DNS failed')"
     n_tcp="$(_wcnt '\[W?iFiConnect\] TCP received=')"
-    n_disc="$(_wcnt '\[W?iFiConnect\] disconnected reason=')"
+    n_disc="$(_wcnt '\[W?iFiConnect\] (disconnected reason=|connection timeout|TCP request failed)')"
     echo "wifi: companion=$n_comp ready=$n_ready hosted_err=$n_err scan=$n_scan scanap=$n_scanap ssidraw=$n_ssidraw connected=$n_conn dhcpdone=$n_dhcpdone dnsok=$n_dnsok dnsfail=$n_dnsfail tcp=$n_tcp disc=$n_disc"
 }
 
@@ -465,7 +470,7 @@ if [ "${SELFTEST:-0}" = "1" ]; then
         '[WiFiScan] AP[1] rssi=-70 ch=6 SSID=<SSID-redacted>' \
         '[WiFiScan] found 5 APs' \
         '[WiFiConnect] connected and DHCP completed' \
-        '[WiFiConnect] DNS resolved' \
+        '[WiFiConnect] DNS completed' \
         '[WiFiConnect] TCP received=344' > "$_sd/w.log"
     _m="$(p4_count_wifi "$_sd/w.log")"
     [ "$_m" = "wifi: companion=1 ready=1 hosted_err=0 scan=5 scanap=2 ssidraw=0 connected=1 dhcpdone=1 dnsok=1 dnsfail=0 tcp=1 disc=0" ] \
