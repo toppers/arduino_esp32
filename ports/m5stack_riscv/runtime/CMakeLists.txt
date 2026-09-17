@@ -855,6 +855,7 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
         "${HOSTED_ROOT}"
         "${HOSTED_ROOT}/sdio"
         "${HOSTED_ROOT}/osi"
+        "${HOSTED_ROOT}/rpc"
         "${HOSTED_ROOT}/upstream"
         "${HOSTED_ROOT}/generated"
         "${HOSTED_ROOT}/net"
@@ -1183,6 +1184,9 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
         "${HOSTED_ROOT}/osi/p4hosted_osi.c"
         "${HOSTED_ROOT}/osi/p4hosted_pools.c"
         "${HOSTED_ROOT}/osi/p4hosted_prt.c"
+        #  esp_hosted の RPC とトランスポート（開発リポジトリの rpc_probe.c から
+        #  切り出したもの。段 B2a）。
+        "${HOSTED_ROOT}/rpc/p4hosted_rpc.c"
         #  802.3 data path, netif glue, the reusable network operations and
         #  the resolver.
         "${HOSTED_ROOT}/net/netif_esp_hosted.c"

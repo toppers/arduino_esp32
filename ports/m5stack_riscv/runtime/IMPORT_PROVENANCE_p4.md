@@ -149,3 +149,48 @@ lwipopts_dns`・`OUT_DIR=<scratch>` で実行して作りました（39 本コ�
 違い（`ilp32f` 対 `ilp32`）、`lwipopts.h` も別（hosted の DNS 版）だからです。
 出典・sha256・確認したシンボルは
 `wifi/prebuilt/lwip/README.md` の ESP32-P4 節。
+
+## 7. RPC とトランスポートの切り出し（段 B2a）
+
+`hosted/rpc/p4hosted_rpc.{c,h}`。出典は dev の
+`esp/p4hosted/app/rpc_probe/rpc_probe.c`（3,494 行）で、**「SDIO の上で
+esp_hosted の RPC を話す部分」だけ**を持ってきました（2,016 行）。
+
+| 出典の行 | 扱い | 中身 |
+|---|---|---|
+| 40-218 | 持込み | include 一式、`P4HOSTED_NET` の設定、`host_cap`、プール計数の extern、`p4hosted_prt.h` |
+| 219-234 | **落とす** | `chk()` / `verdict()` と PASS/FAIL の計数（プローブの判定器）。**持込み範囲は 1 度も呼んでいない**（grep 0 件で確認してから落とした） |
+| 235-387 | 持込み | `g_ctx` と vtable 経由の SDIO ラッパ、protobuf の手書き符号化・復号 |
+| 388-474 | **落とす** | 符号化器・復号器自身の positive control（R2-s1 / R2-s2） |
+| 475-2090 | 持込み | 送受信（credit / send / read_avail / pump / dispatch）、RPC（`rp_rpc_call` / `rp_resp_status`）、Wi-Fi 操作（init / set_mode / start / scan / set_sta_config / connect / wait_connected / get_mac）。末尾は `#endif /* P4HOSTED_NET */` |
+| 2091-3494 | **落とす** | スレッドプールの実験、ネットワークの測定、プローブ本体の task |
+
+**持ち込んだ行は 1 行も書き換えていません。** 足したものは 2 つだけです。
+
+1. **資格情報の実行時化**。出典は `WIFI_STA_SSID` / `WIFI_STA_PASS` を CMake が
+   `-include` した生成ヘッダのコンパイル時定数として焼いていました。Arduino は
+   `WiFi.begin(ssid, pass)` で実行時に来るので、`p4hosted_rpc_set_credentials()`
+   が覚えたポインタを**同じ綴りのマクロ**が指すようにしています。本体の
+   `strlen(WIFI_STA_SSID)` / `memcmp(..., WIFI_STA_SSID, ...)` はそのままです。
+2. **`p4hosted_rpc_bind_xport()`**。出典ではプローブの task が
+   `p4hosted_net_bind_xport(&rp_net_xport)` を直接呼んでいました。`rp_net_xport` は
+   `static` のままにしたいので、束ねる操作だけを関数にしました。
+
+加えて、アダプタ（段 B2b）が呼ぶ **13 個の関数から `static` を外し**ました
+（`p4hosted_rpc.h` に宣言。他の記号は `static` のまま）。
+
+### 1 ファイルにした理由（計画 B-2 は 2 分割案だった）
+
+Wi-Fi 操作の側が RPC 側の `static` を 10 個踏んでいます（`rp_body` /
+`rp_body_len` / `rp_body_i32` / `rp_tx_has_secret` と、パーサが書いて Wi-Fi 側が
+読む接続イベントの 6 個。実測: `rp_rpc_call` と `rp_resp_status` への参照は
+それぞれ 11 箇所）。分割すると `static` を外して内部ヘッダで共有することになり、
+出典との差が増えるうえ、**64 バイト境界に置いた DMA バッファの初期化順**という
+壊れたときに最も分かりにくいものを触ります。計画が用意していた退避路
+（「1 ファイルに丸ごと」）を選びました。
+
+### 確認
+
+stage が建つ（69 オブジェクト / 2.6 MB、重複シンボル監査 0 duplicated）。
+`nm` で公開 15 記号（上の 13 + 足した 2）が `T` で出ること、この翻訳単位が外へ
+求めるのは `p4hosted_net_*`（同じ stage の net 層）だけであることを確認しました。
