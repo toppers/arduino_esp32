@@ -229,8 +229,21 @@ endif()
 #  in place of its INCLUDE line. A fragment that is missing stops the
 #  stage: an INCLUDE left in the shipped script would fail every sketch
 #  link with "cannot open linker script file".
+#
+#  WHICH fragments is the caller's choice, not "the ones beside the
+#  script": wifi-connect needs the hosted set (RAM_HIGH, the driver's
+#  buffers) and minimal needs the comment-only set, and the two sets share
+#  file names. LDFRAG_DIR carries that choice (CMakeLists.txt's
+#  A1_CHIP_LDFRAG_DIR, which the wifi-connect block overrides). Reading
+#  them from the script's own directory would have silently given every
+#  profile the minimal set - the link then fails on the sketch, far from
+#  here, with "undefined reference to __bss_high_start".
 get_filename_component(_xip_ld_name "${XIP_LD}" NAME)
-get_filename_component(_xip_ld_dir "${XIP_LD}" DIRECTORY)
+if(DEFINED LDFRAG_DIR AND NOT LDFRAG_DIR STREQUAL "")
+  set(_xip_ld_dir "${LDFRAG_DIR}")
+else()
+  get_filename_component(_xip_ld_dir "${XIP_LD}" DIRECTORY)
+endif()
 file(READ "${XIP_LD}" _xip_text)
 #  Only a directive at the start of a line counts (the script's comments
 #  mention INCLUDE in prose); the fragment name must end in .ld.

@@ -230,6 +230,15 @@ p4hosted_rpc_set_credentials(const char *ssid, const char *pass)
 #define WIFI_STA_SSID	(rp_cred_ssid)
 #define WIFI_STA_PASS	(rp_cred_pass)
 
+/*  スキャン 1 件ごとのフック（既定 NULL = 出典と同じ振る舞い）。 */
+static p4hosted_rpc_ap_cb_t	rp_ap_cb;
+
+void
+p4hosted_rpc_set_ap_cb(p4hosted_rpc_ap_cb_t cb)
+{
+	rp_ap_cb = cb;
+}
+
 /*
  *  ----------------------------------------------------------------------------
  *  判定（`chk()` が唯一の比較器。R1-0 が同じ比較器をわざと外して落ちることを実演）
@@ -1560,6 +1569,14 @@ rp_check_ap_record(const uint8_t *p, uint32_t left, uint32_t idx)
 	}
 	if (nc_hit) { rp_nc_ssid_found = true; }
 
+	/*  切り出しに際して足した 3 つ目（最後）の仕掛け: スキャン結果を欲しい側
+	 *  （Arduino の WiFi.scanNetworks）へ 1 件ずつ渡す。出典はプローブなので
+	 *  「印字して、狙いの SSID と一致したか」だけで用が足りていた。フックが
+	 *  未設定なら何も起きない＝出典と同じ振る舞い。 */
+	if (rp_ap_cb != NULL) {
+		rp_ap_cb(idx, ssid, slen, rssi, chan, authmode);
+	}
+
 	/*  **SSID は出さない。** 長さ・RSSI・チャネル・authmode と、一致したかだけ。 */
 	pbeg();
 	ps("RPROBE ap "); pkv("i", idx); pkv("ssid_len", slen);
@@ -2005,7 +2022,7 @@ rp_get_mac(void)
  */
 #endif /* P4HOSTED_NET */
 /*
- *  切り出しに際して足した 2 つ目（かつ最後）の関数。出典ではプローブの task が
+ *  切り出しに際して足した 2 つ目の関数。出典ではプローブの task が
  *  接続後に p4hosted_net_bind_xport(&rp_net_xport) を直接呼んでいた。
  *  rp_net_xport は static のままにしておきたいので、束ねる操作だけ公開する。
  */
@@ -2013,4 +2030,81 @@ void
 p4hosted_rpc_bind_xport(void)
 {
 	p4hosted_net_bind_xport(&rp_net_xport);
+}
+
+/*
+ *  切り出しに際して足した 3 つ目の関数。
+ *
+ *  出典ではプローブの task が、判定（verdict）を挟みながら
+ *  「電源 -> スレーブリセット -> bus_init -> card_init -> データパス開通の
+ *  トリガ -> INIT event の取り込み -> slave_config 送信」を直に並べていた
+ *  （rpc_probe.c の R6d-1..R6d-7 / R6c-t / R6c-a / R1-b）。判定は
+ *  プローブのものなので持ち込まず、**順序と各段の成否だけ**をここに写す。
+ *  g_ctx がこのファイルの static なので、外に出せない——だから入口を作る。
+ *
+ *  slave_config へ渡す chip_id は、出典と同じく**スレーブが INIT event で
+ *  送ってきた値をそのまま返す**（定数を書かない。相手が C6 以外に変わっても
+ *  そのまま通る）。
+ */
+/*
+ *  切り出しに際して足した 4 つ目（かつ最後）の関数。スキャンで相手が
+ *  「何件見つけた」と言ったかは `rp_scan_ap_num`（static）に入る。出典の
+ *  プローブは同じ値を読んで `min(n, 16)` 件だけ要求していた（R3-b）ので、
+ *  アダプタが同じ clamp をできるように読み出しだけ公開する。
+ */
+uint32_t
+p4hosted_rpc_scan_ap_num(void)
+{
+	return(rp_scan_ap_num);
+}
+
+bool
+p4hosted_rpc_bringup(void)
+{
+	int		rc;
+
+	rc = p4sdio_board_c6_power(true);
+	if (rc != 0) {
+		pbeg(); ps("[WiFiHosted] power_on failed "); pkv("rc", (uint32_t)(-rc)); pnl();
+		return(false);
+	}
+	p4sdio_board_slave_reset();
+
+	g_ctx = g_h.funcs->_h_bus_init();
+	if (g_ctx == NULL) {
+		pbeg(); ps("[WiFiHosted] bus_init failed"); pnl();
+		return(false);
+	}
+
+	rc = g_h.funcs->_h_sdio_card_init(g_ctx, false);
+	if (rc != RET_OK) {
+		pbeg(); ps("[WiFiHosted] card_init failed "); pkv("rc", (uint32_t)(-rc)); pnl();
+		return(false);
+	}
+
+	{
+		uint8_t		mask = (uint8_t)(1U << (uint8_t) ESP_OPEN_DATA_PATH);
+
+		rc = v_wr_reg(SDIO_REG(HOST_TO_SLAVE_INTR), &mask, 1U);
+		if (rc != RET_OK) {
+			pbeg(); ps("[WiFiHosted] open_data_path trigger failed"); pnl();
+			return(false);
+		}
+	}
+
+	(void) rp_pump(8U, 0U);
+	if (!rp_init_seen) {
+		/*  INIT が来ない＝相手が居ないか起きていない。ここで止める
+		 *  （前提が崩れたまま先へ進めない）。 */
+		pbeg(); ps("[WiFiHosted] no INIT event from the companion"); pnl();
+		return(false);
+	}
+	pbeg(); ps("[WiFiHosted] companion INIT ");
+	pkx("chip_id", rp_chip_id); pkx("caps", rp_caps); pnl();
+
+	if (rp_send_slave_config((uint8_t) rp_chip_id) != RET_OK) {
+		pbeg(); ps("[WiFiHosted] slave_config failed"); pnl();
+		return(false);
+	}
+	return(true);
 }

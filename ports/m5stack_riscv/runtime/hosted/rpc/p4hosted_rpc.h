@@ -6,6 +6,8 @@
  *  ここに並ぶのは、Arduino 向けアダプタ（段 B2b の
  *  wifi/adapter/toppers_wifi_hosted_*.c）が呼ぶものだけである。出典では
  *  すべて `static` で、切り出しに際して**この 13 個だけ** `static` を外した。
+ *  加えて、外からは触れない file-static（資格情報・スキャンのフック・g_ctx）に
+ *  届くための入口を 5 本足してある（`p4hosted_rpc_` で始まるもの）。
  *
  *  戻り値の約束は出典のまま: `bool` を返すものは成功で true。
  *  `rp_scan_get_ap_num()` は成功で true（件数は出典どおり内部に持つ）、
@@ -29,7 +31,22 @@ extern "C" {
  *  所有し、切断するまで生かしておくこと（コピーしない）。 */
 void	p4hosted_rpc_set_credentials(const char *ssid, const char *pass);
 
-/*  SDIO 上の相手（C6）へ host 側の設定を送る。最初の 1 回。 */
+/*  スキャン結果を 1 件ずつ受け取るフック。ssid は NUL 終端されていない
+ *  （長さは slen）。呼び出しはスキャン応答の解析中で、戻ったあとその領域は
+ *  無効になる——必要ならコピーすること。NULL を渡すと外れる。 */
+typedef void (*p4hosted_rpc_ap_cb_t)(uint32_t idx, const uint8_t *ssid,
+									 uint32_t slen, int32_t rssi,
+									 uint32_t chan, uint32_t authmode);
+void	p4hosted_rpc_set_ap_cb(p4hosted_rpc_ap_cb_t cb);
+
+/*  SDIO の相手（Stamp AddOn の ESP32-C6）を立ち上げる。電源投入から
+ *  INIT event の取り込みと slave_config 送信までを 1 本にしたもの
+ *  （実体の末尾。出典ではプローブの task に直に並んでいた）。
+ *  成功で true。最初の 1 回だけ呼ぶ。 */
+bool	p4hosted_rpc_bringup(void);
+
+/*  SDIO 上の相手（C6）へ host 側の設定を送る。最初の 1 回
+ *  （p4hosted_rpc_bringup() が内部で呼ぶ）。 */
 int	rp_send_slave_config(uint8_t chip_id);
 
 /*  Wi-Fi の起動（順に呼ぶ）。 */
@@ -37,9 +54,12 @@ bool	rp_wifi_init(void);
 bool	rp_wifi_set_mode(uint32_t mode);
 bool	rp_wifi_start(void);
 
-/*  スキャン。get_ap_records は number 件を読み、見つけた SSID を印字する。 */
+/*  スキャン。get_ap_num は相手の言う件数を内部に控え（読み出しは
+ *  p4hosted_rpc_scan_ap_num）、get_ap_records は number 件を読む。
+ *  出典と同じく、要求する件数は呼ぶ側が clamp する。 */
 bool		rp_scan_start(void);
 bool		rp_scan_get_ap_num(void);
+uint32_t	p4hosted_rpc_scan_ap_num(void);
 bool		rp_scan_get_ap_records(uint32_t number);
 
 /*  STA 接続。set_sta_config は上の資格情報を使う。 */

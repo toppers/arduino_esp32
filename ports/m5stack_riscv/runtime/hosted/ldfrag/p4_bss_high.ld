@@ -45,6 +45,19 @@
     *libeth.a:*(.bss .bss.* .sbss .sbss.* .scommon COMMON)
     /*  段7d: newlib のヒープ（64KB）。**オブジェクト名まで指定して限定する**  */
     *libfmp3.a:target_kernel_impl.c.obj(.bss.target_heap)
+    /*
+     *  ---- 本リポジトリで足した 1 行（段 B2b・2026-09-18）----
+     *  こちらのスケッチリンクは `libfmp3.a` を通さない。段（stage）は
+     *  カーネルの .o を**そのまま**並べて渡すので（objs/ の 72 本、
+     *  link-manifest.json の objectOrder）、上の
+     *  `*libfmp3.a:target_kernel_impl.c.obj` はどれにも当たらず、
+     *  64KB のヒープが low RAM に残って `.bss` が 52,328 B 溢れた（実測）。
+     *  上の規律（アーカイブ名／オブジェクト名で限定する。名前だけで書かない）
+     *  はそのままに、段の綴りでもう 1 本書く。dev 側の構成では
+     *  `target_kernel_impl.o` という綴りの入力が無いので、あちらの
+     *  バイト列には影響しない。
+     */
+    *target_kernel_impl.o(.bss.target_heap)
     . = ALIGN(16);
     __bss_high_end = ABSOLUTE(.);
 } > RAM_HIGH

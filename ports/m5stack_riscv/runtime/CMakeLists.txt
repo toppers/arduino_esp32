@@ -678,11 +678,6 @@ if(A1_CPU_FREQ_MHZ STREQUAL "${A1_CHIP_CPU_FREQ_BOOST}")
     endif()
 endif()
 list(APPEND FMP3_COMPILE_DEFS ${A1_CHIP_EXTRA_DEFS})
-if(NOT A1_CHIP_LDFRAG_DIR STREQUAL "")
-    #  The XIP linker script's INCLUDE fragments (P4), for the cfg pass-1
-    #  link; the staged copy is self-contained (prebuilt_stage_p4.cmake).
-    list(APPEND FMP3_LINK_OPTIONS "-Wl,-L,${A1_CHIP_LDFRAG_DIR}")
-endif()
 if(NOT A1_SEAM_ENTRY_MARK STREQUAL "")
     list(APPEND FMP3_COMPILE_DEFS SEAM_${A1_CHIP_TAG}_ENTRY_MARK=${A1_SEAM_ENTRY_MARK})
 endif()
@@ -934,6 +929,17 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
     foreach(rom_ld IN LISTS A1_ROM_LDS)
         list(APPEND FMP3_LINK_OPTIONS "-Wl,-T,${ARDUINO_SDK_LD_ROOT}/${rom_ld}")
     endforeach()
+endif()
+
+#  The XIP linker script's INCLUDE fragments (P4), for the cfg pass-1 link;
+#  the staged copy is self-contained (prebuilt_stage_p4.cmake inlines them).
+#  This is after the per-profile blocks on purpose: wifi-connect replaces the
+#  chip table's directory with the hosted one, and the -L has to follow that
+#  choice rather than the table's default.
+set(A1_LDFRAG_FILES "")
+if(NOT A1_CHIP_LDFRAG_DIR STREQUAL "")
+    list(APPEND FMP3_LINK_OPTIONS "-Wl,-L,${A1_CHIP_LDFRAG_DIR}")
+    file(GLOB A1_LDFRAG_FILES "${A1_CHIP_LDFRAG_DIR}/*.ld")
 endif()
 
 project(toppers_fmp3_arduino_runtime_${A1_CHIP_TAG_LOWER} C CXX ASM)
@@ -1205,7 +1211,14 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
         "${HOSTED_ROOT}/p4shim/p4shim_cache.c"
         "${HOSTED_ROOT}/p4shim/p4shim_diag.c"
         #  CLIC interrupt shim (the SDIO interrupt is one of its lines).
-        "${RUNTIME_ROOT}/wifi/shim/esp_shim_intr_clic.c")
+        "${RUNTIME_ROOT}/wifi/shim/esp_shim_intr_clic.c"
+        #  The Arduino-facing adapter (stage B2b): the same
+        #  toppers_fmp3_wifi_* contract src/ToppersFMP3_WiFi.cpp calls on
+        #  every board, implemented on the RPC and the hosted data path
+        #  instead of on a blob.
+        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_hosted_core.c"
+        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_hosted_scan.c"
+        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_hosted_connect.c")
     target_link_libraries(wifi_objects PRIVATE seam_common)
     add_dependencies(wifi_objects generate_cfg_gen_files)
 endif()
@@ -1360,6 +1373,7 @@ add_custom_command(
         -DPROFILE=${FMP3_RUNTIME_PROFILE}
         -DA1_CHIP=${A1_CHIP}
         -DXIP_LD=${A1_XIP_LD}
+        "-DLDFRAG_DIR=${A1_CHIP_LDFRAG_DIR}"
         -DROMLD_ROOT=${ARDUINO_SDK_LD_ROOT}
         "-DROM_LDS=${A1_ROM_LDS_JOINED}"
         "-DSDK_LIBRARY_ROOT=${ARDUINO_SDK_LIBRARY_ROOT}"
@@ -1382,6 +1396,11 @@ add_custom_command(
         ${WIFI_PREBUILT_ARCHIVES}
         "${RUNTIME_ROOT}/cmake/${A1_CHIP_PREBUILT_SCRIPT}"
         "${A1_XIP_LD}"
+        #  The staged linker script inlines these, so editing one has to
+        #  re-stage. Without this the stage keeps a copy of the fragments as
+        #  they were when it was first built, and the sketch link fails with
+        #  a message that points at the script, not at the fragment.
+        ${A1_LDFRAG_FILES}
     COMMENT "Staging sketch-independent ${FMP3_RUNTIME_PROFILE} FMP3 artifacts (${A1_CHIP})"
     VERBATIM)
 

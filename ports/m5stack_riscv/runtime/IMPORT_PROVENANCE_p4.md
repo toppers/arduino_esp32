@@ -165,7 +165,7 @@ esp_hosted の RPC を話す部分」だけ**を持ってきました（2,016 �
 | 475-2090 | 持込み | 送受信（credit / send / read_avail / pump / dispatch）、RPC（`rp_rpc_call` / `rp_resp_status`）、Wi-Fi 操作（init / set_mode / start / scan / set_sta_config / connect / wait_connected / get_mac）。末尾は `#endif /* P4HOSTED_NET */` |
 | 2091-3494 | **落とす** | スレッドプールの実験、ネットワークの測定、プローブ本体の task |
 
-**持ち込んだ行は 1 行も書き換えていません。** 足したものは 2 つだけです。
+**持ち込んだ行は 1 行も書き換えていません。** 足したものは 5 つだけです。
 
 1. **資格情報の実行時化**。出典は `WIFI_STA_SSID` / `WIFI_STA_PASS` を CMake が
    `-include` した生成ヘッダのコンパイル時定数として焼いていました。Arduino は
@@ -175,6 +175,22 @@ esp_hosted の RPC を話す部分」だけ**を持ってきました（2,016 �
 2. **`p4hosted_rpc_bind_xport()`**。出典ではプローブの task が
    `p4hosted_net_bind_xport(&rp_net_xport)` を直接呼んでいました。`rp_net_xport` は
    `static` のままにしたいので、束ねる操作だけを関数にしました。
+3. **`p4hosted_rpc_bringup()`**（段 B2b で追加）。出典ではプローブの task が
+   「電源 -> スレーブリセット -> `_h_bus_init` -> `_h_sdio_card_init` ->
+   データパス開通のトリガ -> INIT event の取り込み -> `slave_config` 送信」を
+   verdict を挟みながら直に並べていました（R6d-1..R6d-7 / R6c-t / R6c-a / R1-b）。
+   判定はプローブのものなので持ち込まず、**順序と各段の成否だけ**を写しています。
+   関数にしたのは `g_ctx` がこの翻訳単位の `static` だからです。`slave_config` へ
+   渡す chip_id は出典と同じく**スレーブが INIT event で送ってきた値**で、
+   定数は書いていません。
+4. **スキャン 1 件ごとのフック**（段 B2b で追加）。`p4hosted_rpc_set_ap_cb()` で
+   渡したコールバックを `rp_check_ap_record` が 1 件ごとに呼びます（既定 NULL＝
+   出典と同じ振る舞い）。出典は見つけた AP を印字するだけで、外へ**渡す**手段を
+   持っていませんでした。
+5. **`p4hosted_rpc_scan_ap_num()`**（段 B2b で追加）。相手が「何件見つけた」と
+   言ったかの読み出しだけ。出典のプローブは同じ `static` を直に読んで
+   `min(n, 16)` 件を要求していた（R3-b）ので、アダプタが同じ clamp をできる
+   ようにします。
 
 加えて、アダプタ（段 B2b）が呼ぶ **13 個の関数から `static` を外し**ました
 （`p4hosted_rpc.h` に宣言。他の記号は `static` のまま）。
@@ -192,5 +208,60 @@ Wi-Fi 操作の側が RPC 側の `static` を 10 個踏んでいます（`rp_bod
 ### 確認
 
 stage が建つ（69 オブジェクト / 2.6 MB、重複シンボル監査 0 duplicated）。
-`nm` で公開 15 記号（上の 13 + 足した 2）が `T` で出ること、この翻訳単位が外へ
-求めるのは `p4hosted_net_*`（同じ stage の net 層）だけであることを確認しました。
+`nm` で公開記号（`static` を外した 13 + 足した入口）が `T` で出ること、この
+翻訳単位が外へ求めるのは `p4hosted_net_*`（同じ stage の net 層）だけである
+ことを確認しました（段 B2a 時点で 15 記号。段 B2b で `p4hosted_rpc_bringup()` と
+`p4hosted_rpc_scan_ap_num()` が加わり 18 記号）。
+
+## 8. Arduino 向けアダプタ（段 B2b）
+
+`wifi/adapter/toppers_wifi_hosted{.h,_core.c,_scan.c,_connect.c}`。**出典なし**
+（本リポジトリで書いたもの）。`ToppersFMP3_WiFi.cpp` が呼ぶ `toppers_fmp3_wifi_*`
+の 9 関数 + スキャンの 5 関数を、7 節の `p4hosted_rpc.h` 越しに実装します。
+native（C6 / C5 / Xtensa）の `toppers_wifi_adapter.c` と同じ入口・同じ約束で、
+中身だけが hosted になります。
+
+| ファイル | 受け持ち |
+|---|---|
+| `toppers_wifi_hosted.h` | アダプタ 3 本の間だけの約束（`toppers_hosted_core_ready()` ほか、AP レコードの器 20 件） |
+| `toppers_wifi_hosted_core.c` | 立ち上げを**1 回だけ**通す（`p4hosted_rpc_bringup` -> `wifi_init` -> `set_mode(STA)` -> `wifi_start`）。一度落ちたら繰り返さない |
+| `toppers_wifi_hosted_scan.c` | `scanNetworks()` と結果の取り出し。フック経由で最大 20 件を控える |
+| `toppers_wifi_hosted_connect.c` | `begin` / `status` / `disconnect` / IP 3 種 / DNS / TCP。IP は `netif_esp_hosted_get_ipaddr()` が出たかで判定し、TCP は lwIP の socket で native 側と同じ形 |
+
+### リンカ断片で 1 行足した（実測から）
+
+`hosted/ldfrag/p4_bss_high.ld` に `*target_kernel_impl.o(.bss.target_heap)` を
+足しました。dev の綴り `*libfmp3.a:target_kernel_impl.c.obj(...)` は、**この
+リポジトリのスケッチリンクには当たりません**——段（stage）はカーネルを
+アーカイブにせず `.o` のまま 72 本渡すからです。当たらないと 64 KB の
+newlib ヒープが low RAM に残り、`region RAM overflowed by 52328 bytes` で
+落ちます（実測）。「アーカイブ名／オブジェクト名で限定する」という断片自身の
+規律はそのままに、段の綴りでもう 1 本書いた形です。dev 側には
+`target_kernel_impl.o` という綴りの入力が無いので、あちらのバイト列は動きません。
+
+### 断片の選び方を直した（同じく実測から）
+
+`prebuilt_stage_p4.cmake` は INCLUDE 断片を**リンカスクリプトと同じ
+ディレクトリ**から読んでいました。断片は minimal 用（コメントだけ）と
+hosted 用（`RAM_HIGH` つき）で**同名・別物**なので、これでは wifi-connect でも
+minimal 側が入り、`undefined reference to __bss_high_start` という、断片ではなく
+スクリプトを指す遠いメッセージで落ちます。呼び出し側の選択
+（`A1_CHIP_LDFRAG_DIR`）を `LDFRAG_DIR` で渡すようにしました。併せて:
+
+- `-Wl,-L,${A1_CHIP_LDFRAG_DIR}`（cfg pass-1 リンク用）の追加位置を、profile 別の
+  ブロック**より後ろ**へ移しました（wifi-connect がチップ表の既定を置き換えるため）。
+- 断片 4 本を stage の依存に足しました。足す前は断片を書き換えても再 stage されず、
+  **古い断片のまま**のコピーが配られていました（実際にこれで 1 度空振りしました）。
+
+### 確認（2026-09-18）
+
+- stage が建つ: wifi-connect 72 オブジェクト / 2.7 MB、重複シンボル監査
+  **717 強シンボル中 0 duplicated**。
+- スケッチが**リンクする**: `m5stampp4_fmp3:FMP3Runtime=wificonnect` で
+  `examples/WiFiScan`（flash 69,912 B / RAM 170,008 B）と
+  `examples/WiFiConnect`（149,612 B / 171,840 B）。RAM の残りは 11〜13 KB で、
+  arduino-cli が "Low memory available" を出します（実機はまだ）。
+- 非退行: `FMP3Runtime=minimal` の `examples/Blink` は従来どおり（34,396 B）。
+  P4 minimal の `ld/esp32p4_xip.ld` は sha256 不変（`f3f114f965698df1…`）で、
+  `RAM_HIGH` は 0 件のまま。
+- X-check **11/11 MATCH**（esp32s3 3 + esp32 4 + esp32c6 2 + esp32c5 2）。
