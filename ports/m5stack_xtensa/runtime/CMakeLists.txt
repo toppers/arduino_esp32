@@ -463,11 +463,18 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one|bt-classic)$")
     target_sources(seam_objects PRIVATE
         "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"
         "${RUNTIME_ROOT}/arduino/arduino_gpio.c"
-        #  rgbLedWrite(): ESP32-S3 のみ。RMT を header-only の hal/rmt_ll.h と
-        #  RMTMEM 直書きで叩く（RMT / RMTMEM の番地は
+        #  rgbLedWrite(): チップごとに 1 ファイル。RMT を header-only の
+        #  hal/rmt_ll.h と RMTMEM 直書きで叩く（RMT / RMTMEM の番地は
         #  <chip>.peripherals.ld = XIP_EXTRA_TSCRIPTS が供給する）。
-        #  LX6 の板（M5Stack Basic）にアドレサブル LED は無いので載せない。
+        #  S3 版は M5AtomS3 Lite（WS2812B、G35）、LX6 版は M5AtomLite（SK6812、
+        #  G27）のため。別ファイルなのは、S3 の .o を 1 バイトも変えずに LX6 を
+        #  足すため（-g 付きなので同一ファイル内の #if 分岐でも DWARF が動く）。
+        #  どちらも wifi-connect にだけ載せる（S3 / C6 と同じ判断。この
+        #  target_sources は bt-classic にも効くので、esp32 側は profile も
+        #  条件に入れて M5Core の bt-classic stage を変えない）。M5Stack Basic
+        #  にアドレサブル LED は無いが同じ esp32 stage を使うのでそこにも載る。
         $<$<STREQUAL:${A1_CHIP},esp32s3>:${RUNTIME_ROOT}/arduino/arduino_rgb_led.c>
+        $<$<AND:$<STREQUAL:${A1_CHIP},esp32>,$<STREQUAL:${FMP3_RUNTIME_PROFILE},wifi-connect>>:${RUNTIME_ROOT}/arduino/arduino_rgb_led_lx6.c>
         "${RUNTIME_ROOT}/wifi/shim/esp_shim.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_mtx.c"
         "${RUNTIME_ROOT}/wifi/shim/esp_shim_sem.c"

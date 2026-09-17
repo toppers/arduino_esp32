@@ -96,8 +96,12 @@ PROFILES = {
     #  board-guarded real test there, a no-op everywhere else, and on
     #  wificonnect because that is the only profile that links the S3's
     #  arduino_rgb_led.o.
+    #  AtomLiteRgb likewise for the M5AtomLite (ESP32): board-guarded on
+    #  ARDUINO_M5STACK_ATOM, a no-op elsewhere, on wificonnect because that
+    #  is the only esp32 profile that links arduino_rgb_led_lx6.o (it also
+    #  carries a runtime guard, since that board offers btclassic too).
     "wificonnect": ["WiFiConnect", "WiFiScan", "Blink", "LibraryInfo", "NanoC6Gpio",
-                    "AtomS3LiteRgb", "GpioInterrupt"],
+                    "AtomS3LiteRgb", "AtomLiteRgb", "GpioInterrupt"],
     #  LibraryInfo and the generated multi-file sketch belong here too: both
     #  exist to prove the link driver takes every object the builder produced,
     #  and bt-classic is the profile with a second library object of its own.

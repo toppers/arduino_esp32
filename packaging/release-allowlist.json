@@ -73,7 +73,12 @@
       "destination": "examples/AtomS3LiteRgb/AtomS3LiteRgb.ino"
     },
     {
-      "_comment": "Every board (2026-09-15): pinMode/digitalWrite/digitalRead and a self-driven attachInterrupt test, now that the Xtensa runtime has arduino_gpio.o too (m5-unified / wifi-connect / bt-classic; minimal has neither). The probe pin is chosen per board define (M5NanoC6 G7, CoreS3 G8, M5Stack Basic G16, M5StickS3 G9, M5StampC5 G1, M5AtomS3 Lite G7; all six verified on hardware, the last one 2026-09-17). Its README.md is repository documentation and is not distributed.",
+      "_comment": "M5AtomLite only (2026-09-17): its on-board SK6812 RGB LED on G27, driven by the ESP32 wifi-connect runtime's rgbLedWrite (ports/m5stack_xtensa/runtime/arduino/arduino_rgb_led_lx6.c, the ESP32-S3 driver ported to the LX6). It ships to every board for the same reason AtomS3LiteRgb does and is guarded with ARDUINO_M5STACK_ATOM, the build.board the row inherits unchanged from the M5Stack core's m5stack_atom (the ATOM Lite / Matrix / Echo share that row upstream). On the other six boards it compiles and links to a setup() that logs one line saying which board it targets; it also carries a runtime guard, because the M5AtomLite offers Minimal and Bluetooth Classic (SPP) as well and neither links the driver. Link-verified only when added (no board at hand); the README.md beside it is repository documentation and is not distributed.",
+      "source": "examples/AtomLiteRgb/AtomLiteRgb.ino",
+      "destination": "examples/AtomLiteRgb/AtomLiteRgb.ino"
+    },
+    {
+      "_comment": "Every board (2026-09-15): pinMode/digitalWrite/digitalRead and a self-driven attachInterrupt test, now that the Xtensa runtime has arduino_gpio.o too (m5-unified / wifi-connect / bt-classic; minimal has neither). The probe pin is chosen per board define (M5NanoC6 G7, CoreS3 G8, M5Stack Basic G16, M5StickS3 G9, M5StampC5 G1, M5AtomS3 Lite G7; all six verified on hardware, the last one 2026-09-17; M5AtomLite G23, link only until that board is run). Its README.md is repository documentation and is not distributed.",
       "source": "examples/GpioInterrupt/GpioInterrupt.ino",
       "destination": "examples/GpioInterrupt/GpioInterrupt.ino"
     }

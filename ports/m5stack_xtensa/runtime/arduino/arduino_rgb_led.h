@@ -1,11 +1,15 @@
 /*
- *  rgbLedWrite (ESP32-S3): one WS2812 pixel over RMT TX channel 0
+ *  rgbLedWrite: one WS2812 / SK6812 pixel over RMT TX channel 0
  *
- *  ESP32-S3 only (ports/m5stack_xtensa; the ESP32/LX6 boards this port also
- *  serves have no on-board addressable LED, and the CMakeLists links this
- *  file for A1_CHIP=esp32s3 alone). Counterpart of the ESP32-C6 file of the
- *  same name (ports/m5stack_riscv/runtime/arduino/arduino_rgb_led.c); see
- *  the .c file for what differs between the two chips.
+ *  One prototype, two implementations in ports/m5stack_xtensa, one per chip
+ *  (the CMakeLists links exactly one, into wifi-connect only):
+ *    arduino_rgb_led.c      ESP32-S3  (M5AtomS3 Lite: WS2812B-2020 on G35)
+ *    arduino_rgb_led_lx6.c  ESP32/LX6 (M5AtomLite: SK6812 3535 on G27)
+ *  Counterpart of the ESP32-C6 file of the same name
+ *  (ports/m5stack_riscv/runtime/arduino/arduino_rgb_led.c); each .c file
+ *  lists what differs from the others. The rest of this comment is written
+ *  from the S3 file's point of view; the LX6 file's own header says where
+ *  it departs from it (the timeout path, the timings, the pin rule).
  *
  *  The M5Stack core's rgbLedWrite() (esp32-hal-rgb-led.c) sits on
  *  esp32-hal-rmt.c = ESP-IDF's esp_driver_rmt + FreeRTOS, none of which this
