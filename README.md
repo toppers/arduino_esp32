@@ -9,7 +9,7 @@ M5Stack の 7 機種で、Arduino の `setup()` / `loop()` を
 | M5StickS3 | ESP32-S3 / Xtensa LX7 |
 | M5AtomS3 Lite | ESP32-S3 / Xtensa LX7 |
 | M5Stack Basic | ESP32 / Xtensa LX6 |
-| M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6（**実機未確認**、下記） |
+| M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 |
 | M5NanoC6 | ESP32-C6 / RISC-V |
 | M5Stamp-C5 | ESP32-C5 / RISC-V |
 
@@ -20,7 +20,7 @@ M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` �
 `M5Unified + Dual Core` の主要な例題（LCD へ描くもの）が実機で成立しないことを
 確認したためです。下記「確認済みの範囲」参照）。M5Stack ATOM Lite は
 `Minimal`・`WiFi`・`Bluetooth Classic (SPP)` の 3 構成で、`M5Unified + Dual Core`
-だけありません（画面が無い。こちらは実機ではなく AtomS3 Lite からの類推です。
+だけありません（画面が無い。この 1 点だけは実機ではなく AtomS3 Lite からの類推です。
 [`docs/atomlite-port.md`](docs/atomlite-port.md) 4 節）。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
@@ -97,14 +97,14 @@ prebuilt archive、include 配置に依存しています）。
   **STA 接続は現状この AP に繋がりません**（`reason=17` で 3/3 切断。
   同じ stage を使う CoreS3 / StickS3 で同じ AP を試していないため、
   板固有か Xtensa 共通かは未確定です。[`docs/atoms3lite-port.md`](docs/atoms3lite-port.md) F-3）
-- **M5Stack ATOM Lite（`M5AtomLite (TOPPERS/FMP3)`）は実機未確認です**
-  （2026-09-17 に板の無い機械で追加。実機は別の PC で確認する予定）。確認済み
-  なのは、3 構成 x 例題の 14 本がリンクすること、`Blink` / `BluetoothSPP` の
-  `.bin` が M5Stack Basic とバイト一致すること（同じ esp32 stage）、本体 RGB LED
-  （SK6812、G27）用の LX6 RMT ドライバと例題 `AtomLiteRgb` がリンクすること、
-  既存 6 板の配布物が X-check で不変（esp32 の `WiFi` stage にドライバ 1 本が
-  増えたのみ）なことまでです。実機で見るべき項目と期待値は
-  [`docs/atomlite-port.md`](docs/atomlite-port.md) 6 節。
+- **M5Stack ATOM Lite 実機**（2026-09-17、板の無い機械で追加したものを別の PC で
+  確認）で、minimal（`Blink` warm 5/5・真cold 5/5）、`GpioInterrupt`（G23、warm と
+  真cold の両方で `VERDICT PASS`）、本体 RGB LED（SK6812 G27、`AtomLiteRgb` で
+  warm・真cold とも `tx_done=8`。**色順の目視は未了**）、Wi-Fi スキャン（14 AP）、
+  **Bluetooth Classic**（`[BluetoothSPP] discoverable as M5Stack-SPP` まで。
+  ペアリングは未実施）。**STA 接続はこの板でも未達**ですが、症状は AtomS3 Lite と
+  違い `reason=201 (NO_AP_FOUND) rssi=-128`（AP を見つけられない）です。
+  詳細と切り分けの次の一手は [`docs/atomlite-port.md`](docs/atomlite-port.md) 6-7 節。
 - M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
   M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
   当初この機種だけ M5Unified が動かなかった経緯と原因は
@@ -237,8 +237,8 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   `GPIO` が未定義になる問題も同日に修正）。同梱例題 `GpioInterrupt`（自己駆動の
   割込み試験: RISING 5 / FALLING 5 / CHANGE 10 / detach 後 0）を CoreS3（G8）・
   M5Stack Basic（G16）・M5StickS3（G9）・M5NanoC6（G7）・M5Stamp-C5（G1）の
-  `WiFi` 構成で 5 板とも実機確認済み（M5AtomS3 Lite は G7 で同日に実機確認、
-  M5Stack ATOM Lite は G23 でリンクのみ）。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
+  `WiFi` 構成で 5 板とも実機確認済み（M5AtomS3 Lite は G7、M5Stack ATOM Lite は
+  G23 で、いずれも実機確認済み）。`pinMode` が受ける mode は `INPUT` / `INPUT_PULLUP` /
   `INPUT_PULLDOWN` / `OUTPUT` の 4 つ。拒否するピン: CoreS3 / M5StickS3 は USB の
   G19 / G20、flash の G26-32、存在しない G22-25、M5Stack Basic は UART0 の G1 / G3、
   flash の G6-11、GPIO でないパッド（24, 28-31）、M5NanoC6 は USB の G12 / G13 と

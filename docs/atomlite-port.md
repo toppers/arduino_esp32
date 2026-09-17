@@ -121,29 +121,46 @@ M5GFX 0.2.27 を入れて建てた（dev `.steering/20260917-atomlite-plan/INVES
 | python テスト 4 本 | PASS |
 | 全 105 builds の直接 compile（7 板、11 stage 導入） | **96 PASS / 0 FAIL / 9 SKIP**（SKIP は `verify_package.py` が生成する `TwoFileSketch`——minimal 7 板 + btclassic 2 板——で、直接 compile では作れない。Boards Manager 経由の `verify_package.py` はこの機械では走らせていない） |
 
-## 6. 別 PC での実機確認（未実施。期待値つき）
+## 6. 実機確認（2026-09-17、別 PC で実施。**済**）
 
-書込みは M5Core と同じ（bootloader 0x1000・ptable 0x8000・app 0x10000、外付け
-USB-serial なので Arduino IDE の Upload がそのまま使える。**USB-JTAG ではない**
-ので `capture_s3_usj.sh` 系の台本は使えない）。
+板は `c8:85:41:4e:61:30`（ESP32-PICO-D4 rev v1.1、内蔵 4MB）、ハブ `1-1.4` port 2。
+採取はこの確認で新設した gated 台本 `scripts/capture_lx6_uart.sh` 経由
+（`capture_s3_usj.sh` の写し。MAC / チップ / flash ゲート、bootloader 0x1000 の
+検査、書込み後に flash 0x1000-0x1FFF を読み戻して像の先頭 4096 B と一致することを
+確認。**USB-JTAG が無いので JTAG probe は削除**）。工場出荷 flash は
+`build/atomlite-backup/atomlite-factory-C885.414E.6130.bin`（4,194,304 B、
+sha256 `5227640a16f4b5e4e6904668b413bce2b5379bbba37d5deeb96b6f1c1e8115c1`）へ退避済み。
 
-| 順 | 例題 / 構成 | 期待するログ | 見るもの |
-|---|---|---|---|
-| 1 | `Blink` / Minimal | `[Arduino] loop heartbeat N` が 1 秒ごと | warm 5 回・真cold 5 回 |
-| 2 | `GpioInterrupt` / WiFi | `VERDICT PASS ... rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0` | G23 に何も繋がない |
-| 3 | `AtomLiteRgb` / WiFi | `[LX6-RGB] tx_done=1` … `=8`、`tx timeout` 無し | **赤 -> 緑 -> 青 -> 消灯 x2 を目視**。色順が違えば GRB の仮定が外れている（SK6812 3535 は GRB のはず） |
-| 4 | `WiFiScan` / WiFi | `found N APs` | N ≥ 1 |
-| 5 | `WiFiConnect` / WiFi（実 creds） | DHCP → DNS → TCP | AtomS3 Lite で見えた `reason=17`（F-3、Xtensa 共通の可能性）が LX6 でも出るか。M5Core と同じ stage なので M5Core の結果と揃うはず |
-| 6 | `BluetoothSPP` / Bluetooth Classic | `M5Stack-SPP` でペアリング・echo | 落ちたら B-2 を覆す |
+| # | 例題 / 構成 | 結果 |
+|---|---|---|
+| 1 | `Blink` / Minimal | **warm 5/5・真cold 5/5**（warm: banner=1 setup=1 heartbeat=19 blink=19 `[Blink] ON=10 / OFF=9`、cold: heartbeat=20 blink=20 ON=10/OFF=10、unexpected=0） |
+| 2 | `GpioInterrupt` / WiFi（G23） | **warm・真cold とも PASS**: `VERDICT PASS pin=23 rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2`、`readback ok` |
+| 3 | `AtomLiteRgb` / WiFi（G27） | **warm・真cold とも `tx_done=8 / write=8 / timeout=0`**（`[LX6-RGB] write red` -> `tx_done=1` … 8）。**色順の目視はユーザー待ち**（板に書き込み済み） |
+| 4 | `WiFiScan` / WiFi | **14 AP**（`found 14 APs` + `AP[0..13]`、`Scan] done`） |
+| 5 | `WiFiConnect` / WiFi（実 creds） | **2/2 失敗。ただし AtomS3 Lite とは別の落ち方**: `disconnected reason=201 (NO_AP_FOUND) rssi=-128`（S3 は `reason=17`、rssi -61）。7 節 |
+| 6 | `BluetoothSPP` / Bluetooth Classic | **起動する**: `[BluetoothSPP] discoverable as M5Stack-SPP`、`BT.begin failed` は 0、unexpected 0。B-2（btclassic を出す判断）は**実機で支持された**。ペアリング・echo は端末が要るので未実施 |
 
-- 電源断（真cold）の方法は板の USB を抜く／ハブのポート電源で。
-- 採取ログに SSID / BSSID / IP を残さない（`CLAUDE.md`「出してはいけないもの」）。
+### この板について分かったこと（台本に反映済み）
+
+- **書込みは 115200 でしか通らない**。921600 と 460800 はどちらも
+  `A fatal error occurred: The chip stopped responding` で落ちた（読み出しも同様）。
+  外付けブリッジは FTDI FT232R（0403:6001）。`capture_lx6_uart.sh` の `BAUD` 既定を
+  115200 にし、理由をその場に書いた。ケーブル依存の可能性があるので上書き可能。
+- 4MB の flash 退避は 115200 で 392 秒（85.4 kbit/s）かかった。
 
 ## 7. 残り
 
-- 6 節すべて（実機）。結果が出たら 5 節の表と README の「確認済みの範囲」を
-  実測に置き換える。
-- `m5` profile の可否（4 節は類推）。
-- gated 採取台本（LX6 / 外付け USB-serial 用）。今回は作っていない。
-- AtomS3 Lite の F-1（console の文字落ち）/ F-2（scan が実 SSID を印字）/ F-3
-  （`reason=17`）は Xtensa 共通の可能性があり、この板でも出るかは実機待ち。
+- **`AtomLiteRgb` の色順（赤 -> 緑 -> 青）の目視**（板に書き込み済み。電源を入れ直すと
+  1 秒ごとに 2 周）。色が違えば GRB の仮定か SK6812 のタイミングが外れている。
+- **Wi-Fi STA が `NO_AP_FOUND`（rssi=-128）で繋がらない**。同じ場所・同じ時刻に
+  スキャンは 14 AP を見つけており RF 自体は動いているので、(a) この板のアンテナ /
+  設置位置で当該 AP が届いていない、(b) LX6 側 Wi-Fi 経路の問題、の切り分けが要る。
+  **AtomS3 Lite の F-3（`reason=17`）とは症状が違う**ので、「Xtensa 共通の課題」とは
+  まだ言えない（S3 は AP を見つけて 4-way で落ちる、この板は AP を見つけられない）。
+  次の一手: 板を AP の近くへ置いて再試行、または同じ esp32 stage を使う M5Stack Basic で
+  同じ AP を試す。
+- `m5` profile の可否（4 節は類推のまま。実機では試していない）。
+- `BluetoothSPP` のペアリング・echo（端末が要る）。
+- AtomS3 Lite の F-1（console の文字落ち）はこの板では**観測していない**
+  （log task の行の先頭欠けは今回の採取に現れなかった）。F-2（scan が実 SSID を
+  印字する）は**この板でも同じ**で、台本の SSID マスクがそのまま効いている。

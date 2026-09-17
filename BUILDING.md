@@ -605,6 +605,16 @@ PY
 - **資格情報を残さないでください。** Wi-Fi の SSID／パスワードを commit せず、
   実機ログを文書化するときは SSID、BSSID、割当 IP を書かないでください。
   `examples/WiFiConnect/WiFiConnect.ino` は公開前に空であることを確認します。
+- **`scripts/capture_lx6_uart.sh` も同じく開発者向けで、配布しません。**
+  M5Stack ATOM Lite（ESP32-PICO-D4）用で、S3 台本の写しです。差分は 4 点:
+  (1) **この板に USB Serial/JTAG は無い**——外付けブリッジ（FTDI 0403:6001）経由
+  なので、`DUT_PORT` を MAC から導けず（既定はブリッジの by-id 名）、板を同定するのは
+  書込み前の esptool の MAC ゲートだけです。JTAG 生存 probe は openocd ごと削除しました。
+  (2) bootloader は **0x1000**（`m5atomlite_fmp3.build.bootloader_addr` から読み、
+  それ以外はゲート失敗）。読み戻しも同じ番地を見ます。(3) esptool は `--chip esp32`。
+  (4) **`BAUD` の既定は 115200**——この板とケーブルでは 921600 も 460800 も
+  `The chip stopped responding` で落ちることを実測しました（`docs/atomlite-port.md` 6 節）。
+  伏字化・SSID マスク・selftest は S3 台本と同じです。
 - **`scripts/capture_s3_usj.sh` も同じく開発者向けで、配布しません。**
   M5AtomS3 Lite（ESP32-S3）用で、C5 台本の写しです。差分は 4 点:
   (1) esptool の MAC 行が `MAC:` 1 本（C5 は `BASE MAC:` と EUI-64 の 2 本）、
