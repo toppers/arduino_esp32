@@ -489,6 +489,11 @@ s3_redact_transform() {
     #  toppers_wifi_scan.c prints the neighbours' real SSIDs
     #  ("[WiFiScan] AP[i] rssi=.. ch=.. SSID=<the real name>"), so this
     #  script masks that column itself - the rest of the line is kept.
+    #  The pattern deliberately matches the TAIL of the tag and does NOT
+    #  require the space before SSID=: this console drops characters (the
+    #  F-1 defect), and a line that arrived as "...ch=10SSID=NeighbourNet"
+    #  once slipped past a stricter pattern and was quarantined by the
+    #  residue check below (measured on the ATOM Lite, 2026-09-17).
     local lc eui lcU euiU
     lc="$(_dut_forms_lc | sed -n 1p)"; eui="$(_dut_forms_lc | sed -n 2p)"
     lcU="$(printf '%s' "$lc" | tr 'a-z' 'A-Z')"; euiU="$(printf '%s' "$eui" | tr 'a-z' 'A-Z')"
@@ -500,7 +505,7 @@ s3_redact_transform() {
         -e 's/TAHI:0x[0-9A-Fa-f]+/TAHI:<PEER-MAC>/gI' -e 's/TALO:0x[0-9A-Fa-f]+/TALO:<PEER-MAC>/gI' \
         -e 's/\b[0-9]{1,3}(\.[0-9]{1,3}){3}\b/<IPv4>/g' \
         -e 's/address=0x[0-9A-Fa-f]{8}/address=<HEX32>/g' \
-        -e 's/(\[WiFiScan\] AP\[[0-9]+\].* SSID=).*$/\1<SSID-redacted>/' \
+        -e 's/(Scan\] AP\[[0-9]+\].*SSID=).*$/\1<SSID-redacted>/' \
         -e "s/__S3_DUT_EUI_LC__/${eui:-}/g" -e "s/__S3_DUT_EUI_UC__/${euiU:-}/g" \
         -e "s/__S3_DUT_MAC_LC__/${lc:-}/g"  -e "s/__S3_DUT_MAC_UC__/${lcU:-}/g" "$f" || return 1
     return 0
@@ -1114,6 +1119,14 @@ if [ "${S3_MASK_SELFTEST:-0}" = "1" ]; then
     if ! $GREP -aqxF '[WiFiScan] AP[0] rssi=-40 ch=1 SSID=<SSID-redacted>' "$_ss"; then _fail "(21) the rest of the line was damaged: $(sed -n 1p "$_ss")"; fi
     _sl="$(s3_count_markers "$_ss" | sed -n 2p)"
     case "$_sl" in *' ssidraw=0 '*) : ;; *) _fail "(21) ssidraw is not 0 after the mask: $_sl" ;; esac
+    #  a line the console mangled (lost the space before SSID=, or the
+    #  tag's first letters) must still be masked - this is what the ATOM
+    #  Lite produced on 2026-09-17 and what a stricter pattern let through.
+    printf '%s\n' '[WiFiScan] AP[0] rssi=-67 ch=10SSID=NeighbourNet' \
+        '[iFiScan] AP[1] rssi=-70 ch=1 SSID=Another Net' > "$_ss"
+    s3_redact_file "$_ss" || _fail "(21) redact failed on the mangled fixture"
+    [ "$($GREP -ac 'SSID=<SSID-redacted>' "$_ss")" -eq 2 ] || _fail "(21) a mangled scan line was not masked: $(cat "$_ss")"
+    if $GREP -aqE 'NeighbourNet|Another Net' "$_ss"; then _fail "(21) a neighbour SSID survived the mangled-line mask"; fi
     #  negative control: without the transform the same fixture counts 2
     printf '%s\n' '[WiFiScan] AP[0] rssi=-40 ch=1 SSID=NeighbourNet' \
         '[WiFiScan] AP[1] rssi=-60 ch=6 SSID=Another Net With Spaces' > "$_ss"
