@@ -105,3 +105,47 @@
 | `seam/seam_p4_clk.c` | `esp/boot/seam_p4_clk.c` | yes | `b194d62b8ec144ba…` |
 | `seam/seam_p4_core1.c` | `esp/boot/seam_p4_core1.c` | yes | `7761e8609eec7106…` |
 | `seam/seam_p4_core1_entry.S` | `esp/boot/seam_p4_core1_entry.S` | yes | `602145f15d58a20c…` |
+
+## 5. hosted Wi-Fi の層（計画 7 段 B1a、2026-09-18）
+
+出所は dev `4a556480`。**54 ファイルすべて無改変**（`cmp` で全数確認）。段 B は
+「この chip の Wi-Fi は SDIO で繋いだ ESP32-C6 が担う（esp_hosted）」という
+構成なので、C6 / C5 の `wifi/`（esp_wifi blob + PHY + supplicant 前提）とは
+別の木を並置します。
+
+| 置き場 | 出所 | 本数 | ファイル |
+|---|---|---|---|
+| `hosted/sdio/` | dev `esp/p4sdio/` | 6 | p4sdio.cfg p4sdio_board.c p4sdio_board.h p4sdio_host.c p4sdio_host.h p4sdio_pins.h |
+| `hosted/osi/` | dev `esp/p4hosted/` | 7 | p4hosted.cfg p4hosted_osi.c p4hosted_osi.h p4hosted_pools.c p4hosted_prt.c p4hosted_prt.h port_esp_hosted_host_config.h |
+| `hosted/upstream/` | dev `esp/p4hosted/upstream/` | 6 | esp_hosted_header.h esp_hosted_interface.h esp_hosted_os_abstraction.h esp_hosted_transport.h esp_hosted_transport_init.h sdio_reg.h |
+| `hosted/generated/` | dev `esp/p4hosted/generated/` | 2 | hosted_rpc_ids.h hosted_vtable_contract.h |
+| `hosted/net/` | dev `esp/p4hosted/net/` | 8 | lwipopts.h netif_esp_hosted.c netif_esp_hosted.h p4hosted_dns.c p4hosted_net.c p4hosted_net.h p4hosted_netops.c p4hosted_netops.h |
+| `hosted/lwip_port/` | dev `esp/eth/lwip_port/` | 7 | cc.h fmp3_lwip_pools.c fmp3_lwip_pools.cfg fmp3_lwip_pools.h lwipopts.h sys_arch.c sys_arch.h |
+| `hosted/p4shim/` | dev `esp/p4shim/` | 10 | p4shim.h p4shim_cache.c p4shim_clk.c p4shim_diag.c p4shim_diag.cfg p4shim_diag.h p4shim_gpio.c p4shim_mac.c p4shim_misc.c p4shim_stubs.c |
+| `hosted/ldfrag/` | dev `esp/p4hosted/net/ldfrag/` | 4 | p4_bss_high.ld p4_dram_extra.ld p4_iram_extra.ld p4_mem_high.ld |
+| `wifi/shim/esp_shim_intr_clic*` | dev `esp/shim/` | 4 | esp_shim_intr_clic.c esp_shim_intr_clic.cfg esp_shim_intr_clic.h esp_shim_intr_clic_lines.h |
+
+**持ち込まないもの**（計画 段B0 の判断どおり）:
+
+- `esp/p4hosted/app/`（`rpc_probe` 等のプローブアプリ。手順の抽出は段 B2a で
+  行い、計測・verdict・実験分岐は持ち込まない）
+- `esp/p4hosted/upstream/proto/`（protobuf-c の生成物 46k 行。RPC は hand-roll
+  なのでコンパイルしない。参照専用）
+- `esp/p4sdio/app/`、`p4disp_i2c.c` 等の Tab5 分岐、`esp/p4shim/p4shim_psram.c`
+  （表示用）、`lwipopts_snd_*`（送信バッファの実験用。`lwipopts_dns` のみ）
+- dev 側の `IMPORT_*.md` / `IMPORT_*.txt`（あちらの出典記録そのもの）
+
+`hosted/ldfrag/` は `target/m5stamp_esp32p4_gcc/` にある同名の 4 本とは**別物**です
+（`RAM_HIGH` 0x4FF40000 + 384 KB を足す版。wifi-connect のときだけこちらを
+リンカ断片の探索路にする＝段 B1c）。
+
+## 6. lwIP アーカイブ（段 B1b）
+
+`wifi/prebuilt/lwip/esp32p4/liblwip.a`（481,652 B）。dev の
+`esp/boot/build_lwip_lib_espidf_esp32p4.sh` を `PORT_EXTRA=esp/p4hosted/net/
+lwipopts_dns`・`OUT_DIR=<scratch>` で実行して作りました（39 本コンパイル・失敗 0）。
+**dev の `esp/lib/` には書いていません**（scratch 出力。実行後も dev の
+`git status` はクリーン）。C6 / C5 のアーカイブとはバイト列が違います——ABI が
+違い（`ilp32f` 対 `ilp32`）、`lwipopts.h` も別（hosted の DNS 版）だからです。
+出典・sha256・確認したシンボルは
+`wifi/prebuilt/lwip/README.md` の ESP32-P4 節。

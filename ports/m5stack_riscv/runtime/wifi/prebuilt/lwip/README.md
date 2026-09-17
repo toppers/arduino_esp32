@@ -1,4 +1,5 @@
-# FMP3-built lwIP archive for the ESP32-C6 (M5NanoC6) and ESP32-C5 (M5Stamp-C5)
+# FMP3-built lwIP archive for the ESP32-C6 (M5NanoC6), ESP32-C5 (M5Stamp-C5)
+# and ESP32-P4 (M5Stamp-P4)
 
 `esp32c6/liblwip.a` is the lwIP TCP/IP stack the C6 `wifi-connect` runtime
 profile links; `esp32c5/liblwip.a` is the C5 profile's (the C5 section is at
@@ -141,3 +142,50 @@ decided to keep it that way rather than share one file:
 
 Re-open this only if a third RISC-V chip is added, when the cost stops being a
 constant.
+
+## ESP32-P4 (M5Stamp-P4): `esp32p4/liblwip.a`
+
+Plan 7 stage B1b. This one is **not** a copy of the other two, and the
+"why the two chips keep their own copy" note above does not apply to it: the
+P4 archive differs by construction, in two ways at once.
+
+- **Target**: RV32IMAFC with the hardware FPU ABI
+  (`-march=rv32imafc_zicsr_zifencei_xesppie -mabi=ilp32f`), not the RV32IMAC /
+  `ilp32` of the C6 and C5. Linking the soft-float archive into this chip's
+  image would fail outright ("can't link soft-float modules with
+  single-float modules").
+- **Options**: built with `PORT_EXTRA` pointing at the hosted port's own
+  `lwipopts.h` (`../../../hosted/net/lwipopts_dns/lwipopts.h`, the DNS
+  variant the development repository's `seam-p4-hosted-wifi` preset uses),
+  not at the C6/C5 `net/port/include`. The P4's Wi-Fi arrives over SDIO from
+  a companion ESP32-C6 (esp_hosted), so its lwIP sits on a different netif
+  glue (`../../../hosted/net/netif_esp_hosted.c`) than the C6/C5
+  `netif_esp32s3.c`.
+
+Provenance:
+
+- Source repository: the development repository (`packaging/release-allowlist.json`
+  `portBaseRepositoryP4`)
+- Source base commit: `4a556480a4ec3e6027ff52e0b20dec8127d011a3` (dev tree at the time of this build, 2026-09-18)
+- Build recipe, run from the development repository root (39 sources
+  compiled, none failed):
+  ```
+  PORT_EXTRA=<dev>/esp/p4hosted/net/lwipopts_dns \
+  OUT_DIR=<scratch dir> \
+  bash esp/boot/build_lwip_lib_espidf_esp32p4.sh
+  ```
+  The development repository's own `esp/lib/` was not written to: the build
+  went to a scratch `OUT_DIR`, and `git status` in that tree stayed clean.
+  Toolchain `riscv32-esp-elf` esp-14.2.0_20260121.
+- lwIP source: ESP-IDF v5.5.4 (`735507283d`) `components/lwip/lwip`, the same
+  submodule the other two archives are built from
+
+Archive checksum (SHA-256) and size:
+
+- `esp32p4/liblwip.a` (481652 bytes, DNS variant, 2026-09-18):
+  `018838C424B765615D5432C2329B3F572D9F2D5331F64D5B41D62956C6119A0B`
+
+Checked after the build: `dns_gethostbyname`, `netconn_gethostbyname` and
+`dhcp_start` are defined in it (the resolver and the DHCP client the hosted
+adapter needs), and `python3 scripts/check_host_paths.py` passes on it.
+Same licenses as above. Update the archive only together with this file.
