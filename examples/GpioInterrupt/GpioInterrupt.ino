@@ -51,6 +51,14 @@ extern "C" volatile int32_t ard_intr_acre_ercd;
  *  G25/G33) with nothing wired to it. Not G27 (the RGB LED), G39 (the
  *  button, input-only), G12 (IR) or the Grove pair G26/G32. */
 #define PROBE_PIN 23
+#elif defined(ARDUINO_M5STACK_STAMP_P4)
+/*  M5Stamp-P4: G16 is A0 in the variant's pins_arduino.h, on the castellated
+ *  edge with nothing wired to it. Not G42-G48 (the SDIO link to the
+ *  companion ESP32-C6 that is this board's Wi-Fi; the variant also offers
+ *  them as SS/SCK/MOSI, and arduino_gpio_p4.c refuses all seven), not
+ *  G24/G25 (USB Serial/JTAG, the console) and not G31/G32 (the internal
+ *  I2C bus).  */
+#define PROBE_PIN 16
 #elif defined(ARDUINO_M5STACK_ATOMS3LITE)
 /*  M5AtomS3Lite: G7 is one of the six pins on the bottom header
  *  (G5/G6/G7/G8/G38/G39) and is not wired to anything on the board. G38 is

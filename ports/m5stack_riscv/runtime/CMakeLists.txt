@@ -863,6 +863,10 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
         "${RUNTIME_ROOT}/eth/lwip_port"
         "${RUNTIME_ROOT}/eth/lwip_port/include"
         "${HOSTED_ROOT}/p4shim"
+        #  arduino_gpio.h (shared with the C6/C5 files) and
+        #  arduino_interrupt_p4.h; the cfg INCLUDE of
+        #  arduino_interrupt_p4.cfg resolves here too.
+        "${RUNTIME_ROOT}/arduino"
         #  sdkconfig.h. The M5Stack SDK ships one per flash/PSRAM memory
         #  type beside include/; this board's is qio_qspi (boards.txt
         #  m5stack_stamp_p4: build.boot=qio, build.psram_type=qspi). The
@@ -908,7 +912,11 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
         "${HOSTED_ROOT}/sdio/p4sdio.cfg"
         "${HOSTED_ROOT}/osi/p4hosted.cfg"
         "${RUNTIME_ROOT}/eth/lwip_port/fmp3_lwip_pools.cfg"
-        "${HOSTED_ROOT}/p4shim/p4shim_diag.cfg")
+        "${HOSTED_ROOT}/p4shim/p4shim_diag.cfg"
+        #  attachInterrupt's CLIC line 23 (stage B2c): CFG_INT +
+        #  ENA_DYNISR + AID_ISR(1). Last, so that the line it declares is
+        #  read after the shim's six.
+        "${RUNTIME_ROOT}/arduino/arduino_interrupt_p4.cfg")
 
     #  The linker-script fragments this profile needs are NOT the target
     #  layer's: the hosted build adds RAM_HIGH (0x4FF40000 + 384 KB) for the
@@ -1218,7 +1226,15 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "
         #  instead of on a blob.
         "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_hosted_core.c"
         "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_hosted_scan.c"
-        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_hosted_connect.c")
+        "${RUNTIME_ROOT}/wifi/adapter/toppers_wifi_hosted_connect.c"
+        #  pinMode/digitalWrite/digitalRead and attachInterrupt (stage
+        #  B2c), the P4 versions of what the C6 and C5 rows list in
+        #  A1_CHIP_WIFI_ARDUINO_SOURCES. They are named here rather than
+        #  in the chip table because that table's list is read by the
+        #  native block only; the two blocks share no lines by design.
+        #  No RGB LED file: the M5Stamp-P4 has no WS2812.
+        "${RUNTIME_ROOT}/arduino/arduino_gpio_p4.c"
+        "${RUNTIME_ROOT}/arduino/arduino_interrupt_p4.c")
     target_link_libraries(wifi_objects PRIVATE seam_common)
     add_dependencies(wifi_objects generate_cfg_gen_files)
 endif()

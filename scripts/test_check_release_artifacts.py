@@ -54,7 +54,7 @@ STAGES = {
     "esp32": ["minimal", "m5-unified", "wifi-connect", "bt-classic"],
     "esp32c6": ["minimal", "wifi-connect"],
     "esp32c5": ["minimal", "wifi-connect"],
-    "esp32p4": ["minimal"],
+    "esp32p4": ["minimal", "wifi-connect"],
 }
 CHIP_TOOLS = {
     "esp32c6": [

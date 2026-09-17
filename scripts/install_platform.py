@@ -258,11 +258,12 @@ EXPECTED_PROFILES = {
     #  M5Stamp-C5 has no display. The drift test holds this row against
     #  build_prebuilt_stages.CHIPS and the release allowlist.
     "esp32c5": {"minimal", "wifi-connect"},
-    #  The P4 port offers minimal only for now (StampP4 plan stage A;
-    #  wifi-connect - hosted Wi-Fi over the C6 add-on - is stage B).
-    #  m5-unified never (the M5Stamp-P4 has no display) and no bt-classic
-    #  (no BR/EDR radio on the P4 itself).
-    "esp32p4": {"minimal"},
+    #  The P4 port offers the same pair as the C6 and C5 since StampP4 plan
+    #  stage B, but its wifi-connect is hosted: no blob and no PHY on this
+    #  chip - the radio is a companion ESP32-C6 on the Stamp add-on, reached
+    #  over SDIO (esp_hosted). m5-unified never (the M5Stamp-P4 has no
+    #  display) and no bt-classic (no BR/EDR radio on the P4 itself).
+    "esp32p4": {"minimal", "wifi-connect"},
 }
 
 #  recipe.size.regex per chip, for a chip whose linker script does not use

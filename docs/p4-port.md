@@ -165,3 +165,57 @@ hosted 用の別ブロックを置きました。
    それと sketch 側の `toppers_arduino_task`）。**Arduino 向けアダプタの記号は
    まだ現れません**——それを足すのが段 B2 です。
 
+
+## 2-6. 段 B2（RPC の切り出しとアダプタ、2026-09-18）
+
+| 段 | 内容 | 結果 |
+|---|---|---|
+| B2a | `rpc_probe.c`（dev・3,494 行）から「SDIO の上で esp_hosted の RPC を話す部分」だけを `hosted/rpc/p4hosted_rpc.{c,h}` へ（2,016 行） | 持ち込んだ行は 1 行も書き換えず、足したのは入口 5 本のみ。計測・verdict・実験分岐は持ち込まない |
+| B2b | `wifi/adapter/toppers_wifi_hosted{.h,_core.c,_scan.c,_connect.c}` | **`WiFiScan` / `WiFiConnect` がリンク**（flash 69,912 / 149,612 B、RAM 170,008 / 171,840 B） |
+| B2c | `arduino/arduino_gpio_p4.c` と `arduino/arduino_interrupt_p4.{c,cfg,h}` | **`GpioInterrupt` がリンク**（62,448 B / RAM 161,524 B） |
+
+由来と差分の全数は `ports/m5stack_riscv/runtime/IMPORT_PROVENANCE_p4.md` の 7・8 節。
+
+### B2b で見つけた 3 件（いずれも机上では出ず、リンクで初めて出た）
+
+1. **リンカ断片が profile ごとに別物なのに、置き場所で選ばれていた**。
+   `prebuilt_stage_p4.cmake` は `INCLUDE` 断片をリンカスクリプトと同じ
+   ディレクトリから読んでいました。断片は minimal 用（コメントだけ）と hosted 用
+   （`RAM_HIGH` つき）で**同名・別物**なので、wifi-connect でも minimal 側が入り、
+   `undefined reference to __bss_high_start` という**断片ではなくスクリプトを指す**
+   遠いメッセージで落ちます。呼び出し側の選択を `LDFRAG_DIR` で渡すようにしました。
+2. **断片が stage の依存に入っていなかった**。断片を直しても再 stage されず、
+   古いコピーが配られます（実際に 1 度空振りしました）。4 本を依存に足しました。
+3. **`p4_bss_high.ld` の規則が、この repo の綴りに当たらない**。dev の
+   `*libfmp3.a:target_kernel_impl.c.obj(.bss.target_heap)` は、カーネルを
+   アーカイブにせず `.o` のまま 74 本渡す stage には当たりません。64 KB の newlib
+   ヒープが low RAM に残り `region RAM overflowed by 52328 bytes`。断片自身の規律
+   （アーカイブ名／オブジェクト名で限定する）を保ったまま 1 行足しました。
+
+### B2c の決定
+
+| 項目 | 値 | 根拠 |
+|---|---|---|
+| CLIC 線 | **23** | 空き線は 20, 21, 23..29, 36..39（`wifi/shim/esp_shim_intr_clic_lines.h` の表）。C5 が取ったのと同じ番号にして、2 つの RISC-V 板のログが同じに読めるようにした |
+| 優先度 | `TMAX_INTPRI`(-1) | コンソール（-4）・CLIC シムのスロット（-4）・EMAC（-4）より低い。利用者のコールバックが SDIO を遅らせない |
+| 割込みソース | `ETS_GPIO_INTR0_SOURCE`(74) | P4 は GPIO 割込みソースを 4 本持つが、SDK の hal は最初の 1 本しか使わない（`gpio_ll_intr_enable_on_core` が core_id を捨てて `GPIO_LL_INTR0_ENA` を書く。`gpio_ll_get_intr_status` は `intr_0` を読む）。他を選ぶと**永久に来ない線**ができる |
+| 配線 | `INTMTX_MAP(0, src) = line` を自分で書く | C6 / C5 と違い P4 の chip 層は route 関数を公開していない。同 repo の CLIC シム（`esp_shim_clic_intr_route`）と**同じマクロ**を使い、2 つが構造的に一致するようにした |
+| 拒否ピン | 24/25（USB-Serial/JTAG）と **42..48** | 42..48 は AddOn C6 への SDIO（reset 42・CLK 43・CMD 44・D0-D3 45..48）。この板ではそれが Wi-Fi そのもので、`pinMode` 1 回で無線が落ちる。値は `hosted/sdio/p4sdio_pins.h` から取り（配線とずれない）、M5Stack の variant も同じ値 |
+| MSPI の拒否範囲 | **無し** | P4 の flash/PSRAM は GPIO マトリクス上に無い（`soc/spi_pins.h` の `MSPI_IOMUX_PIN_NUM_*` は全部 `GPIO_NUM_INVALID`）。「無いから書かない」ではなく `_Static_assert` で固定した |
+| ステータス語 | **2 語**（0..31 と 32..54） | P4 は 55 本。C6 / C5 のファイルは `GPIO_NUM_MAX <= 32` を assert して 1 語しか読まない |
+| `GpioInterrupt` のピン | **G16（A0）** | variant の castellated 端。SDIO 7 本・USB 2 本・内部 I2C（31/32）を避けた |
+
+## 2-7. 段 B3（表と台本、2026-09-18）
+
+- `BOARD_PROFILES` / `EXPECTED_PROFILES` / `packaging/release-allowlist.json` /
+  CI の stage 表 / ドリフトテストを揃えて `esp32p4` に `wifi-connect` を追加。
+  `--list-builds` は **108 → 116**（8 板、P4 は minimal 3 + wificonnect 8）。
+  ドリフトテストは**先に落ちた**（`test_tables_match_the_real_allowlist_and_the_generator`）
+  ——表を 1 つ直して他を忘れる形を実際に捕まえた、という記録。
+- `scripts/capture_p4_usj.sh` に **redact/mask 層**と `EXTRA_MARKERS` と Wi-Fi の
+  計数を足した。段A の時点でこの板には Wi-Fi が無かったので mask も無かったが、
+  段B で実 AP に繋ぐ以上、S3 / C5 の台本と同じ fail-closed の層が要る
+  （needle＝資格情報・peer MAC・IPv4・`address=0x`・**scan 行の SSID 列**。
+  残渣が 1 行でもあればファイルを `*.UNREDACTED` へ改名して非 0 終了）。
+  selftest は 10 群で、**positive control**（マスクしていないファイルを検査器が
+  ちゃんと 4 と数えること、隔離が実際に起きること）を含む。

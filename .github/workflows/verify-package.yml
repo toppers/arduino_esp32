@@ -100,7 +100,8 @@ jobs:
         #  (esp32s3 / esp32: minimal m5-unified wifi-connect; esp32c6:
         #  minimal wifi-connect - the M5NanoC6 has no display, so no
         #  m5-unified; esp32c5: minimal wifi-connect, the same pair;
-        #  esp32p4: minimal, StampP4 plan stage A). The M5 source paths are
+        #  esp32p4: minimal wifi-connect, the hosted pair since StampP4
+        #  plan stage B). The M5 source paths are
         #  passed to every call and used only by the profiles that need
         #  them. The RISC-V toolchain (esp-rv32) and the esp32c6-libs /
         #  esp32c5-libs / esp32p4_es-libs SDKs come with the M5Stack core
@@ -153,7 +154,7 @@ jobs:
               "esp32:minimal m5-unified wifi-connect bt-classic" \
               "esp32c6:minimal wifi-connect" \
               "esp32c5:minimal wifi-connect" \
-              "esp32p4:minimal"; do
+              "esp32p4:minimal wifi-connect"; do
             chip=${spec%%:*}
             for p in ${spec#*:}; do
               test -f "$root/fmp3-prebuilt/$chip/$p/link-manifest.json" \
@@ -221,24 +222,27 @@ jobs:
               exit 1
             fi
           done
-          #  The M5StampP4 (ESP32-P4): minimal only at StampP4 plan stage A
-          #  (no display, no radio of its own; wifi-connect is stage B), and
-          #  the inherited ChipVariant menu must be gone: a sketch must not
-          #  be linkable against the v3-silicon SDK the stage was not built
-          #  with (install_platform.BOARD_DROP_MENUS).
-          for key in m5 btclassic wificonnect; do
+          #  The M5StampP4 (ESP32-P4): no display and no BR/EDR radio, so
+          #  neither m5 nor btclassic - but wificonnect since StampP4 plan
+          #  stage B (hosted Wi-Fi over the companion C6). The inherited
+          #  ChipVariant menu must be gone: a sketch must not be linkable
+          #  against the v3-silicon SDK the stage was not built with
+          #  (install_platform.BOARD_DROP_MENUS).
+          for key in m5 btclassic; do
             if grep -q "^m5stampp4_fmp3\.menu\.FMP3Runtime\.$key=" "$root/boards.txt"; then
               echo "M5StampP4 must not offer the $key menu entry"
               exit 1
             fi
           done
+          grep -q "^m5stampp4_fmp3\.menu\.FMP3Runtime\.wificonnect=" "$root/boards.txt" \
+            || { echo "M5StampP4 does not offer the wificonnect menu entry"; exit 1; }
           if grep -q "^m5stampp4_fmp3\.menu\.ChipVariant\." "$root/boards.txt"; then
             echo "M5StampP4 must not offer the ChipVariant menu"
             exit 1
           fi
           grep -q "^m5stampp4_fmp3\.build\.chip_variant=esp32p4_es$" "$root/boards.txt" \
             || { echo "M5StampP4 is not pinned to the esp32p4_es SDK"; exit 1; }
-          for p in m5-unified bt-classic all-in-one wifi-connect; do
+          for p in m5-unified bt-classic all-in-one; do
             if [ -e "$root/fmp3-prebuilt/esp32p4/$p" ]; then
               echo "unexpected stage packaged: esp32p4/$p"
               exit 1
