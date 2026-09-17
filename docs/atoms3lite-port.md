@@ -71,7 +71,7 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
 |---|---|
 | Blink warm | **5/5**（banner=1 setup=1 heartbeat=19 blink=19 unexpected=0） |
 | Blink 真cold（`uhubctl -l 2-3.3 -p 1`） | **5/5**（heartbeat=20 blink=20 unexpected=0。cold は採取開始が起動後なので banner/setup は窓の外） |
-| `GpioInterrupt`（G7 自己駆動） | **PASS**: `rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2` |
+| `GpioInterrupt`（G7 自己駆動） | **PASS**: `rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2`（warm。**真cold でも同一の VERDICT PASS** を v0.5.0 リリース物の確認時に実測、2026-09-17） |
 | `AtomS3LiteRgb`（G35） | **tx_done=8 / write=8 / timeout=0**（warm 3 回 + **真cold 1 回**）。JTAG で `ard_rgb_tx_done` を直接読んで 8 を確認（console の文字落ちと独立の証拠）。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認（2026-09-17）** |
 | `WiFiScan` | **16 AP を検出**（`found 16 APs` + `AP[0..15]`）。スキャン自体は動く |
 | `WiFiConnect`（実 AP、実 creds） | **3/3 失敗**。`disconnected reason=17` rssi=-61〜-63。下の F-3 |
