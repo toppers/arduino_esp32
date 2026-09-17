@@ -13,6 +13,10 @@
  *    M5Stack Basic  G16 (Grove Port C p1; G8-11 are the flash)
  *    M5StickS3      G9  (Grove port SDA; M5Unified's Ex_I2C SDA for this
  *                       board)
+ *    M5AtomLite    G23 (side header; nothing on the board uses it, and
+ *                       M5Unified's PICO-D4 autodetect does not read it -
+ *                       that one reads G19/G22/G33. Link only until the
+ *                       board is run: ATOM Lite plan B-7)
  *    M5StampC5     G1  (a free pad, Grove-class pin; the blue LED G28 is
  *                       BOOT and is not used as a test pin: C5 plan A10.
  *                       Link only until C5 plan stage 4 runs it)
@@ -42,6 +46,11 @@ extern "C" volatile int32_t ard_intr_acre_ercd;
 #define PROBE_PIN 9
 #elif defined(ARDUINO_M5STACK_STAMP_C5)
 #define PROBE_PIN 1
+#elif defined(ARDUINO_M5STACK_ATOM)
+/*  M5AtomLite (ESP32-PICO-D4): G23 is on the side header (G19/G21/G22/G23/
+ *  G25/G33) with nothing wired to it. Not G27 (the RGB LED), G39 (the
+ *  button, input-only), G12 (IR) or the Grove pair G26/G32. */
+#define PROBE_PIN 23
 #elif defined(ARDUINO_M5STACK_ATOMS3LITE)
 /*  M5AtomS3Lite: G7 is one of the six pins on the bottom header
  *  (G5/G6/G7/G8/G38/G39) and is not wired to anything on the board. G38 is

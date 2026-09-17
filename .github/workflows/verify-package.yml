@@ -138,7 +138,7 @@ jobs:
           root=ci-sketchbook/hardware/toppers/esp32
           test -f "$root/boards.txt" || { echo "no boards.txt"; exit 1; }
           for board in m5cores3_fmp3 m5sticks3_fmp3 m5atoms3lite_fmp3 \
-                       m5core_fmp3 m5nanoc6_fmp3 m5stampc5_fmp3; do
+                       m5core_fmp3 m5atomlite_fmp3 m5nanoc6_fmp3 m5stampc5_fmp3; do
             grep -q "^$board\.name=" "$root/boards.txt" \
               || { echo "missing board: $board"; exit 1; }
           done
@@ -195,6 +195,16 @@ jobs:
               exit 1
             fi
           done
+          #  The M5AtomLite is the ESP32 case of the same thing: no display,
+          #  so no m5 entry although the esp32 m5-unified stage ships for the
+          #  M5Core - but it keeps btclassic, which the ESP32-PICO-D4 has
+          #  (ATOM Lite plan B-2).
+          if grep -q "^m5atomlite_fmp3\.menu\.FMP3Runtime\.m5=" "$root/boards.txt"; then
+            echo "M5AtomLite must not offer the m5 menu entry"
+            exit 1
+          fi
+          grep -q "^m5atomlite_fmp3\.menu\.FMP3Runtime\.btclassic=" "$root/boards.txt" \
+            || { echo "M5AtomLite does not offer the btclassic menu entry"; exit 1; }
           #  The M5StampC5 likewise (no display, no BR/EDR radio).
           for key in m5 btclassic; do
             if grep -q "^m5stampc5_fmp3\.menu\.FMP3Runtime\.$key=" "$root/boards.txt"; then

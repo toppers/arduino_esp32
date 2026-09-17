@@ -7,10 +7,12 @@
 // to the Bluetooth stack, which is what happens when the bt-classic stage is
 // not the one being linked.
 //
-// ARDUINO_M5STACK_CORE is passed by the platform's recipe as -DARDUINO_ +
-// build.board, so it is the board actually selected in the IDE, not the chip.
-#if !defined(ARDUINO_M5STACK_CORE)
-#error "BluetoothSPP runs on the M5Core only. The ESP32-S3 has no Bluetooth Classic radio, so the CoreS3 and StickS3 boards do not offer the Bluetooth Classic (SPP) runtime. Select M5Core (TOPPERS/FMP3) and its Bluetooth Classic (SPP) option."
+// ARDUINO_M5STACK_CORE / ARDUINO_M5STACK_ATOM are passed by the platform's
+// recipe as -DARDUINO_ + build.board, so it is the board actually selected in
+// the IDE, not the chip. The two ESP32 boards (M5Core, M5AtomLite) are the
+// only ones with a BR/EDR radio.
+#if !defined(ARDUINO_M5STACK_CORE) && !defined(ARDUINO_M5STACK_ATOM)
+#error "BluetoothSPP runs on the ESP32 boards (M5Core, M5AtomLite) only. The ESP32-S3 has no Bluetooth Classic radio, so the CoreS3, StickS3 and AtomS3 Lite boards do not offer the Bluetooth Classic (SPP) runtime. Select M5Core (TOPPERS/FMP3) or M5AtomLite (TOPPERS/FMP3) and its Bluetooth Classic (SPP) option."
 #endif
 
 // The right board with the wrong runtime is the other half of the same

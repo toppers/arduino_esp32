@@ -80,6 +80,18 @@ BOARDS = {
                           "M5AtomS3Lite (TOPPERS/FMP3)", "m5stack_atoms3"),
     "m5core_fmp3": ("esp32", "m5stack_core",
                     "M5Core (TOPPERS/FMP3)", "m5stack_core"),
+    #  ESP32-PICO-D4 (LX6), no display, no PSRAM, 4MB flash. Derived from
+    #  the M5Stack core's m5stack_atom, which is this very board (upstream
+    #  keeps one row for the ATOM Lite, Matrix and Echo), so unlike the
+    #  M5AtomS3Lite above nothing has to be rewritten: build.board stays
+    #  M5STACK_ATOM and the sketches guard on ARDUINO_M5STACK_ATOM. The row
+    #  differs from m5stack_core in name, variant, build.board and
+    #  build.partitions=huge_app (app0 3MB; upload.maximum_size comes from
+    #  the PartitionScheme menu as it does upstream) - same 4MB flash, dio,
+    #  80m, bootloader at 0x1000. Its stages are the esp32 ones the M5Core
+    #  links; see BOARD_SKIP_ENTRIES for the one it does not offer.
+    "m5atomlite_fmp3": ("esp32", "m5stack_atom",
+                        "M5AtomLite (TOPPERS/FMP3)", "m5stack_atom"),
     #  ESP32-C6 (RISC-V). Derived from the M5Stack core's m5stack_nano_c6
     #  (boards.txt 3.3.8: tarch=riscv32, mcu=esp32c6, 4MB flash), which is
     #  what makes {compiler.path} and {compiler.sdk.path} resolve to the
@@ -121,8 +133,18 @@ BOARD_BUILD_OVERRIDES = {
 #  plan, stage 4) - until it is answered the board does not offer the entry.
 #  verify_package.BOARD_PROFILES and the drift test
 #  (scripts/test_check_release_artifacts.py) subtract the same set.
+#  The M5AtomLite is the same case on the ESP32: no display, while the chip
+#  ships m5-unified for the M5Core. Here the answer is by analogy, not
+#  measured (the board was added without hardware at hand, ATOM Lite plan
+#  B-2): the m5 runtime's adapter needs the LCD's SPI bus
+#  (m5_arduino_adapter.cpp, the AtomS3 Lite failed exactly there), and
+#  M5Unified's PICO-D4 autodetect uses delay()/taskENTER_CRITICAL and the
+#  touch sensor on G27, none of which this port has. bt-classic IS offered:
+#  the PICO-D4 has BR/EDR and the stage is board-independent (M5Core-proven),
+#  link-verified only until the board is run.
 BOARD_SKIP_ENTRIES = {
     "m5atoms3lite_fmp3": {"m5"},
+    "m5atomlite_fmp3": {"m5"},
 }
 
 

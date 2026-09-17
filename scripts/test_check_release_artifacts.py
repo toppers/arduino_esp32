@@ -66,7 +66,8 @@ CHIP_TOOLS = {
     ],
 }
 XTENSA_BOARDS = {"m5cores3_fmp3": "esp32s3", "m5sticks3_fmp3": "esp32s3",
-                 "m5atoms3lite_fmp3": "esp32s3", "m5core_fmp3": "esp32"}
+                 "m5atoms3lite_fmp3": "esp32s3", "m5core_fmp3": "esp32",
+                 "m5atomlite_fmp3": "esp32"}
 C6_BOARD = {"m5nanoc6_fmp3": "esp32c6"}
 C5_BOARD = {"m5stampc5_fmp3": "esp32c5"}
 #  The release shapes the cases below build: every chip of STAGES with its

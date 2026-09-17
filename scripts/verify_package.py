@@ -137,6 +137,11 @@ BOARD_PROFILES = {
     #  (AtomS3 Lite plan, stage 4), not by analogy with the other S3 boards.
     "m5atoms3lite_fmp3": {"minimal", "wificonnect"},
     "m5core_fmp3": {"minimal", "m5", "wificonnect", "btclassic"},
+    #  The M5AtomLite (ESP32-PICO-D4) has no display, so no m5 (the same
+    #  install_platform.BOARD_SKIP_ENTRIES row the drift test subtracts);
+    #  it keeps btclassic, which the chip has and the stage does not tie
+    #  to a board (ATOM Lite plan B-2, link-verified until hardware runs).
+    "m5atomlite_fmp3": {"minimal", "wificonnect", "btclassic"},
     "m5nanoc6_fmp3": {"minimal", "wificonnect"},
     "m5stampc5_fmp3": {"minimal", "wificonnect"},
 }
