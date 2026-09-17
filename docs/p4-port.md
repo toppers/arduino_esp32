@@ -128,3 +128,40 @@ DUT_MAC=<1 の MAC> OUT_DIR=/tmp/p4-blink bash scripts/capture_p4_usj.sh
 - 段A4（実機）。結果が出たら 5 節と README を実測に置き換える。
 - 段B（hosted WiFi）: 入口条件は A4 PASS。計画 PLAN.md 段B0-B4。
 - 1 コアの退避路を `--cmake-define` で出す（今は chip 表の定数）。
+## 2-5. 段 B1（hosted Wi-Fi の土台、2026-09-18）
+
+この chip の Wi-Fi は**自前の無線ではなく**、SDIO で繋いだ ESP32-C6（Stamp
+AddOn）が担います（esp_hosted）。したがって C6 / C5 の `wifi-connect` ブロック
+——blob + PHY + supplicant 前提——は 1 行も流用できません。chip 表に
+`A1_CHIP_WIFI_KIND`（`native` / `hosted`）を足し、**native ブロックには触れずに**
+hosted 用の別ブロックを置きました。
+
+| 段 | 内容 | 結果 |
+|---|---|---|
+| B1a | hosted 層の vendoring（54 ファイル） | 全数 dev とバイト同一（`cmp`） |
+| B1b | lwIP アーカイブ | 481,652 B。dev の台本を `PORT_EXTRA=lwipopts_dns` / `OUT_DIR=<scratch>` で実行（39 本・失敗 0）。dev の `esp/lib` は無改変 |
+| B1c | CMake の hosted ブロック・cfg 5 本・ROM ld・app | **stage が建つ**: 68 オブジェクト / 2.5 MB、重複シンボル監査 **0 duplicated** |
+
+**非退行**: 既存 7 板は **X-check 11/11 MATCH**（native ブロックは guard を 1 行
+足しただけで中身は不変）。
+
+### B1c で決めた/見つけた 4 点
+
+1. **`sdkconfig.h` は SDK が配っているものを使う**。M5Stack の SDK は
+   `esp32p4_es-libs/3.3.8/<memory type>/include/sdkconfig.h` を持っていて、この板は
+   `qio_qspi`（boards.txt の `build.boot=qio` / `build.psram_type=qspi`）。C6 / C5 は
+   vendoring した stub（`config/<chip>/sdkconfig.h`）を使っていますが、あちらの移植が
+   先だったからで、どちらでも構いません。
+2. **レジスタヘッダは `hw_ver1` を選ぶ**。SDK は `soc/esp32p4/register/hw_ver1/` と
+   `hw_ver3/` を並べて持っていて（silicon 世代の差）、この移植は pre-v3 に固定して
+   いるので `hw_ver1`（`soc/sdmmc_struct.h` がその 1 つ）。SDK ディレクトリ名
+   （`esp32p4_es-libs`）と同じ判断です。
+3. **lwIP の port は dev と同じ場所**（`runtime/eth/lwip_port/`）に置きました。
+   vendoring した `hosted/net/lwipopts_dns/lwipopts.h` が
+   `../../../eth/lwip_port/include/lwipopts.h` を**相対で**読むためで、置き場を変える
+   と vendoring 側を改変することになります。
+4. **stage に残る未解決シンボルは 44 個で、すべて外から来るもの**（ld script の
+   `__bss_*` 等、`peripherals.ld` が PROVIDE するレジスタブロック、ROM 関数、libc、
+   それと sketch 側の `toppers_arduino_task`）。**Arduino 向けアダプタの記号は
+   まだ現れません**——それを足すのが段 B2 です。
+

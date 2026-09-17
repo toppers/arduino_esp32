@@ -66,6 +66,10 @@ CHIP_APPLICATIONS = {
     #  The esp32p4 minimal application is the C6 one with the SMP cfg (the
     #  Arduino task on PRC1, a heartbeat task on PRC2: StampP4 plan P4).
     ("esp32p4", "minimal"): ("phase3_arduino_app", "phase3_p4", False),
+    #  The P4's wifi-connect application carries the same CLS_PRC2 liveness
+    #  task as its minimal one, and includes none of the native profile's
+    #  shim cfg files (the hosted layers bring their own).
+    ("esp32p4", "wifi-connect"): ("phase9_wifi_connect_app", "wifi_connect_p4", False),
 }
 #  Only m5-unified has a self-test application; the others build the same thing
 #  either way. The self-test adds a monitor task that prints PASS or FAILED, and
@@ -156,7 +160,7 @@ CHIPS = {
                     port="m5stack_riscv",
                     toolchain="toolchain-riscv-esp32p4.cmake",
                     sdk_headers_always=True,
-                    profiles=frozenset({"minimal"})),
+                    profiles=frozenset({"minimal", "wifi-connect"})),
 }
 
 

@@ -220,6 +220,12 @@ if(A1_CHIP STREQUAL "esp32c6")
     set(A1_CHIP_CPU_FREQ_DEFAULT 160)
     set(A1_CHIP_CPU_FREQ_BOOST 160)
     set(A1_CHIP_WIFI ON)
+    #  Which wifi-connect block builds this chip: "native" is the ESP-IDF
+    #  blob + PHY + supplicant arrangement of the C6 and C5. The P4's Wi-Fi
+    #  is a companion chip over SDIO, which is a different block entirely
+    #  ("hosted"), so this is a chip-table row rather than a branch inside
+    #  either block.
+    set(A1_CHIP_WIFI_KIND native)
     #  The ESP-IDF headers come from the M5Stack core's esp32c6-libs SDK;
     #  the list is the dev esp/boot/build_incflags_esp32c6_espidf.txt with
     #  components/X mapped to include/X (same ESP-IDF v5.5.4). Three of its
@@ -315,6 +321,7 @@ elseif(A1_CHIP STREQUAL "esp32c5")
     #  wifi-connect for the C5 (C5 plan stage 3): the dev
     #  cmake/a1_c5_stage1.cmake A1_C5_WIFI block with the C6 mapping above.
     set(A1_CHIP_WIFI ON)
+    set(A1_CHIP_WIFI_KIND native)
     #  dev esp/boot/build_incflags_esp32c5_espidf.txt, components/X mapped
     #  to include/X of the M5Stack core's esp32c5-libs SDK (same ESP-IDF
     #  v5.5.4; the two directories the SDK lacks are the same two as for
@@ -434,9 +441,58 @@ elseif(A1_CHIP STREQUAL "esp32p4")
     set(A1_CHIP_PRC_NUM 2)
     set(A1_CHIP_SEAM_EXTRA_SOURCES seam_p4_core1.c seam_p4_core1_entry.S)
     set(A1_CHIP_EXTRA_DEFS TOPPERS_SEAM_P4_CORE1=1 SEAM_P4_CORE1_MARK=0x43)
-    #  wifi-connect is stage B of the StampP4 plan (hosted Wi-Fi over the
-    #  C6 add-on); until then the P4 stages minimal only.
-    set(A1_CHIP_WIFI OFF)
+    #  wifi-connect for the P4 is stage B of the plan: hosted Wi-Fi, where
+    #  the radio is a companion ESP32-C6 on the Stamp add-on reached over
+    #  SDIO (esp_hosted). None of the native block applies - there is no
+    #  blob to link, no PHY to initialise and no supplicant - so the chip
+    #  names the other block and the native one is left untouched.
+    set(A1_CHIP_WIFI ON)
+    set(A1_CHIP_WIFI_KIND hosted)
+    #  Components of the M5Stack core's esp32p4_es-libs SDK the hosted
+    #  layers compile against, mapped from the development build's -I list
+    #  the way the C6 and C5 rows map theirs. lwip/lwip/src/include stands
+    #  for the development tree's esp-idf/components/lwip/lwip/src/include.
+    #  This list is the starting point of stage B1c and grows only when a
+    #  #include fails to resolve - never speculatively.
+    set(A1_CHIP_WIFI_SDK_INCLUDE_DIRS
+        esp_common/include
+        esp_hw_support/include
+        esp_hw_support/include/soc
+        esp_hw_support/include/esp_private
+        esp_hw_support/port/esp32p4/include
+        esp_rom/include
+        esp_rom/esp32p4/include
+        #  <esp32p4/rom/efuse.h> is reached as "rom/efuse.h" by the shim's
+        #  GPIO file, so the chip directory itself is on the path too (the
+        #  C6 and C5 rows carry the same pair for the same reason).
+        esp_rom/esp32p4/include/esp32p4
+        #  driver/gpio.h: the shim's p4shim_gpio.c implements a handful of
+        #  the legacy GPIO driver's entry points, so it includes that
+        #  driver's header for the prototypes and enums.
+        esp_driver_gpio/include
+        hal/esp32p4/include
+        hal/include
+        hal/platform_port/include
+        heap/include
+        log/include
+        riscv/include
+        sdmmc/include
+        soc/include
+        soc/esp32p4/include
+        soc/esp32p4/register
+        #  The register headers that differ between the two silicon
+        #  generations live in hw_ver1/ (rev < v3) and hw_ver3/ next to each
+        #  other, and only one of the two may be on the path: this port pins
+        #  the pre-v3 silicon (the same decision as the esp32p4_es-libs SDK
+        #  directory itself), so hw_ver1. soc/sdmmc_struct.h - the SDIO
+        #  host's register block - is one of them.
+        soc/esp32p4/register/hw_ver1
+        esp_system/include
+        esp_timer/include
+        esp_mm/include
+        lwip/lwip/src/include)
+    set(A1_CHIP_WIFI_CONFIG_DIRS "")
+    set(A1_CHIP_WIFI_COMPILE_OPTIONS "")
 else()
     message(FATAL_ERROR
         "ports/m5stack_riscv/runtime builds the esp32c6, the esp32c5 or the esp32p4 (got A1_CHIP='${A1_CHIP}')")
@@ -538,6 +594,14 @@ elseif(A1_CHIP STREQUAL "esp32p4")
     #  unsets the variable, and the check below wants it DEFINED; the empty
     #  string is a defined, empty list.)
     set(A1_ROM_LDS_minimal "")
+    #  wifi-connect (hosted): the SDIO host and the shim call ROM functions
+    #  (ets_delay_us, the GPIO matrix helpers, esp_rom_* aliases), which the
+    #  minimal profile does not. Two scripts, the pair the development build
+    #  links for this chip; the peripherals script is not a ROM script and
+    #  goes through EXTRA_TSCRIPTS below.
+    set(A1_ROM_LDS_wifi-connect
+        esp32p4.rom.ld
+        esp32p4.rom.api.ld)
 endif()
 if(NOT DEFINED A1_ROM_LDS_${FMP3_RUNTIME_PROFILE})
     message(FATAL_ERROR
@@ -639,7 +703,7 @@ set(FMP3_INCLUDE_DIRS
 #  (SDK include list and its order, config directories, chip -D, the
 #  interrupt-line cfg) are the chip table's A1_CHIP_WIFI_* rows above.
 #
-if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
+if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "native")
     set(WIFI_ROOT "${RUNTIME_ROOT}/wifi")
     set(WIFI_INCLUDE_DIRS)
     foreach(dir IN LISTS A1_CHIP_WIFI_SDK_INCLUDE_DIRS)
@@ -757,6 +821,117 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         if(NOT rom_ld IN_LIST A1_ROM_LDS_minimal)
             list(APPEND FMP3_LINK_OPTIONS "-Wl,-T,${ARDUINO_SDK_LD_ROOT}/${rom_ld}")
         endif()
+    endforeach()
+endif()
+
+#
+#  wifi-connect, hosted (ESP32-P4). The radio is a companion ESP32-C6 on the
+#  Stamp add-on, reached over SDIO with the esp_hosted protocol, so this
+#  block shares nothing with the native one above: no blob, no PHY, no
+#  supplicant, no esp_wifi headers. What it does need is the SDIO host, the
+#  esp_hosted OS abstraction and transport, the 802.3 data path, lwIP with
+#  its own port, and the small ESP-IDF system layer (p4shim) the three of
+#  them call. Every source is vendored under hosted/ (IMPORT_PROVENANCE_p4.md).
+#
+if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "hosted")
+    set(HOSTED_ROOT "${RUNTIME_ROOT}/hosted")
+    set(HOSTED_INCLUDE_DIRS)
+    foreach(dir IN LISTS A1_CHIP_WIFI_SDK_INCLUDE_DIRS)
+        if(NOT IS_DIRECTORY "${ARDUINO_SDK_INCLUDE_ROOT}/${dir}")
+            message(FATAL_ERROR
+                "wifi-connect (hosted): SDK include directory is missing: "
+                "${ARDUINO_SDK_INCLUDE_ROOT}/${dir}")
+        endif()
+        list(APPEND HOSTED_INCLUDE_DIRS "${ARDUINO_SDK_INCLUDE_ROOT}/${dir}")
+    endforeach()
+    list(APPEND HOSTED_INCLUDE_DIRS
+        #  The hosted layers themselves. The order is the development
+        #  build's: the port's own lwipopts.h has to be found before the
+        #  lwIP tree's default one, which is why the two lwipopts
+        #  directories come before lwip_port/include.
+        #  hosted/ itself: the vendored sources include their generated
+        #  headers as "generated/hosted_rpc_ids.h", so the parent is what
+        #  goes on the path.
+        "${HOSTED_ROOT}"
+        "${HOSTED_ROOT}/sdio"
+        "${HOSTED_ROOT}/osi"
+        "${HOSTED_ROOT}/upstream"
+        "${HOSTED_ROOT}/generated"
+        "${HOSTED_ROOT}/net"
+        "${HOSTED_ROOT}/net/lwipopts_dns"
+        #  The lwIP port keeps the development tree's own place
+        #  (runtime/eth/lwip_port), because the vendored
+        #  hosted/net/lwipopts_dns/lwipopts.h reaches it with a relative
+        #  include (../../../eth/lwip_port/include/lwipopts.h) and that file
+        #  is carried unchanged.
+        "${RUNTIME_ROOT}/eth/lwip_port"
+        "${RUNTIME_ROOT}/eth/lwip_port/include"
+        "${HOSTED_ROOT}/p4shim"
+        #  sdkconfig.h. The M5Stack SDK ships one per flash/PSRAM memory
+        #  type beside include/; this board's is qio_qspi (boards.txt
+        #  m5stack_stamp_p4: build.boot=qio, build.psram_type=qspi). The
+        #  ESP-IDF headers this profile compiles (hal/assert.h and below)
+        #  include it by bare name. The C6 and C5 carry a vendored stub
+        #  instead (config/<chip>/sdkconfig.h) because their ports predate
+        #  this; nothing here depends on which of the two a chip uses.
+        "${ARDUINO_SDK_INCLUDE_ROOT}/../qio_qspi/include"
+        #  cfg INCLUDE("esp_shim_intr_clic.cfg") resolves here, and the
+        #  CLIC shim's own header lives beside it.
+        "${RUNTIME_ROOT}/wifi/shim"
+        #  The Arduino-facing adapter and the attachInterrupt cfg piece
+        #  (stage B2; the directories exist for the cfg INCLUDE path).
+        "${RUNTIME_ROOT}/wifi/adapter"
+        "${RUNTIME_ROOT}/arduino")
+    list(APPEND FMP3_INCLUDE_DIRS ${HOSTED_INCLUDE_DIRS})
+
+    #  The development build's option chain, each define named as there:
+    #  P4SDIO (the SDIO host), P4HOSTED (the esp_hosted OS abstraction and
+    #  transport), P4HOSTED_RPC (the RPC layer), P4HOSTED_NET (the 802.3
+    #  data path and lwIP), P4HOSTED_DNS (the resolver, which is also why
+    #  this port's lwIP archive is the DNS variant).
+    list(APPEND FMP3_COMPILE_OPTIONS
+        -DESP_PLATFORM
+        -DTOPPERS_BOOT_SEAM
+        -DTOPPERS_ESPIDF_SUPPLY
+        -DP4SDIO=1
+        -DP4HOSTED=1
+        -DP4HOSTED_RPC=1
+        -DP4HOSTED_NET=1
+        -DP4HOSTED_DNS=1
+        -Wno-error=implicit-function-declaration
+        #  The hosted layers log more than the 32-entry default ring holds
+        #  (the same reason the native block raises it).
+        -DTCNT_SYSLOG_BUFFER=256)
+
+    #  Static objects the cfg pass has to see, in the development build's
+    #  order: the CLIC interrupt lines first (the SDIO interrupt is one of
+    #  them), then the SDIO host's, the hosted transport's, lwIP's pools and
+    #  the shim's diagnostics.
+    list(APPEND FMP3_CFG_FILES
+        "${RUNTIME_ROOT}/wifi/shim/esp_shim_intr_clic.cfg"
+        "${HOSTED_ROOT}/sdio/p4sdio.cfg"
+        "${HOSTED_ROOT}/osi/p4hosted.cfg"
+        "${RUNTIME_ROOT}/eth/lwip_port/fmp3_lwip_pools.cfg"
+        "${HOSTED_ROOT}/p4shim/p4shim_diag.cfg")
+
+    #  The linker-script fragments this profile needs are NOT the target
+    #  layer's: the hosted build adds RAM_HIGH (0x4FF40000 + 384 KB) for the
+    #  driver's buffers, which the minimal fragments do not declare. Same
+    #  file names, different contents - hence a different directory, chosen
+    #  here rather than in the chip table (the chip table's value is the
+    #  minimal one).
+    set(A1_CHIP_LDFRAG_DIR "${HOSTED_ROOT}/ldfrag")
+
+    #  esp32p4.peripherals.ld is not a ROM script (it PROVIDEs the register
+    #  block base addresses); it goes to the sketch link through the
+    #  manifest's extraLinkerScripts, the way the Xtensa runtime passes it.
+    set(A1_EXTRA_TSCRIPTS "${ARDUINO_SDK_LD_ROOT}/${A1_CHIP_ARCH_NAME}.peripherals.ld")
+    list(APPEND FMP3_LINK_OPTIONS "-Wl,-T,${A1_EXTRA_TSCRIPTS}")
+
+    #  The ROM scripts of this profile, for the cfg pass-1 link (the sketch
+    #  link takes them from the manifest).
+    foreach(rom_ld IN LISTS A1_ROM_LDS)
+        list(APPEND FMP3_LINK_OPTIONS "-Wl,-T,${ARDUINO_SDK_LD_ROOT}/${rom_ld}")
     endforeach()
 endif()
 
@@ -950,7 +1125,7 @@ add_dependencies(seam_cxx generate_cfg_gen_files)
 #                   C6 only, rgbLedWrite on RMT channel 0 (stage 6;
 #                   wifi-connect only, minimal has no SDK include path)
 #
-if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
+if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "native")
     set(WIFI_ARDUINO_SOURCES)
     foreach(src IN LISTS A1_CHIP_WIFI_ARDUINO_SOURCES)
         list(APPEND WIFI_ARDUINO_SOURCES "${RUNTIME_ROOT}/arduino/${src}")
@@ -992,6 +1167,41 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
         "${WIFI_ROOT}/adapter/toppers_wifi_connect.c"
         "${WIFI_ROOT}/adapter/toppers_wifi_optional_stubs.c"
         ${WIFI_ARDUINO_SOURCES})
+    target_link_libraries(wifi_objects PRIVATE seam_common)
+    add_dependencies(wifi_objects generate_cfg_gen_files)
+endif()
+
+#  The hosted profile's objects (ESP32-P4). Same object library name so that
+#  everything downstream - the stage's dependency list, the consumer object
+#  list - is written once; the sources are the other arrangement's.
+if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "hosted")
+    add_library(wifi_objects OBJECT
+        #  SDIO host and the board's pin set (StampP4 + Stamp add-on C6).
+        "${HOSTED_ROOT}/sdio/p4sdio_host.c"
+        "${HOSTED_ROOT}/sdio/p4sdio_board.c"
+        #  esp_hosted: OS abstraction, static pools, transport.
+        "${HOSTED_ROOT}/osi/p4hosted_osi.c"
+        "${HOSTED_ROOT}/osi/p4hosted_pools.c"
+        "${HOSTED_ROOT}/osi/p4hosted_prt.c"
+        #  802.3 data path, netif glue, the reusable network operations and
+        #  the resolver.
+        "${HOSTED_ROOT}/net/netif_esp_hosted.c"
+        "${HOSTED_ROOT}/net/p4hosted_net.c"
+        "${HOSTED_ROOT}/net/p4hosted_netops.c"
+        "${HOSTED_ROOT}/net/p4hosted_dns.c"
+        #  lwIP's FMP3 port (the archive itself is prebuilt).
+        "${RUNTIME_ROOT}/eth/lwip_port/sys_arch.c"
+        "${RUNTIME_ROOT}/eth/lwip_port/fmp3_lwip_pools.c"
+        #  The ESP-IDF system layer the three above call.
+        "${HOSTED_ROOT}/p4shim/p4shim_stubs.c"
+        "${HOSTED_ROOT}/p4shim/p4shim_misc.c"
+        "${HOSTED_ROOT}/p4shim/p4shim_clk.c"
+        "${HOSTED_ROOT}/p4shim/p4shim_gpio.c"
+        "${HOSTED_ROOT}/p4shim/p4shim_mac.c"
+        "${HOSTED_ROOT}/p4shim/p4shim_cache.c"
+        "${HOSTED_ROOT}/p4shim/p4shim_diag.c"
+        #  CLIC interrupt shim (the SDIO interrupt is one of its lines).
+        "${RUNTIME_ROOT}/wifi/shim/esp_shim_intr_clic.c")
     target_link_libraries(wifi_objects PRIVATE seam_common)
     add_dependencies(wifi_objects generate_cfg_gen_files)
 endif()
@@ -1082,7 +1292,7 @@ set(PREBUILT_STAGE_LIB_DIRS "")
 #  defines and was dropped there). No --wrap=esp_supplicant_init: the C6
 #  leaves the supplicant to esp_wifi_init (D6).
 #
-if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
+if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "native")
     set(WIFI_SDK_ARCHIVES
         "${ARDUINO_SDK_LIBRARY_ROOT}/libnet80211.a"
         "${ARDUINO_SDK_LIBRARY_ROOT}/libpp.a"
@@ -1115,6 +1325,24 @@ if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect")
     string(JOIN "" XIP_LINK_LIBGROUP ${XIP_LINK_LIBGROUP})
     set(PREBUILT_STAGE_LIB_DIRS "${WPA2_PREBUILT_ROOT}@@${LWIP_PREBUILT_ROOT}")
 endif()
+#  The hosted profile links one archive, lwIP. There is no supplicant (no
+#  WPA handshake on this side: the companion chip does it), no PHY and no
+#  Wi-Fi blob, so none of the SDK archives the native block names exist for
+#  this chip.
+if(FMP3_RUNTIME_PROFILE STREQUAL "wifi-connect" AND A1_CHIP_WIFI_KIND STREQUAL "hosted")
+    set(LWIP_PREBUILT_ROOT "${RUNTIME_ROOT}/wifi/prebuilt/lwip/${A1_CHIP}")
+    if(NOT EXISTS "${LWIP_PREBUILT_ROOT}/liblwip.a")
+        message(FATAL_ERROR
+            "wifi-connect (hosted) archive not found: ${LWIP_PREBUILT_ROOT}/liblwip.a")
+    endif()
+    set(XIP_LINK_LIBGROUP
+        "-L${LWIP_PREBUILT_ROOT}@@"
+        "-Wl,--start-group@@"
+        "-llwip@@-lstdc++@@-lm@@"
+        "-Wl,--end-group")
+    string(JOIN "" XIP_LINK_LIBGROUP ${XIP_LINK_LIBGROUP})
+    set(PREBUILT_STAGE_LIB_DIRS "${LWIP_PREBUILT_ROOT}")
+endif()
 string(JOIN "@@" A1_ROM_LDS_JOINED ${A1_ROM_LDS})
 
 add_custom_command(
@@ -1138,7 +1366,7 @@ add_custom_command(
         "-DLINK_UFLAGS=${XIP_LINK_UFLAGS}"
         "-DLINK_LIBGROUP=${XIP_LINK_LIBGROUP}"
         "-DLINK_TAIL_FLAGS=${XIP_LINK_TAIL_FLAGS}"
-        "-DEXTRA_TSCRIPTS="
+        "-DEXTRA_TSCRIPTS=${A1_EXTRA_TSCRIPTS}"
         "-DARDUINO_OBJECT_NAMES=${PREBUILT_ARDUINO_OBJECTS}"
         -P "${RUNTIME_ROOT}/cmake/${A1_CHIP_PREBUILT_SCRIPT}"
     DEPENDS
