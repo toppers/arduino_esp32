@@ -117,8 +117,8 @@ prebuilt archive、include 配置に依存しています）。
   **hosted Wi-Fi のスキャン**（14〜16 AP）。この板の無線は P4 自身ではなく
   **SDIO で繋いだ ESP32-C6（Stamp AddOn）**が担い、`[WiFiHosted] companion INIT
   chip_id=0x0d` が相手と話せている一次証拠です。
-  **STA 接続 -> DHCP -> DNS -> TCP** も通ります（`connected and DHCP completed`、
-  `TCP received=255`）。実機でしか出なかった欠陥——SDK の bootloader が仕掛けた
+  **STA 接続 -> DHCP -> DNS -> TCP** も通ります（warm 3/3・真cold 3/3、
+  各回 `connected and DHCP completed` と `TCP received=255`。DHCP は 8〜9 秒）。実機でしか出なかった欠陥——SDK の bootloader が仕掛けた
   ウォッチドッグによる起動ループ、`[WiFiScan]` の印字漏れ、PRC2 の 1 kHz ログ、
   採取台本 5 件——は [`docs/p4-port.md`](docs/p4-port.md) 2-8 節に、
   DHCP が通らなかった原因 2 件（cfg のオブジェクト ID がフォールバック値で

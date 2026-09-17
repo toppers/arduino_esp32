@@ -377,3 +377,21 @@ RPROBE R9-a dns [WiFiHosted] name=example.com err=0 addr=<IPv4> elapsed_ms=24
 **STA 接続 -> DHCP -> DNS -> TCP が P4 で通りました**（無線は SDIO の先の
 ESP32-C6 が担っています）。`rx_thread_entered=1`＝受信ポンプのスレッドが
 実際に走っています（前は 1 行も出ませんでした）。
+
+### 反復（2026-09-18）
+
+| 条件 | 回数 | 結果 |
+|---|---|---|
+| warm（台本のリセット） | 3 | **3/3**。各回 `TCP received=255`、`hosted_err=0 dnsfail=0 disc=0` |
+| 真cold（USB 給電断 -> 復電 -> 読むだけ） | 3 | **3/3**。各回 `dnsok=1 dnsfail=0 tcp=1 disc=0`、`TCP received=255` |
+
+DHCP の所要は真cold 3 回で `waited_ms=8000 / 9000 / 8400`（lease 14400 s）。
+リース取得までに 8〜9 秒かかるので、**採取窓は 70 秒以上**にしないと
+「繋がらなかった」と読めてしまいます。
+
+なお warm 3 回の `dnsok` が 0 と出ているのは台本側の取り違えで、板ではありません
+——当時の `capture_p4_usj.sh` は `[WiFiConnect] DNS resolved` を数えていましたが、
+スケッチが印字するのは `DNS completed` です。真cold 3 回は直したあとの計数で、
+実ログにはどちらの回も `DNS completed` が出ています（**今日 3 件目の
+「動いているのに 0 を数える」型**なので、マーカーは必ず出力側の文字列と
+突き合わせること）。
