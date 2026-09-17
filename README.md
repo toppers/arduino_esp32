@@ -100,7 +100,8 @@ prebuilt archive、include 配置に依存しています）。
 - **M5Stack ATOM Lite 実機**（2026-09-17、板の無い機械で追加したものを別の PC で
   確認）で、minimal（`Blink` warm 5/5・真cold 5/5）、`GpioInterrupt`（G23、warm と
   真cold の両方で `VERDICT PASS`）、本体 RGB LED（SK6812 G27、`AtomLiteRgb` で
-  warm・真cold とも `tx_done=8`。**色順の目視は未了**）、Wi-Fi スキャン（14 AP）、
+  warm・真cold とも `tx_done=8`。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認**）、
+  Wi-Fi スキャン（14 AP）、
   **Bluetooth Classic**（`[BluetoothSPP] discoverable as M5Stack-SPP` まで。
   ペアリングは未実施）。**STA 接続はこの板でも未達**ですが、症状は AtomS3 Lite と
   違い `reason=201 (NO_AP_FOUND) rssi=-128`（AP を見つけられない）です。

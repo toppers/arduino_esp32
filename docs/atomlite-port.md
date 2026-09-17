@@ -135,7 +135,7 @@ sha256 `5227640a16f4b5e4e6904668b413bce2b5379bbba37d5deeb96b6f1c1e8115c1`）へ�
 |---|---|---|
 | 1 | `Blink` / Minimal | **warm 5/5・真cold 5/5**（warm: banner=1 setup=1 heartbeat=19 blink=19 `[Blink] ON=10 / OFF=9`、cold: heartbeat=20 blink=20 ON=10/OFF=10、unexpected=0） |
 | 2 | `GpioInterrupt` / WiFi（G23） | **warm・真cold とも PASS**: `VERDICT PASS pin=23 rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2`、`readback ok` |
-| 3 | `AtomLiteRgb` / WiFi（G27） | **warm・真cold とも `tx_done=8 / write=8 / timeout=0`**（`[LX6-RGB] write red` -> `tx_done=1` … 8）。**色順の目視はユーザー待ち**（板に書き込み済み） |
+| 3 | `AtomLiteRgb` / WiFi（G27） | **warm・真cold とも `tx_done=8 / write=8 / timeout=0`**（`[LX6-RGB] write red` -> `tx_done=1` … 8）。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認（2026-09-17）**——GRB の仮定と、SK6812 / WS2812B の交差集合で採ったビットタイミング（3 節）が実機で成立している |
 | 4 | `WiFiScan` / WiFi | **14 AP**（`found 14 APs` + `AP[0..13]`、`Scan] done`） |
 | 5 | `WiFiConnect` / WiFi（実 creds） | **2/2 失敗。ただし AtomS3 Lite とは別の落ち方**: `disconnected reason=201 (NO_AP_FOUND) rssi=-128`（S3 は `reason=17`、rssi -61）。7 節 |
 | 6 | `BluetoothSPP` / Bluetooth Classic | **起動する**: `[BluetoothSPP] discoverable as M5Stack-SPP`、`BT.begin failed` は 0、unexpected 0。B-2（btclassic を出す判断）は**実機で支持された**。ペアリング・echo は端末が要るので未実施 |
@@ -150,8 +150,9 @@ sha256 `5227640a16f4b5e4e6904668b413bce2b5379bbba37d5deeb96b6f1c1e8115c1`）へ�
 
 ## 7. 残り
 
-- **`AtomLiteRgb` の色順（赤 -> 緑 -> 青）の目視**（板に書き込み済み。電源を入れ直すと
-  1 秒ごとに 2 周）。色が違えば GRB の仮定か SK6812 のタイミングが外れている。
+（RGB の点灯と色順は 2026-09-17 にユーザーが目視で確認した。板には
+リポジトリ版の `AtomLiteRgb`（2 周で止まる）が入っている。）
+
 - **Wi-Fi STA が `NO_AP_FOUND`（rssi=-128）で繋がらない**。同じ場所・同じ時刻に
   スキャンは 14 AP を見つけており RF 自体は動いているので、(a) この板のアンテナ /
   設置位置で当該 AP が届いていない、(b) LX6 側 Wi-Fi 経路の問題、の切り分けが要る。
