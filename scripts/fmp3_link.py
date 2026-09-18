@@ -354,11 +354,35 @@ def missing_object_message(name: str, hits: list[Path],
                 f"({name} carries the FMP3 task that calls setup() and loop(), "
                 "so every sketch needs it, whichever runtime is selected.)")
 
-    return (f"{name} was not built, although these libraries were compiled: "
-            f"{', '.join(compiled)}. The board's bundled library is expected "
-            "to supply it; a stale copy of that library in the sketchbook's "
-            "libraries/ folder is the usual cause, because it shadows the one "
-            "that ships with the board.")
+    #  ★The compiled list settles which case this is, so read it rather than
+    #  guessing. The builder compiles a library only when the sketch reaches
+    #  for one of its headers, and it compiles the WHOLE library when it does.
+    #  So if no ToppersFMP3 library is in that list, the sketch never included
+    #  one of its headers - the same cause as the empty-list branch above, and
+    #  by far the common one (a stock M5Stack sketch pulls in M5Unified and
+    #  friends but nothing of ours). Blaming a stale shadow copy here sent a
+    #  user hunting through libraries/ for a folder that was not there
+    #  (reported 2026-09-18, Windows, sketch using M5-RoverC).
+    ours = [item for item in compiled if item.lower().startswith("toppersfmp3")]
+    if not ours:
+        return (f"{name} was not built. The board's bundled library supplies "
+                "it, and the Arduino builder compiles that library only when "
+                "the sketch includes one of its headers - this sketch includes "
+                f"none, so only these were compiled: {', '.join(compiled)}. "
+                "Add this line at the top of the sketch:\n"
+                "    #include <ToppersFMP3_ArduinoBridge.h>\n"
+                f"({name} carries the FMP3 task that calls setup() and loop(), "
+                "so every sketch needs it, whichever runtime is selected. Any "
+                "one header of the library is enough: including "
+                "<ToppersFMP3_M5Unified.h> or <ToppersFMP3_WiFi.h> compiles "
+                "the whole library too.)")
+
+    return (f"{name} was not built, although the bundled library "
+            f"({', '.join(ours)}) was compiled, along with: "
+            f"{', '.join(item for item in compiled if item not in ours)}. "
+            "That points at an incomplete or stale copy of the library - a "
+            "copy in the sketchbook's libraries/ folder shadows the one that "
+            "ships with the board, and an old one may not carry this file.")
 
 
 def collect_arduino_objects(manifest: dict, build_path: Path,

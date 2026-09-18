@@ -48,7 +48,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fmp3_link import (APP_DESC_MAGIC, FIXED_VMA_LAYOUTS,  # noqa: E402
+from fmp3_link import (missing_object_message,APP_DESC_MAGIC, FIXED_VMA_LAYOUTS,  # noqa: E402
                        LINKED_ELF, STRIPPED_ELF, ImageLayout, LinkError,
                        app_partition_length, build_link_command,
                        check_fixed_vma_image, collect_arduino_objects,
@@ -698,6 +698,30 @@ def main() -> int:
               f"archived={sorted(archived)}")
         check(failures, "a third-party library object is available",
               "Widget.cpp.o" in archived, f"archived={sorted(archived)}")
+
+        #  ★The diagnostic has to tell the two causes apart from the compiled
+        #  list alone. A user on Windows hit the "no header of ours was
+        #  included" case (a stock M5Stack sketch pulling in M5-RoverC) and was
+        #  told to hunt for a stale shadow copy in libraries/, which was not
+        #  there. Both branches are asserted so neither message drifts back.
+        libraries = Path(temporary) / "diagnostic-libraries"
+        build_tree(libraries, ["M5-RoverC/x", "M5GFX/x", "M5Unified/x",
+                               "Wire/x"])
+        message = missing_object_message("ArduinoSketchBridge.cpp.o", [],
+                                         libraries)
+        check(failures, "no bundled library compiled -> name the missing include",
+              "#include <ToppersFMP3_ArduinoBridge.h>" in message
+              and "shadow" not in message, message)
+        check(failures, "that message names what WAS compiled",
+              "M5-RoverC" in message, message)
+
+        build_tree(libraries, ["ToppersFMP3-M5Stack/x"])
+        message = missing_object_message("ArduinoSketchBridge.cpp.o", [],
+                                         libraries)
+        check(failures, "bundled library compiled but object absent -> stale copy",
+              "shadows" in message
+              and "#include <ToppersFMP3_ArduinoBridge.h>" not in message,
+              message)
 
         #  The reason the fix is an archive rather than "link everything":
         #  this object calls Wi-Fi symbols that the minimal profile does not
