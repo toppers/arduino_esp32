@@ -152,8 +152,10 @@ CHIPS = {
     #  as the C6 / C5; the SDK is esp32p4_es-libs 3.3.9 (arduino_sdk
     #  SDK_TOOL_NAMES: the pre-v3-silicon variant the M5Stamp-P4's default
     #  ChipVariant selects), the port directory is the same chip branch
-    #  (StampP4 plan stage A1), its own toolchain file. minimal only for
-    #  now: wifi-connect is stage B (hosted Wi-Fi over the C6 add-on). The
+    #  (StampP4 plan stage A1), its own toolchain file. minimal (stage A)
+    #  and wifi-connect (stage B); that wifi-connect is HOSTED - the P4 has
+    #  no radio of its own and the stage drives a companion ESP32-C6 over
+    #  SDIO, so it is the one wifi-connect that needs a second board. The
     #  chip layer reads no SDK header, but the runtime's configure still
     #  requires the SDK roots (the existence proofs), so the flag is ON.
     "esp32p4": Chip(tool="esp-rv32", gcc="riscv32-esp-elf-gcc",
