@@ -123,7 +123,10 @@ prebuilt archive、include 配置に依存しています）。
   採取台本 5 件——は [`docs/p4-port.md`](docs/p4-port.md) 2-8 節に、
   DHCP が通らなかった原因 2 件（cfg のオブジェクト ID がフォールバック値で
   固まっていた／`host_by_name` の戻り値の向きが逆）は同 2-9 節にあります。
-  どちらも**戻り値を見ても捕まらない**型でした。
+  どちらも**戻り値を見ても捕まらない**型でした。コンソールの行頭欠落
+  （2-8 節で未解決としたもの）は原因が確定して直っています——
+  `fmp3_core` の `sio_irdy_snd()` が `sio_snd_chr()` の戻り値を捨てていた
+  という**全チップ共有**の欠陥で、詳細は同 2-10 節。
 - M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
   M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
   当初この機種だけ M5Unified が動かなかった経緯と原因は
