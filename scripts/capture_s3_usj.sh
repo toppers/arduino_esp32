@@ -110,7 +110,13 @@
 #    DUT_CHIP      expected chip type substring (default "ESP32-S3"; the full
 #                  line reads "ESP32-S3 (QFN56) (revision v0.2)" on this
 #                  board. Package and revision are deliberately not pinned).
-#    DUT_FLASH     expected "Detected flash size" (default 8MB).
+#    DUT_FLASH     expected "Detected flash size" (default 8MB; the M5CoreS3
+#                  is 16MB, so that board needs DUT_FLASH=16MB).
+#    BOARD         the board id whose boards.txt row the bootloader-address
+#                  gate reads (default m5atoms3lite_fmp3). Set it to the board
+#                  being written - m5cores3_fmp3 for an M5CoreS3 - so the gate
+#                  checks that board and not another one that happens to
+#                  agree today.
 #    DUT_PORT      serial device. Default: /dev/serial/by-id name derived
 #                  from DUT_MAC (Espressif USB JTAG/serial debug unit).
 #    OUT           capture log path (default LOG_DIR/s3-capture-<stamp>.log).
@@ -373,7 +379,14 @@ DUT_PORT="${DUT_PORT:-/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit
 #  success; prints the reason and returns 1 otherwise (the caller dies).
 #  Pure over the file; exercised by S3_MASK_SELFTEST=1.
 BOARDS_TXT="${BOARDS_TXT:-$HOME/Arduino/hardware/toppers/esp32/boards.txt}"
-BOARDS_KEY="m5atoms3lite_fmp3.build.bootloader_addr"
+#  The board whose row the gate reads. It MUST be the board being written:
+#  reading another board's row would be a check that passes while looking at
+#  the wrong thing. Every ESP32-S3 board of this platform happens to put the
+#  bootloader at 0x0, so the answer is the same today - which is exactly why
+#  the mistake would go unnoticed if the two ever diverged.
+#  (2026-09-18: added when this script was first pointed at the M5CoreS3.)
+BOARD="${BOARD:-m5atoms3lite_fmp3}"
+BOARDS_KEY="${BOARD}.build.bootloader_addr"
 BOARDS_KEY_RE="$(printf '%s' "$BOARDS_KEY" | sed 's/\./\\./g')"   # literal dots in the ERE
 S3_BL_ADDR_EXPECTED=0x0
 s3_bootloader_addr() {   # <boards.txt> -> "0x0" or a reason (rc 1)
