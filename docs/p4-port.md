@@ -125,9 +125,33 @@ DUT_MAC=<1 の MAC> OUT_DIR=/tmp/p4-blink bash scripts/capture_p4_usj.sh
 
 ## 7. 残り
 
-- 段A4（実機）。結果が出たら 5 節と README を実測に置き換える。
-- 段B（hosted WiFi）: 入口条件は A4 PASS。計画 PLAN.md 段B0-B4。
-- 1 コアの退避路を `--cmake-define` で出す（今は chip 表の定数）。
+**2026-09-18 更新**: この節が挙げていた 2 件はどちらも**完了しました**。
+経緯は 2-5〜2-10 節（段B1〜B3 と実機 A4/B4、DHCP の切り分け、コンソールの
+行頭欠落の原因と修正）。
+
+- ~~段A4（実機）~~ → **完了**（2-8 節。Blink warm 5/5・真cold 5/5）。
+- ~~段B（hosted WiFi）~~ → **完了**（2-5〜2-9 節。scan と
+  STA -> DHCP -> DNS -> TCP が warm 3/3・真cold 3/3）。
+- **1 コアの退避路は作っていません**。これは計画 P4 が
+  「実機で SMP が不安定だったときの退避路」として用意を求めていたものですが、
+  **実機で SMP は安定していました**（warm 5/5・真cold 5/5 とも
+  `Processor 2 start.` と `[P4-CORE2] alive` を確認）ので、
+  **必要になっていません**。作るなら cfg が `CLS_PRC2` を使う以上
+  app ディレクトリをもう 1 つ要ります（`A1_CHIP_PRC_NUM=1` だけでは cfg が落ちる）。
+
+### 段B の検証（B3 が求めていたもの）
+
+| 検証 | 結果 |
+|---|---|
+| 8 例題リンク（wificonnect） | **8/8 OK**（WiFiConnect / WiFiScan / Blink / LibraryInfo / NanoC6Gpio / AtomS3LiteRgb / AtomLiteRgb / GpioInterrupt） |
+| minimal の 3 例題 | **3/3 OK**（Blink / LibraryInfo / 2 ファイルスケッチ）。合計 **11/11**、`--list-builds` の P4 行と一致 |
+| X-check | 11/11 MATCH |
+| python テスト | 4 本 PASS |
+
+### 射程外（計画 4 節の宣言。やっていないことを明示する）
+
+Tab5 / Unit PoE P4 の板行、表示（`m5` profile）、Ethernet、BLE、PSRAM の利用、
+**公開・tag・版上げ**。
 ## 2-5. 段 B1（hosted Wi-Fi の土台、2026-09-18）
 
 この chip の Wi-Fi は**自前の無線ではなく**、SDIO で繋いだ ESP32-C6（Stamp
