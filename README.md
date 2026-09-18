@@ -272,6 +272,17 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 
 ## 制約
 
+- **M5Stack Arduino core のランタイムはリンクされません。** FMP3 がカーネルなので、
+  core 自身のランタイムも FreeRTOS も像に入りません。帰結として、**`Serial`・
+  `delay()`・`millis()`・`micros()`・`Wire`・`SPI` は使えません**。
+  `<Wire.h>` や `<SPI.h>` を include するライブラリ、`Serial` や `delay()` を呼ぶ
+  ライブラリは、**どの `Tools > FMP3 Runtime` を選んでもリンクできません**
+  （例: `M5-RoverC` は `<Wire.h>` を引くので使えません）。
+  リンク時に `i2cInit` / `xQueueCreateMutex` / `delay` などが未定義になった場合、
+  リンクドライバがその旨を `--- why ---` として説明します。
+  **代わりに各ランタイムの API を使ってください**——`M5Unified + Dual Core` なら
+  `M5.Ex_I2C` / `M5.In_I2C` が `Wire` の代わりになり、`loop()` は周期的に
+  呼ばれるので `delay()` は要りません。同梱例題はすべてこの流儀で書いてあります。
 - **Bluetooth Classic は接続に認証を要求しません。** SPP サーバは
   `ESP_SPP_SEC_NONE` で起動するので、電波の届く範囲の誰でも、ペアリングを
   経ずに接続してデータを送受信できます。2026-09-02 に実機で確認しました--

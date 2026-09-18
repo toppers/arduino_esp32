@@ -48,7 +48,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fmp3_link import (missing_object_message,APP_DESC_MAGIC, FIXED_VMA_LAYOUTS,  # noqa: E402
+from fmp3_link import (core_runtime_hint, missing_object_message,APP_DESC_MAGIC, FIXED_VMA_LAYOUTS,  # noqa: E402
                        LINKED_ELF, STRIPPED_ELF, ImageLayout, LinkError,
                        app_partition_length, build_link_command,
                        check_fixed_vma_image, collect_arduino_objects,
@@ -714,6 +714,24 @@ def main() -> int:
               and "shadow" not in message, message)
         check(failures, "that message names what WAS compiled",
               "M5-RoverC" in message, message)
+
+        #  ★A wall of undefined names must say WHY. A user's sketch reached
+        #  M5-RoverC, whose header includes <Wire.h>; the link failed with a
+        #  dozen symbols and no reason (2026-09-18). The hint must fire on
+        #  those, and stay silent on an ordinary undefined symbol - otherwise
+        #  it becomes noise attached to every failure.
+        real = ("undefined reference to `i2cInit'\n"
+                "undefined reference to `xQueueCreateMutex'\n"
+                "undefined reference to `delay'\n")
+        hint = core_runtime_hint(real)
+        check(failures, "core-runtime hint names Wire", "Wire" in hint, hint)
+        check(failures, "core-runtime hint names FreeRTOS",
+              "FreeRTOS" in hint, hint)
+        check(failures, "core-runtime hint offers the replacement",
+              "M5.Ex_I2C" in hint, hint)
+        check(failures, "core-runtime hint is silent on an unrelated symbol",
+              core_runtime_hint("undefined reference to `my_own_helper'") == "",
+              core_runtime_hint("undefined reference to `my_own_helper'"))
 
         build_tree(libraries, ["ToppersFMP3-M5Stack/x"])
         message = missing_object_message("ArduinoSketchBridge.cpp.o", [],

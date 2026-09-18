@@ -485,6 +485,16 @@ WPA2-PSK／WPA3-SAEの追加アクセスポイントでの互換性。
 
 ## 制約
 
+- **M5Stack Arduino coreのランタイムはリンクされません。** FMP3がカーネルなので、
+  core自身のランタイムもFreeRTOSも像に入りません。帰結として**`Serial`・`delay()`・
+  `millis()`・`micros()`・`Wire`・`SPI`は使えません**。`<Wire.h>`や`<SPI.h>`を
+  includeするライブラリ、`Serial`や`delay()`を呼ぶライブラリは、**どの
+  `Tools > FMP3 Runtime`を選んでもリンクできません**（例: `M5-RoverC`は`<Wire.h>`を
+  引くので使えません）。リンク時に`i2cInit`／`xQueueCreateMutex`／`delay`などが
+  未定義になった場合は、リンクドライバが`--- why ---`として理由を説明します。
+  **代わりに各ランタイムのAPIを使ってください**——`M5Unified + Dual Core`なら
+  `M5.Ex_I2C`／`M5.In_I2C`が`Wire`の代わりになり、`loop()`は周期的に呼ばれるので
+  `delay()`は要りません。同梱例題はすべてこの流儀です。
 - Arduino／FreeRTOS APIは完全互換ではありません。各profileとexampleで
   実際に使用したサブセットのみ対応しています。
 - FMP3の`dly_tsk`のRELTIMはこのportではマイクロ秒です。FreeRTOS APIのtickとは

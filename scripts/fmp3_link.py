@@ -500,6 +500,67 @@ def build_link_command(manifest: dict, stage: Path, sdk: dict[str, Path],
     return command
 
 
+#  Symbols that only the M5Stack core's own runtime defines. The FMP3 stage
+#  links neither that runtime nor FreeRTOS - FMP3 is the kernel - so a sketch
+#  that reaches an Arduino-core library fails here with a dozen undefined
+#  names and nothing that says why. Reported 2026-09-18: a sketch using
+#  M5-RoverC, whose header includes <Wire.h>, produced i2cInit / i2cRead /
+#  xQueueCreateMutex / delay and no explanation.
+CORE_RUNTIME_SYMBOLS = {
+    #  esp32-hal-i2c.c, reached through the core's Wire (TwoWire)
+    "i2cInit": "Wire (the M5Stack core's I2C)",
+    "i2cDeinit": "Wire (the M5Stack core's I2C)",
+    "i2cRead": "Wire (the M5Stack core's I2C)",
+    "i2cWrite": "Wire (the M5Stack core's I2C)",
+    "i2cSetClock": "Wire (the M5Stack core's I2C)",
+    "i2cIsInit": "Wire (the M5Stack core's I2C)",
+    "i2cWriteReadNonStop": "Wire (the M5Stack core's I2C)",
+    #  esp32-hal-misc.c / esp32-hal-uart.c
+    "delay": "delay() (the M5Stack core's timing)",
+    "millis": "millis() (the M5Stack core's timing)",
+    "micros": "micros() (the M5Stack core's timing)",
+    "uartBegin": "Serial (the M5Stack core's UART)",
+    "uartWrite": "Serial (the M5Stack core's UART)",
+    #  FreeRTOS, which the core's libraries assume is the kernel
+    "xQueueCreateMutex": "FreeRTOS (the core's libraries assume it)",
+    "xQueueGenericSend": "FreeRTOS (the core's libraries assume it)",
+    "xQueueSemaphoreTake": "FreeRTOS (the core's libraries assume it)",
+    "vQueueDelete": "FreeRTOS (the core's libraries assume it)",
+    "xTaskCreatePinnedToCore": "FreeRTOS (the core's libraries assume it)",
+}
+
+
+def core_runtime_hint(output: str) -> str:
+    """Name the Arduino-core facility behind a wall of undefined symbols.
+
+    The linker names the symbols, not the reason. Reading them back gives the
+    one sentence the user needs: this package does not link the M5Stack core's
+    runtime, so its libraries cannot be used, whichever runtime is selected.
+    """
+    wanted = re.findall(r"undefined reference to `([A-Za-z_][A-Za-z0-9_]*)'",
+                        output)
+    facilities: list[str] = []
+    for symbol in wanted:
+        facility = CORE_RUNTIME_SYMBOLS.get(symbol)
+        if facility is not None and facility not in facilities:
+            facilities.append(facility)
+    if not facilities:
+        return ""
+    return (
+        "\n--- why ---\n"
+        "These undefined names come from the M5Stack Arduino core's own "
+        "runtime, which this package does NOT link: FMP3 is the kernel, so "
+        "neither that runtime nor FreeRTOS is present. What the sketch "
+        "reached for:\n"
+        + "".join(f"  - {facility}\n" for facility in facilities)
+        + "A library written for the stock core (anything including <Wire.h>, "
+        "<SPI.h> or using Serial/delay()/millis()) cannot be linked here, "
+        "whichever Tools > FMP3 Runtime is selected. Use the runtime's own "
+        "APIs instead - on the M5Unified runtime, M5.Ex_I2C / M5.In_I2C "
+        "replace Wire, and loop() is called periodically so no delay() is "
+        "needed. See the README's limitations section.")
+
+
 def run(command: list[str], cwd: Path, what: str) -> None:
     completed = subprocess.run(command, cwd=str(cwd), text=True,
                                capture_output=True)
@@ -507,7 +568,8 @@ def run(command: list[str], cwd: Path, what: str) -> None:
         raise LinkError(
             f"{what} failed (exit={completed.returncode})\n"
             f"--- stdout ---\n{completed.stdout}\n"
-            f"--- stderr ---\n{completed.stderr}")
+            f"--- stderr ---\n{completed.stderr}"
+            f"{core_runtime_hint(completed.stdout + completed.stderr)}")
 
 
 LINKED_ELF = "fmp_xip.elf"
