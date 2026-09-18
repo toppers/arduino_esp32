@@ -523,5 +523,40 @@ class UploadRecipe(unittest.TestCase):
                 {"tools/flasher.exe"})
 
 
+class ReusedDriver(unittest.TestCase):
+    """--reuse-driver-from must keep the tool it depends on.
+
+    ★The first implementation dropped it: previous_tools excluded the entry
+    whose version equalled driver_version, which is right when new archives
+    replace it and wrong when the point is to keep it. The generated index
+    named fmp3-link 99.0.0 in toolsDependencies and carried no such tool -
+    an install failure on every host, from a run that printed success.
+    """
+
+    def test_dependency_and_tool_stay_together(self):
+        import make_package_index
+        published = {"packages": [{"name": "toppers", "platforms": [], "tools": [
+            {"name": "fmp3-link", "version": "1.0.0", "systems": [
+                {"host": "x86_64-mingw32"}]}]}]}
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory) / "published.json"
+            target.write_text(json.dumps(published), encoding="utf-8")
+            tool = make_package_index.published_driver(target, "1.0.0")
+            self.assertEqual(tool["version"], "1.0.0")
+            with self.assertRaises(SystemExit):
+                make_package_index.published_driver(target, "2.0.0")
+
+    def test_source_change_is_detected(self):
+        import make_package_index
+        ok, why = make_package_index.driver_source_unchanged_since("v0.5.0")
+        #  scripts/fmp3_link.py has changed since v0.5.0; the point is that the
+        #  helper says so rather than returning a silent True.
+        self.assertFalse(ok)
+        self.assertIn("fmp3_link.py", why)
+        ok, why = make_package_index.driver_source_unchanged_since("v9.9.9")
+        self.assertFalse(ok)
+        self.assertIn("tag", why)
+
+
 if __name__ == "__main__":
     unittest.main()

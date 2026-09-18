@@ -323,6 +323,32 @@ Manager から過去の版が消えます。** `--require-merge-target` は、�
 リンクドライバはホストごとに凍結したものが要ります
 （`.github/workflows/build-link-driver.yml` が `v*` タグで生成します）。
 
+### ドライバを作り直さずに出す（細かい修正を続けて出すとき）
+
+frozen driver は **`scripts/fmp3_link.py` だけの関数**です（自己完結——標準
+ライブラリしか import せず、CI の Freeze 手順もそのファイル 1 本を PyInstaller
+へ渡します）。そのファイルが動いていないリリースでは、**公開済みの tool 版へ
+依存させるだけ**で済み、タグ push → CI → artifact 取得 → 3 zip アップロードを
+丸ごと省けます。
+
+```bash
+python scripts/make_package_index.py --version <ver>     --platform-dir <platform> --owner <owner> --repo <repo>     --reuse-driver-from <前回の版>     --merge-into package_toppers_index.published.json --require-merge-target
+```
+
+`--driver` とは同時に使えません（どちらが効いたのか後から言えなくなるため）。
+**fail-closed です**: `scripts/fmp3_link.py` が `v<前回の版>` のタグから動いて
+いると git で分かれば**拒否します**。古いドライバを新しい stage に当てるのは、
+下流の誰も気づかない壊れ方だからです。どうしても通すなら
+`--reuse-driver-unverified` がありますが、**その旨をリリースノートに書いて
+ください**。
+
+> **なお GitHub Actions の分数は気にしなくてよい**——このリポジトリは公開なので
+> 標準ランナーは無料です。実測でも 3 ホストは並列 1 分弱（macOS 19 s /
+> Linux 28 s / Windows 51 s）でした。ホストを削っても工数は減りません
+> （リリースの重心は `verify_package` の 124 builds で、これはローカルの
+> 1 ホストで回すものです）。仮に課金対象でも倍率は Linux x1 / Windows x2 /
+> **macOS x10** なので、残すならまず Linux です。
+
 ## 4. 検証する
 
 ```bash

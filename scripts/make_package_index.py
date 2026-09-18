@@ -44,6 +44,7 @@ import hashlib
 import json
 import re
 import shutil
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -94,6 +95,50 @@ CHIP_TOOL_DEPENDENCIES = {
         ("m5stack", "esp32p4_es-libs", "3.3.9"),
     ],
 }
+
+DRIVER_SOURCE = "scripts/fmp3_link.py"
+
+
+def driver_source_unchanged_since(tag: str) -> tuple[bool, str]:
+    """Is the driver's only input the same as at that tag?
+
+    The frozen driver is a function of DRIVER_SOURCE alone: it imports nothing
+    but the standard library, and the CI freeze step hands PyInstaller that one
+    file. So "unchanged since the tag" is the whole condition for reusing the
+    published binary. Returns (answer, why) - a False with a reason the caller
+    can print, never a silent no.
+    """
+    repository = Path(__file__).resolve().parent.parent
+    probe = subprocess.run(["git", "rev-parse", "--verify", f"{tag}^{{commit}}"],
+                           cwd=repository, capture_output=True, text=True)
+    if probe.returncode != 0:
+        return (False, f"git does not know the tag {tag}")
+    diff = subprocess.run(["git", "diff", "--quiet", tag, "--", DRIVER_SOURCE],
+                          cwd=repository, capture_output=True, text=True)
+    if diff.returncode == 0:
+        return (True, f"{DRIVER_SOURCE} is unchanged since {tag}")
+    if diff.returncode == 1:
+        return (False, f"{DRIVER_SOURCE} has changed since {tag}")
+    return (False, f"git diff failed: {diff.stderr.strip()}")
+
+
+def published_driver(merge_target: Path, version: str) -> dict:
+    """The fmp3-link tool entry of that version in the published index."""
+    if not merge_target.is_file():
+        raise SystemExit(
+            f"--reuse-driver-from needs the published index; not a file: "
+            f"{merge_target}")
+    published = json.loads(merge_target.read_text(encoding="utf-8"))
+    for package in published.get("packages", []):
+        for tool in package.get("tools", []):
+            if (tool.get("name") == DRIVER_TOOL_NAME
+                    and tool.get("version") == version):
+                return tool
+    raise SystemExit(
+        f"--reuse-driver-from {version}: the published index has no "
+        f"{DRIVER_TOOL_NAME} of that version. Nothing would supply the driver, "
+        "and every host would fail to build.")
+
 
 STAGE_ROOT_NAME = "fmp3-prebuilt"
 
@@ -377,6 +422,23 @@ def main() -> int:
     parser.add_argument("--library-dir", default=".",
                         help="library to bundle into the platform's libraries/; "
                              "pass an empty string to skip it")
+    #  ★ドライバを作り直さずに済ませる経路（2026-09-18）。
+    #  細かい修正を続けて出すとき、毎回 3 ホストぶんを凍結して上げ直すのは
+    #  無駄である——frozen driver は scripts/fmp3_link.py **だけ**の関数だから
+    #  （自己完結: 標準ライブラリしか import しない。CI の Freeze 手順も
+    #  そのファイル 1 本を PyInstaller に渡している）。そのファイルが動いて
+    #  いなければ、公開済みの tool 版へ依存させれば足りる。
+    #  ★ただし fail-closed にする。据え置きは「本当に無改変か」を git で
+    #  確かめてからでないと、**古いドライバを新しい stage に当てる**という、
+    #  誰も気づかない壊れ方になる。
+    parser.add_argument("--reuse-driver-from", default="",
+                        help="reuse the fmp3-link tool already published as "
+                             "this version instead of freezing a new one; "
+                             "needs --merge-into and no --driver")
+    parser.add_argument("--reuse-driver-unverified", action="store_true",
+                        help="allow --reuse-driver-from when git cannot show "
+                             "that scripts/fmp3_link.py is unchanged since "
+                             "that release's tag; say so in the release notes")
     parser.add_argument("--driver-version", default="",
                         help="version of the driver tool (default: --version)")
     parser.add_argument("--merge-into", default="",
@@ -423,6 +485,40 @@ def main() -> int:
     zip_directory(root, archive)
     checksum, size = sha256_and_size(archive)
 
+    #
+    #  ドライバ据え置きの経路。--driver と同居させない（どちらが効いたのか
+    #  後から言えなくなる）。
+    #
+    reused_driver = None
+    if args.reuse_driver_from:
+        if args.driver:
+            raise SystemExit(
+                "--reuse-driver-from and --driver are mutually exclusive: "
+                "either publish new driver archives or point at the published "
+                "ones, not both.")
+        if not args.merge_into:
+            raise SystemExit(
+                "--reuse-driver-from needs --merge-into: the tool entry it "
+                "points at lives in the published index, and without merging "
+                "the new index would not carry it.")
+        reused_driver = published_driver(Path(args.merge_into),
+                                         args.reuse_driver_from)
+        reuse_tag = f"v{args.reuse_driver_from}"
+        ok, why = driver_source_unchanged_since(reuse_tag)
+        if not ok and not args.reuse_driver_unverified:
+            raise SystemExit(
+                f"--reuse-driver-from {args.reuse_driver_from}: refusing, "
+                f"because {why}. Reusing a driver frozen from different "
+                f"sources ships an old {DRIVER_SOURCE} against new stages, "
+                "which nothing downstream would notice. Freeze a new driver "
+                "(tag push runs build-link-driver), or pass "
+                "--reuse-driver-unverified and say so in the release notes.")
+        driver_version = args.reuse_driver_from
+        print(f"driver           : reusing {DRIVER_TOOL_NAME} "
+              f"{driver_version} from the published index ({why})")
+        for system in reused_driver.get("systems", []):
+            print(f"  kept           : {system.get('host', '?')}")
+
     tools = []
     driver_systems = []
     for entry in args.driver:
@@ -454,7 +550,7 @@ def main() -> int:
         {"packager": packager, "name": name, "version": version}
         for packager, name, version in tool_dependencies_for(platform_dir)
     ]
-    if driver_systems:
+    if driver_systems or reused_driver is not None:
         tool_dependencies.append({
             "packager": args.packager,
             "name": DRIVER_TOOL_NAME,
@@ -486,10 +582,21 @@ def main() -> int:
                     entry for entry in package.get("platforms", [])
                     if not (entry.get("architecture") == args.architecture
                             and entry.get("version") == args.version)]
+                #  ★同じ版の tool を落とすのは、今回**新しく凍結した**
+                #  アーカイブで置き換えるときだけである。据え置き
+                #  （--reuse-driver-from）では driver_version は
+                #  「公開済みで、これから依存する版」なので、ここで落とすと
+                #  **依存だけが残って実体が消える**。実測でそうなった:
+                #  toolsDependencies は 99.0.0 を指すのに tools には無い、
+                #  という index が一度できた（利用者側では「ツールが無い」で
+                #  インストールが失敗する形）。
+                drop_driver_version = (driver_version
+                                       if reused_driver is None else None)
                 previous_tools = [
                     entry for entry in package.get("tools", [])
                     if not (entry.get("name") == DRIVER_TOOL_NAME
-                            and entry.get("version") == driver_version)]
+                            and drop_driver_version is not None
+                            and entry.get("version") == drop_driver_version)]
         elif args.require_merge_target:
             raise SystemExit(
                 f"--merge-into names no file: {merge_path}. Publishing without "
@@ -530,7 +637,7 @@ def main() -> int:
           f"{bundled_library or 'not bundled (--library-dir was empty)'}")
     print(f"index            : {index_path}")
     print(f"  url base       : {base_url}")
-    if not driver_systems:
+    if not driver_systems and reused_driver is None:
         print("  note           : no --driver given, so the index has no link "
               "driver tool; a package without it cannot build.")
     #
