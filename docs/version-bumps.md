@@ -186,3 +186,34 @@ M5Stack core / M5GFX / M5Unified の導入も skip せずこの経路で行っ�
 **ESP32-P4 を初めてベースラインに入れた**（従来は 11 ステージ＝ 4 チップで、
 P4 は `ignored (not in baseline)` だった）。`--clean` の完全再ビルドが
 直前に建てたものとバイト一致し、自己照合も 13/13 MATCH。
+
+---
+
+## 2026-09-18: v0.6.0 として公開
+
+上のバンプを含むリリース。`v0.6.0` タグ、
+<https://github.com/toppers/arduino_esp32/releases/tag/v0.6.0>。
+
+| アセット | |
+|---|---|
+| `toppers-esp32-0.6.0.zip` | 8.9 MB、sha256 `fc88281d564342e40454d53a45fcb61c2a80b37448ec129c66b6934770dd9273` |
+| `package_toppers_index.json` | platform 6 版（`0.3.0`〜`0.6.0`）を保持 |
+| `fmp3-link-{x86_64-pc-linux-gnu,x86_64-mingw32,arm64-apple-darwin}.zip` | `build-link-driver` の v0.6.0 タグビルドから |
+
+検査:
+
+- `check_release_artifacts.py` PASSED（過去 4 版のドライバが実 URL でまだ
+  配信されていることまで確認＝ `--merge-into` が効いている証拠）
+- `check_host_paths.py` PASSED（1234 ファイルにビルド機の絶対パス無し）
+- `verify_package.py` **116/116**（loopback 経由。`toppers:esp32@0.6.0` が
+  実際にインストールされたログ付き）
+- **公開後に本物の URL からもう一度**: `releases/latest/download/package_toppers_index.json`
+  を `--additional-urls` に渡して `core install toppers:esp32@0.6.0` し、
+  `m5cores3_fmp3/m5/M5Unified`・`m5stampp4_fmp3/wificonnect/WiFiConnect`・
+  `m5atomlite_fmp3/btclassic/BluetoothSPP` の 3 本が建つことを確認（手元の
+  platform とライブラリ symlink は撤去したまま＝**公開物だけで**建てている）
+
+利用者向け文言のうち、実測とずれていたものをこのリリースで直しました
+（M5Stamp-P4 が「Minimal のみ・実機未確認」のままだった、M5Stack ATOM Lite が
+「実機で一度も動かしていません」のままだった、配布 README の board 一覧が
+8 板中 7 板しか載せていなかった）。
