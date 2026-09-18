@@ -9,10 +9,10 @@ Arduinoボードパッケージです。
 | M5StickS3 | ESP32-S3 / Xtensa LX7 | `M5StickS3 (TOPPERS/FMP3)` |
 | M5AtomS3 Lite | ESP32-S3 / Xtensa LX7 | `M5AtomS3Lite (TOPPERS/FMP3)` |
 | M5Stack Basic | ESP32 / Xtensa LX6 | `M5Core (TOPPERS/FMP3)` |
-| M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 | `M5AtomLite (TOPPERS/FMP3)`（**実機未確認**） |
+| M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 | `M5AtomLite (TOPPERS/FMP3)` |
 | M5NanoC6 | ESP32-C6 / RISC-V | `M5NanoC6 (TOPPERS/FMP3)` |
 | M5Stamp-C5 | ESP32-C5 / RISC-V | `M5StampC5 (TOPPERS/FMP3)` |
-| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア | `M5StampP4 (TOPPERS/FMP3)`（**Minimal のみ・実機未確認**） |
+| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア | `M5StampP4 (TOPPERS/FMP3)`（`WiFi` は AddOn C6 が要ります） |
 
 1つのパッケージに8つとも入っています。M5NanoC6・M5Stamp-C5・M5AtomS3 Liteは
 `Tools > FMP3 Runtime`に`Minimal`と`WiFi`の2つしかありません
@@ -20,12 +20,16 @@ Arduinoボードパッケージです。
 `Bluetooth Classic (SPP)`はESP32の2機種＝M5Stack BasicとATOM Liteのみ）。
 M5AtomS3 Liteで実機確認したのは`Blink`・`GpioInterrupt`・本体RGB LED・
 Wi-Fiスキャンで、**STA接続は未達**です（詳細はdocs/atoms3lite-port.md）。
-**M5Stack ATOM Liteは実機で一度も動かしていません**（板の無い機械で追加し、
-コンパイル・リンクまでの確認。`Minimal`・`WiFi`・`Bluetooth Classic (SPP)`の
-3つが出ます。本体RGB LED（SK6812、G27）の例題は`AtomLiteRgb`。詳細は
-docs/atomlite-port.md）。**M5Stamp-P4 も実機で未確認です**（`Minimal` のみ。2コア SMP で
-起動し、PRC2 が`[P4-CORE2] alive N`を出します。Wi-Fi は AddOn C6 経由の hosted 方式で、
-その層は次の段。詳細は docs/p4-port.md）。
+M5Stack ATOM Liteは`Minimal`・`WiFi`・`Bluetooth Classic (SPP)`の3つが出ます。
+実機で確認したのは`Blink`・`GpioInterrupt`（G23）・本体RGB LED（SK6812、G27。
+例題は`AtomLiteRgb`）・Wi-Fiスキャン・Bluetooth Classic（`discoverable`まで。
+ペアリングは未実施）で、**STA接続は未達**です（AtomS3 Liteとは症状が違い、
+`NO_AP_FOUND`。詳細はdocs/atomlite-port.md）。
+M5Stamp-P4は`Minimal`と`WiFi`の2つです。2コア SMP で起動し、PRC2 が
+`[P4-CORE2] alive N`を出します。**ESP32-P4自身に無線はありません**——`WiFi`は
+SDIOでつないだcompanionの**ESP32-C6（Stamp AddOn C6）**へRPCで渡すhosted方式で、
+**そのadd-onが無いと上がりません**。実機ではスキャンと
+STA接続->DHCP->DNS->TCPまで通っています（詳細は docs/p4-port.md）。
 
 Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカーネルの
 タスクとして動きます。ブート、割込み、スケジューラはFMP3が所有します。
@@ -176,6 +180,7 @@ Linux    ~/.arduino15/packages/toppers
 ```text
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5CoreS3 (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5StickS3 (TOPPERS/FMP3)
+Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5AtomS3Lite (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5Core (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5AtomLite (TOPPERS/FMP3)
 Tools > Board > M5Stack Arduino with TOPPERS/FMP3 > M5NanoC6 (TOPPERS/FMP3)
@@ -195,16 +200,19 @@ ESP32-S3にBR/EDR無線が無いため、S3の3機種では選択肢に出ませ
 `Bluetooth Classic (SPP)`です。** LCDが無いため`M5Unified + Dual Core`は
 ありません。本体RGB LED（SK6812、G27）は`WiFi`構成の`rgbLedWrite()`で
 点きます（例題`AtomLiteRgb`。`Minimal`／`Bluetooth Classic`ではリンクされず、
-例題は`#error`で止まります）。**この機種は実機で未確認です**（上記）。
+例題は`#error`で止まります）。**STA接続は未達です**（上記）。
 
 **M5NanoC6とM5Stamp-C5で選べるFMP3 Runtimeは`Minimal`と`WiFi`だけです。**
 LCDが無いため`M5Unified + Dual Core`は無く、BR/EDR無線が無いため
 `Bluetooth Classic (SPP)`もありません。
 
-**M5Stamp-P4で選べるFMP3 Runtimeは`Minimal`だけです**（2コア SMP）。GPIO API も
-まだありません。`Tools > ChipVariant`はこの板にはありません（stage が
-`esp32p4_es`＝rev v3未満のsilicon用SDKで建っているため固定）。bootloaderはflashの
-0x2000に置きます。**実機未確認**です。
+**M5Stamp-P4で選べるFMP3 Runtimeは`Minimal`と`WiFi`です**（どちらも2コア SMP）。
+`pinMode`／`digitalWrite`／`digitalRead`／`attachInterrupt`は`WiFi`構成にあります
+（例題`GpioInterrupt`、試験ピンG16）。**ESP32-P4自身に無線はありません**——`WiFi`は
+SDIOでつないだcompanionの**ESP32-C6（Stamp AddOn C6）**へRPCで渡すhosted方式で、
+**そのadd-onが無いと`WiFi`構成は上がりません**。`Tools > ChipVariant`はこの板には
+ありません（stage が`esp32p4_es`＝rev v3未満のsilicon用SDKで建っているため固定）。
+bootloaderはflashの0x2000に置きます。
 
 **M5Stamp-C5にはon-boardのRGB LEDがありません。** 例題`NanoC6Gpio`は
 M5Stamp-C5では1行ログを出すだけの no-op です。M5Stamp-C5のGPIOを動かして
@@ -448,13 +456,19 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
   BLEと802.15.4は未着手。ホスト間のバイト単位一致はM5NanoC6と同じく未計測です。
   判断と到達点はソースリポジトリの`docs/c5-port.md`
 
-- **M5Stamp-P4（M5StampP4）は実機未確認**（2026-09-17 に板の無い機械で追加。
-  `Minimal`の3本がリンクし、リンクドライバの像検査 C-1..C-9 を通るまで。ソース
-  リポジトリの`docs/p4-port.md` 6節に実機で見る項目と期待値）
-- **M5Stack ATOM Lite（M5AtomLite）は実機未確認**（2026-09-17 に板の無い機械で
-  追加。3構成 x 例題の14本がリンクし、`Blink`／`BluetoothSPP`の`.bin`が
-  M5Stack Basicとバイト一致することまで。ソースリポジトリの
-  `docs/atomlite-port.md` 6節に実機で見る項目と期待値）
+- **M5Stamp-P4実機**（ESP32-P4 rev v1.3 + Stamp AddOn C6）で、Minimal（`Blink`
+  warm 5/5・真cold 5/5。**2コアSMP**が`Processor 2 start.`と`[P4-CORE2] alive`で
+  見えます）、`attachInterrupt`の自己駆動試験（例題`GpioInterrupt`、G16）、
+  **hosted Wi-Fi**のスキャン（14〜16 AP）とSTA接続 -> DHCP -> DNS -> TCP
+  （warm 3/3・真cold 3/3、DHCPは8〜9秒）。無線を担うのはP4ではなく**SDIOで繋いだ
+  ESP32-C6**で、`[WiFiHosted] companion INIT chip_id=0x0d`が相手と話せている
+  一次証拠です。判断と到達点はソースリポジトリの`docs/p4-port.md`
+- **M5Stack ATOM Lite実機**で、Minimal（`Blink` warm 5/5・真cold 5/5）、
+  `GpioInterrupt`（G23、warm・真coldとも`VERDICT PASS`）、本体RGB LED
+  （SK6812 G27、`AtomLiteRgb`で`tx_done=8`。**点灯と色順はユーザーが目視確認**）、
+  Wi-Fiスキャン（14 AP）、**Bluetooth Classic**（`discoverable`まで。ペアリングは
+  未実施）。**STA接続は未達**で、症状はAtomS3 Liteと違い`NO_AP_FOUND`です。
+  判断と到達点はソースリポジトリの`docs/atomlite-port.md`
 
 未確認: **macOS**でのVerifyとUpload、OTA書き込み、
 WPA2-PSK／WPA3-SAEの追加アクセスポイントでの互換性。

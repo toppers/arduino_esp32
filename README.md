@@ -12,7 +12,7 @@ M5Stack の 8 機種で、Arduino の `setup()` / `loop()` を
 | M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 |
 | M5NanoC6 | ESP32-C6 / RISC-V |
 | M5Stamp-C5 | ESP32-C5 / RISC-V |
-| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア（**Minimal のみ・実機未確認**、下記） |
+| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア（Wi-Fi は C6 add-on 経由の hosted、下記） |
 
 1 つのパッケージに 8 つとも入り、`Tools > Board` で選びます。M5NanoC6 ・
 M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` の
@@ -23,8 +23,10 @@ M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` �
 `Minimal`・`WiFi`・`Bluetooth Classic (SPP)` の 3 構成で、`M5Unified + Dual Core`
 だけありません（画面が無い。この 1 点だけは実機ではなく AtomS3 Lite からの類推です。
 [`docs/atomlite-port.md`](docs/atomlite-port.md) 4 節）。M5Stamp-P4 は
-`Minimal` だけです（2 コア SMP で起動します。Wi-Fi は P4 自身には無く、C6 add-on
-経由の hosted Wi-Fi は次の段。[`docs/p4-port.md`](docs/p4-port.md)）。
+`Minimal` と `WiFi` の 2 構成です（2 コア SMP で起動します。**ESP32-P4 自身に
+無線はありません**——`WiFi` は SDIO でつないだ companion の ESP32-C6
+（Stamp AddOn C6）へ RPC で渡す hosted Wi-Fi で、その add-on が要ります。
+[`docs/p4-port.md`](docs/p4-port.md)）。
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
 スケッチは静的に構成された FMP3 タスクから呼ばれます。
@@ -176,7 +178,10 @@ prebuilt archive、include 配置に依存しています）。
   おり（`cores/` から当該識別子が消え、`arduino-cli compile -b
   m5stack:esp32:m5stack_stamp_p4` が空スケッチを通ることを実測）、値 4 は Tab5 の
   LDO チャネルで本板のものとは限らないため、定義を外して上流の値を継ぐようにしました。
-- **実機未確認**（上記「確認済みの範囲」）。
+- **Wi-Fi は companion 頼みです**: `WiFi` 構成は SDIO で繋いだ
+  **Stamp AddOn C6**（ESP32-C6）へ RPC を投げる hosted 実装で、add-on が無い
+  StampP4 単体では上がりません。実機で確認した範囲（scan / STA -> DHCP ->
+  DNS -> TCP）は上記「確認済みの範囲」。
 
 ## M5Stamp-C5 の既知の制限（2026-09-16）
 
