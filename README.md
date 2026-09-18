@@ -354,6 +354,13 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 | `packaging/` | 配布物の定義と利用者向け手順 |
 | `third_party/fmp3_core` | FMP3 本体（submodule） |
 
+同梱例題のうち [`examples/Fmp3Sample1`](examples/Fmp3Sample1) は、TOPPERS/FMP3 の
+`sample1` に相当する縮約版です（`Minimal` 構成専用）。優先度の違う 3 タスク・
+`slp_tsk`/`wup_tsk`・周期通知・アラーム通知・`chg_pri` を、スケッチから
+`ToppersFMP3_Kernel.h` の薄いラッパ経由で動かします。本家が 31 タスクを cfg で
+静的に宣言し、シリアルのコマンドで動くのに対し、こちらはタスクを実行時に作り、
+周期通知が進行を進めます（理由は例題の README）。
+
 ソースからビルドする手順は [`BUILDING.md`](BUILDING.md) にあります。
 ESP32-C6（M5NanoC6）の判断と到達点は [`docs/c6-port.md`](docs/c6-port.md)、
 ESP32-C5（M5Stamp-C5）は [`docs/c5-port.md`](docs/c5-port.md)、

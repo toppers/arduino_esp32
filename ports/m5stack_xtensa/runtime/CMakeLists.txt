@@ -338,6 +338,13 @@ add_library(seam_objects OBJECT
 if(A1_CHIP_HAS_APPDESC)
     target_sources(seam_objects PRIVATE "${RUNTIME_ROOT}/seam/seam_s3_appdesc.c")
 endif()
+#  minimal profile だけが持つカーネル API ラッパ（例題 Fmp3Sample1 が使う）。
+#  対応する CRE_CYC / CRE_ALM / AID_TSK は app/phase3/phase3_arduino_app.cfg に
+#  あり、その cfg を使うのは minimal だけなので、ここも minimal に閉じる。
+if(FMP3_RUNTIME_PROFILE STREQUAL "minimal")
+    target_sources(seam_objects PRIVATE
+        "${RUNTIME_ROOT}/arduino/arduino_kernel_api.c")
+endif()
 if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
     target_sources(seam_objects PRIVATE
         "${RUNTIME_ROOT}/arduino/arduino_interrupt.c"

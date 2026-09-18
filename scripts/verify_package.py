@@ -82,7 +82,10 @@ MULTI_FILE_SKETCH = "TwoFileSketch"
 #  <project>.cpp.o was taken out of build/sketch. One profile is enough - the
 #  object collection it exercises does not vary by profile.
 PROFILES = {
-    "minimal": ["Blink", "LibraryInfo", MULTI_FILE_SKETCH],
+    #  Fmp3Sample1 is on minimal alone: the kernel-API wrapper it calls
+    #  (toppers_fmp3_task_create and friends) is linked into that stage only,
+    #  and so are the CRE_CYC / CRE_ALM / AID_TSK its cfg declares.
+    "minimal": ["Blink", "LibraryInfo", MULTI_FILE_SKETCH, "Fmp3Sample1"],
     #  GpioInterrupt (pinMode/digitalWrite/digitalRead + a self-driven
     #  attachInterrupt test) is on every profile that links
     #  arduino_interrupt.o / arduino_gpio.o, i.e. everything but minimal:

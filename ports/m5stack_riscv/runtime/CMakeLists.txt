@@ -1047,6 +1047,14 @@ if(A1_CHIP_NEWLIB_SYSCALLS)
     target_sources(seam_objects PRIVATE
         "${RUNTIME_ROOT}/seam/newlib_syscalls.c")
 endif()
+#  minimal profile だけが持つカーネル API ラッパ（例題 Fmp3Sample1 が使う）。
+#  対応する CRE_CYC / CRE_ALM / AID_TSK は app/phase3*/phase3_arduino_app.cfg に
+#  あり、その cfg を使うのは minimal だけなので、ここも minimal に閉じる。
+#  Xtensa 側 (ports/m5stack_xtensa/runtime/CMakeLists.txt) と同じ扱い。
+if(FMP3_RUNTIME_PROFILE STREQUAL "minimal")
+    target_sources(seam_objects PRIVATE
+        "${RUNTIME_ROOT}/arduino/arduino_kernel_api.c")
+endif()
 target_link_libraries(seam_objects PRIVATE seam_common)
 add_dependencies(seam_objects generate_cfg_gen_files)
 
