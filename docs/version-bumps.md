@@ -161,3 +161,28 @@ esptool 自身が別経路で報告する `Crystal frequency: 40MHz` と一致�
 > スケッチ自身の判定で、**画面に出ていることまでは自動では言えません**。
 > 前回（2026-09-18・0.2.27）はユーザーが目視で確認しています。0.2.29 では
 > SPI クロックの元になる XTAL 値が上のとおり正しいところまでを機械で確認しました。
+
+### 9. リリース形の verify（利用者と同じ経路・116 builds）
+
+```
+PASSED: 116 builds from the installed package on x86_64-pc-linux-gnu (116 planned)
+```
+
+package index を作り、loopback HTTP で配って Boards Manager からインストールし、
+そのうえでスケッチを建てる経路です。**検証対象を一意にする**ため、手で入れた
+`~/Arduino/hardware/toppers/esp32`（Boards Manager 版と同じ `toppers:esp32` を
+名乗る）と `~/Arduino/libraries/ToppersFMP3-M5Stack`（同名のライブラリが
+platform 内にも入る）の**両方を先に撤去**し、パッケージ版だけが存在する状態で
+回しました。終了後に core を uninstall して手元の platform とライブラリを戻し、
+`m5cores3_fmp3:FMP3Runtime=m5` の `M5Unified` が建つところまで確認しています。
+
+M5Stack core / M5GFX / M5Unified の導入も skip せずこの経路で行っており、
+ログに `Platform m5stack:esp32@3.3.9` / `M5GFX@0.2.29` / `M5Unified@0.2.22` が
+出ます——**固定した版がそのまま導入できる**ことも同時に確かめています。
+
+### 10. X-check のベースラインを採り直した（13 ステージ・5 チップ）
+
+バンプ後のコミット（クリーンツリー）で `--force --clean` で採り直し、
+**ESP32-P4 を初めてベースラインに入れた**（従来は 11 ステージ＝ 4 チップで、
+P4 は `ignored (not in baseline)` だった）。`--clean` の完全再ビルドが
+直前に建てたものとバイト一致し、自己照合も 13/13 MATCH。
