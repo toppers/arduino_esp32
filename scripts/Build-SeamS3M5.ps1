@@ -77,7 +77,7 @@ param(
     [string]$CMake = '',
     [string]$Ninja = '',
     [string]$ArduinoData = '',
-    [string]$CoreVersion = '3.3.8',
+    [string]$CoreVersion = '3.3.9',
 
     #  m5-unified and all-in-one compile M5GFX and M5Unified themselves.
     [string]$M5GfxSource = '',

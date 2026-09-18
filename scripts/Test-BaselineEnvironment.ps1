@@ -69,7 +69,7 @@ function Invoke-VersionCommand {
     Write-Host ('       {0}: {1}' -f $Label, $firstLine)
 }
 
-$arduinoCore = Join-Path $M5StackPackage 'hardware\esp32\3.3.8'
+$arduinoCore = Join-Path $M5StackPackage 'hardware\esp32\3.3.9'
 #  Both chips, because the suite now builds for both. Checking only the S3
 #  compiler said the environment was complete on a machine that could not
 #  build a thing for the M5Core.
@@ -91,7 +91,7 @@ Test-RequiredPath 'fmp3_core submodule' (
     Join-Path $SourceTree 'third_party\fmp3_core\CMakeLists.txt') | Out-Null
 Test-RequiredPath 'vendored runtime' (
     Join-Path $SourceTree 'ports\m5stack_xtensa\runtime\CMakeLists.txt') | Out-Null
-Test-RequiredPath 'M5Stack Arduino core 3.3.8' $arduinoCore | Out-Null
+Test-RequiredPath 'M5Stack Arduino core 3.3.9' $arduinoCore | Out-Null
 Test-RequiredPath 'M5Stack boards.txt' $boardFile | Out-Null
 Test-RequiredPath 'M5Stack platform.txt' $platformFile | Out-Null
 foreach ($entry in $toolchains.GetEnumerator()) {

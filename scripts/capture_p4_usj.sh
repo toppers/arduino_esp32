@@ -11,7 +11,7 @@
 #  unlike scripts/capture_c5_usj.sh this one has no default DUT: DUT_MAC is
 #  required, and the script writes nothing until esptool has read that MAC
 #  back from the port it is about to write to. What it needs on the host:
-#  bash, the M5Stack core 3.3.8 in the Arduino data directory (its esptool
+#  bash, the M5Stack core 3.3.9 in the Arduino data directory (its esptool
 #  binary), stty and cat (the capture is a plain read of the tty; no
 #  pyserial, no esp_idf_monitor), and a sketch built with arduino-cli
 #  (--output-dir <dir> gives the three images).

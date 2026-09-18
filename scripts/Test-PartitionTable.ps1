@@ -32,7 +32,7 @@ param(
     #  FMP3 platform, falling back to the M5Stack core.
     [string]$ToolsDirectory = '',
     [string]$ArduinoData = '',
-    [string]$CoreVersion = '3.3.8',
+    [string]$CoreVersion = '3.3.9',
 
     [string]$WorkDirectory = ''
 )

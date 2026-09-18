@@ -48,10 +48,13 @@ from pathlib import Path
 
 M5STACK_INDEX = ("https://static-cdn.m5stack.com/resource/arduino/"
                  "package_m5stack_index.json")
-CORE_VERSION = "3.3.8"
+CORE_VERSION = "3.3.9"
 #  Pinned: the m5-unified stage is compiled against these sources, and a later
-#  version can call into the SDK in ways the stage does not resolve.
-LIBRARY_VERSIONS = {"M5GFX": "0.2.27", "M5Unified": "0.2.20"}
+#  version can call into the SDK in ways the stage does not resolve (M5GFX
+#  0.2.28 added rtc_clk_xtal_freq_get, and the i2c_master_get_bus_handle /
+#  esp_log_level_get / esp_log_level_set trio; all four are stubbed in
+#  ports/m5stack_xtensa/runtime/m5/shim/m5_idf_stubs.c).
+LIBRARY_VERSIONS = {"M5GFX": "0.2.29", "M5Unified": "0.2.22"}
 
 #  menu option -> example sketches built against it
 #
@@ -510,10 +513,11 @@ def main() -> int:
         run(cli + ["core", "install", f"toppers:esp32@{args.version}",
                    "--additional-urls", urls], "installing the FMP3 platform")
         if not args.skip_libraries:
-            #  --no-deps is REQUIRED, not tidiness. M5Unified 0.2.20 declares
-            #  a bare "depends=M5GFX" with no version constraint, so dependency
-            #  resolution installs the newest M5GFX and REPLACES the pinned one
-            #  that was requested on the same command line. The first Linux run
+            #  --no-deps is REQUIRED, not tidiness. M5Unified declares its
+            #  M5GFX dependency with no upper bound (0.2.20 a bare
+            #  "depends=M5GFX", 0.2.22 "depends=M5GFX (>=0.2.29)"), so
+            #  dependency resolution installs the newest M5GFX and REPLACES
+            #  the pinned one that was requested on the same command line. The first Linux run
             #  (2026-08-29) showed it happening:
             #
             #      Installing M5GFX@0.2.27...

@@ -124,7 +124,7 @@ CHIPS = {
                   sdk_headers_always=False,
                   profiles=frozenset(ALL_PROFILES)),
     #  ESP32-C6 (RISC-V, single core). The tool and SDK names are the M5Stack
-    #  core's (esp-rv32 2601, esp32c6-libs 3.3.8); the port directory and the
+    #  core's (esp-rv32 2601, esp32c6-libs 3.3.9); the port directory and the
     #  toolchain file are what the C6 port adds under ports/m5stack_riscv.
     #  No M5Unified profile: the M5NanoC6 has no display. minimal and
     #  wifi-connect, the two the port's CMakeLists stages (D11); a row that
@@ -137,7 +137,7 @@ CHIPS = {
                     profiles=frozenset({"minimal", "wifi-connect"})),
     #  ESP32-C5 (RISC-V, single core, CLIC). Same tool directory and
     #  compiler as the C6 (the M5Stack core's esp-rv32 2601 serves every
-    #  RISC-V chip; the SDK is esp32c5-libs 3.3.8), same port directory
+    #  RISC-V chip; the SDK is esp32c5-libs 3.3.9), same port directory
     #  (ports/m5stack_riscv is a chip branch: C5 plan A2), its own
     #  toolchain file. minimal and wifi-connect, the same pair as the C6
     #  (the M5Stamp-C5 has no display either; wifi-connect is C5 plan
@@ -149,7 +149,7 @@ CHIPS = {
                     sdk_headers_always=True,
                     profiles=frozenset({"minimal", "wifi-connect"})),
     #  ESP32-P4 (RISC-V, dual core, CLIC). Same tool directory and compiler
-    #  as the C6 / C5; the SDK is esp32p4_es-libs 3.3.8 (arduino_sdk
+    #  as the C6 / C5; the SDK is esp32p4_es-libs 3.3.9 (arduino_sdk
     #  SDK_TOOL_NAMES: the pre-v3-silicon variant the M5Stamp-P4's default
     #  ChipVariant selects), the port directory is the same chip branch
     #  (StampP4 plan stage A1), its own toolchain file. minimal only for
@@ -205,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--cmake", default="")
     parser.add_argument("--ninja", default="")
     parser.add_argument("--arduino-data", default="")
-    parser.add_argument("--core-version", default="3.3.8")
+    parser.add_argument("--core-version", default="3.3.9")
     parser.add_argument("--m5gfx-source", default="")
     parser.add_argument("--m5unified-source", default="")
     #  Stages are laid out per chip, because a second board (plain M5Core, LX6)

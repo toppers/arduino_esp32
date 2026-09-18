@@ -59,15 +59,15 @@ STAGES = {
 CHIP_TOOLS = {
     "esp32c6": [
         {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
-        {"packager": "m5stack", "name": "esp32c6-libs", "version": "3.3.8"},
+        {"packager": "m5stack", "name": "esp32c6-libs", "version": "3.3.9"},
     ],
     "esp32c5": [
         {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
-        {"packager": "m5stack", "name": "esp32c5-libs", "version": "3.3.8"},
+        {"packager": "m5stack", "name": "esp32c5-libs", "version": "3.3.9"},
     ],
     "esp32p4": [
         {"packager": "m5stack", "name": "esp-rv32", "version": "2601"},
-        {"packager": "m5stack", "name": "esp32p4_es-libs", "version": "3.3.8"},
+        {"packager": "m5stack", "name": "esp32p4_es-libs", "version": "3.3.9"},
     ],
 }
 XTENSA_BOARDS = {"m5cores3_fmp3": "esp32s3", "m5sticks3_fmp3": "esp32s3",
@@ -291,7 +291,7 @@ class PlatformContents(unittest.TestCase):
         code, out = release.run()
         self.assertEqual(code, 1, out)
         self.assertNotIn("esp-rv32@2601, which", out)
-        self.assertIn("does not declare tool m5stack:esp32c5-libs@3.3.8", out)
+        self.assertIn("does not declare tool m5stack:esp32c5-libs@3.3.9", out)
 
     def test_c6_stages_without_the_tools_fail(self):
         #  The negative that matters: the same release, tools not declared.
@@ -301,7 +301,7 @@ class PlatformContents(unittest.TestCase):
         code, out = release.run()
         self.assertEqual(code, 1, out)
         self.assertIn("does not declare tool m5stack:esp-rv32@2601", out)
-        self.assertIn("does not declare tool m5stack:esp32c6-libs@3.3.8", out)
+        self.assertIn("does not declare tool m5stack:esp32c6-libs@3.3.9", out)
         #  One of the two declared is still a failure naming the other.
         (self.root / "half").mkdir()
         release = Release(self.root / "half", stages=STAGES_WITHOUT_C5,
@@ -310,7 +310,7 @@ class PlatformContents(unittest.TestCase):
         code, out = release.run()
         self.assertEqual(code, 1, out)
         self.assertNotIn("esp-rv32@2601, which", out)
-        self.assertIn("does not declare tool m5stack:esp32c6-libs@3.3.8", out)
+        self.assertIn("does not declare tool m5stack:esp32c6-libs@3.3.9", out)
 
     def test_xtensa_only_release_needs_no_c6_tools(self):
         #  Without C6 stages the C6 tools are not required, and the report

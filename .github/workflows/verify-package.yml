@@ -33,12 +33,14 @@ on:
 
 env:
   M5STACK_INDEX: https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
-  CORE_VERSION: 3.3.8
+  CORE_VERSION: 3.3.9
   #  Pinned because the m5-unified stage is compiled against these sources; a
   #  different version can add calls the stage does not resolve (M5Unified
-  #  0.2.20 added adc_oneshot_del_unit, which needed a new stub).
-  M5GFX_VERSION: 0.2.27
-  M5UNIFIED_VERSION: 0.2.20
+  #  0.2.20 added adc_oneshot_del_unit, and M5GFX 0.2.28 added
+  #  rtc_clk_xtal_freq_get plus the i2c_master / esp_log_level pair - each
+  #  needed a new stub in m5/shim/m5_idf_stubs.c).
+  M5GFX_VERSION: 0.2.29
+  M5UNIFIED_VERSION: 0.2.22
 
 jobs:
   package:
@@ -85,13 +87,14 @@ jobs:
         run: |
           arduino-cli core update-index --additional-urls "$M5STACK_INDEX"
           arduino-cli core install "m5stack:esp32@$CORE_VERSION" --additional-urls "$M5STACK_INDEX"
-          #  --no-deps is required. M5Unified 0.2.20 declares a bare
-          #  "depends=M5GFX" with no version constraint, so without it the
-          #  resolver installs the newest M5GFX and REPLACES the pinned one
-          #  named on this very command line - and this job compiles the
-          #  m5-unified stage against those sources, so the pin above would be
-          #  silently ignored. Observed on a Linux verify run 2026-08-29:
-          #  "Replacing M5GFX@0.2.27 with M5GFX@0.2.28".
+          #  --no-deps is required. M5Unified declares its M5GFX dependency
+          #  without an upper bound (0.2.20 a bare "depends=M5GFX", 0.2.22
+          #  "depends=M5GFX (>=0.2.29)"), so without it the resolver installs
+          #  the newest M5GFX and REPLACES the pinned one named on this very
+          #  command line - and this job compiles the m5-unified stage against
+          #  those sources, so the pin above would be silently ignored.
+          #  Observed on a Linux verify run 2026-08-29: "Replacing
+          #  M5GFX@0.2.27 with M5GFX@0.2.28".
           arduino-cli lib install --no-deps "M5GFX@$M5GFX_VERSION" "M5Unified@$M5UNIFIED_VERSION"
 
       - name: Build the prebuilt stages for every chip

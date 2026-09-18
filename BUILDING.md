@@ -7,10 +7,10 @@
 
 | 必要なもの | 備考 |
 | --- | --- |
-| M5Stack Arduino core **3.3.8** | ツールチェーンと ESP-IDF v5.5.4 の成果物を供給する |
+| M5Stack Arduino core **3.3.9** | ツールチェーンと ESP-IDF v5.5.4 の成果物を供給する |
 | CMake / Ninja | ステージ生成にのみ使う |
 | Python 3.9 以上 | 同上 |
-| `M5GFX` 0.2.27 / `M5Unified` 0.2.20 | `M5Unified` 構成のステージが必要とする |
+| `M5GFX` 0.2.29 / `M5Unified` 0.2.22 | `M5Unified` 構成のステージが必要とする |
 
 submodule を先に取得してください。
 
@@ -57,8 +57,8 @@ python scripts/build_prebuilt_stages.py --chip esp32c6
 
 `--chip esp32c6` の既定 profile は `minimal` / `wifi-connect` の 2 つだけです
 （`m5-unified` / `bt-classic` は選べません。D11）。トゥールチェーンは
-M5Stack Arduino core 3.3.8 が同梱する `esp-rv32` 2601 と `esp32c6-libs`
-3.3.8 で、他の 3 ボードと同じ core から取れます（別途取得は不要）。
+M5Stack Arduino core 3.3.9 が同梱する `esp-rv32` 2601 と `esp32c6-libs`
+3.3.9 で、他の 3 ボードと同じ core から取れます（別途取得は不要）。
 
 `wifi-connect` stage には、Wi-Fi 一式に加えて M5NanoC6 の GPIO API が入ります
 （段6）: `ports/m5stack_riscv/runtime/arduino/arduino_gpio.c`（`pinMode` /
@@ -108,8 +108,8 @@ python scripts/build_prebuilt_stages.py --chip esp32c5
 
 `--chip esp32c5` の既定 profile も `minimal` / `wifi-connect` の 2 つだけです
 （`m5-unified` / `bt-classic` は選べません。C5 計画 A10）。トゥールチェーンは
-M5NanoC6 と**同じ** `esp-rv32` 2601 で、SDK だけが `esp32c5-libs` 3.3.8 に
-変わります。どちらも M5Stack Arduino core 3.3.8 に同梱されているので、
+M5NanoC6 と**同じ** `esp-rv32` 2601 で、SDK だけが `esp32c5-libs` 3.3.9 に
+変わります。どちらも M5Stack Arduino core 3.3.9 に同梱されているので、
 別途取得は要りません。
 
 C5 は `ports/m5stack_riscv/runtime` の**チップ分岐**であって、別ポートの
@@ -147,7 +147,7 @@ python scripts/build_prebuilt_stages.py --chip esp32p4
 
 `--chip esp32p4` の profile は **`minimal` だけ**です（StampP4 計画 段A。`wifi-connect`
 ＝AddOn C6 経由の hosted Wi-Fi は段B）。トゥールチェーンは C6 / C5 と同じ `esp-rv32`
-2601 で、SDK は **`esp32p4_es-libs` 3.3.8**（rev v3 未満の silicon 用。上流の
+2601 で、SDK は **`esp32p4_es-libs` 3.3.9**（rev v3 未満の silicon 用。上流の
 `m5stack_stamp_p4` 行の既定 `chip_variant`。`scripts/arduino_sdk.py` の
 `SDK_TOOL_NAMES` が chip 名から引く）。P4 の chip 層（dev 由来）は IDF ヘッダを読まず
 ROM ld も要らないので、SDK からは bootloader と存在証明だけを使います。
@@ -163,11 +163,14 @@ X-check 11/11 MATCH）。`prebuilt_stage_p4.cmake` は xip ld の `INCLUDE` 断�
 写しへインラインします（GNU ld は INCLUDE をカレントと -L からしか探さず、利用者側の
 リンクはどちらも持たない）。
 
-**上流 core 3.3.8 の欠陥**: `m5stack_stamp_p4` は空のスケッチでも
-`esp32-hal-spi.c:299` の `BOARD_SDMMC_POWER_CHANNEL` 未定義で落ちます（実測）。本板の
-行は `build.extra_flags.esp32p4` に `-DBOARD_SDMMC_POWER_CHANNEL=4` を足して回避
-（`install_platform.BOARD_BUILD_OVERRIDES`。値は FMP3 のリンクに入りません）。
-core の版を上げるときに要再確認。
+**上流 core 3.3.8 の欠陥（3.3.9 で解消）**: 3.3.8 では `m5stack_stamp_p4` が空の
+スケッチでも `esp32-hal-spi.c:299` の `BOARD_SDMMC_POWER_CHANNEL` 未定義で落ちたため、
+本板の行は `build.extra_flags.esp32p4` に `-DBOARD_SDMMC_POWER_CHANNEL=4` を足して
+回避していました。3.3.9 では当該識別子が `cores/` から消えており（`SD_MMC.cpp` は
+`#if defined(...)` の下でだけ読む）、`arduino-cli compile -b
+m5stack:esp32:m5stack_stamp_p4` が空スケッチを通ることを実測したので、回避は外して
+あります（`install_platform.BOARD_BUILD_OVERRIDES`）。**core の版を上げるときは同じ
+確認を再度行うこと。**
 
 ### ステージを建て直すときは tree hash を前後で採る
 
@@ -558,7 +561,7 @@ PY
 
 ### 依存の固定
 
-- **M5Stack Arduino core は 3.3.8 固定です。** 同梱 ESP-IDF v5.5.4 の
+- **M5Stack Arduino core は 3.3.9 固定です。** 同梱 ESP-IDF v5.5.4 の
   **private な Wi-Fi ABI**、prebuilt archive、include 配置に依存しています。
   version を上げるには、この 3 つと board recipe を全面的に再検証する必要が
   あります。「ビルドが通った」では足りません。

@@ -763,7 +763,7 @@ def write_partition_table(csv_path: Path, bin_path: Path) -> None:
 #  like a board that does nothing. So the conditions are checked here, on the
 #  bytes that would be flashed, and a violation stops the build with the
 #  condition named. Each condition cites the bootloader source it comes from
-#  (ESP-IDF v5.5.4, the version the M5Stack core 3.3.8 bundles):
+#  (ESP-IDF v5.5.4, the version the M5Stack core 3.3.9 bundles):
 #
 #    C-1  exactly two segments are mapped from flash
 #         (bootloader_utility.c:836,843: assert(rom_index < 2) while
@@ -828,12 +828,12 @@ class ImageLayout(NamedTuple):
 #  esp32c6: soc.h:154-165 (SOC_IROM_LOW 0x42000000, 256 pages of 64 KB;
 #  SOC_IRAM_LOW/HIGH 0x40800000/0x40880000), bootloader.ld:48
 #  (bootloader_iram_loader_seg_start == 0x4086E610), sdkconfig of
-#  esp32c6-libs 3.3.8 (CONFIG_MMU_PAGE_SIZE=0x10000).
+#  esp32c6-libs 3.3.9 (CONFIG_MMU_PAGE_SIZE=0x10000).
 #  esp32c5: soc.h:148-161 (SOC_IROM_LOW/HIGH 0x42000000/0x44000000, DROM ==
 #  IROM, a fixed 32 MiB window; SOC_IRAM_LOW/HIGH 0x40800000/0x40860000,
 #  384 KiB), bootloader.ld:48 (bootloader_iram_loader_seg_start ==
 #  0x4084E5A0; the same address in all four bootloader_*.elf of esp32c5-libs
-#  3.3.8, .iram_loader.text at 0x4084e5a0), sdkconfig of esp32c5-libs 3.3.8
+#  3.3.9, .iram_loader.text at 0x4084e5a0), sdkconfig of esp32c5-libs 3.3.9
 #  (CONFIG_MMU_PAGE_SIZE=0x10000; the C5 has no SOC_MMU_PAGE_SIZE_CONFIGURABLE,
 #  so the bootloader uses that value unconditionally). C-9: chip_id
 #  ESP_CHIP_ID_ESP32C5 = 0x0017 (esp_app_format.h:28); the M5Stamp-C5 is
@@ -857,10 +857,10 @@ FIXED_VMA_LAYOUTS = {
     #  esp32p4 (StampP4 plan P6): soc.h:152-155 (SOC_IROM_LOW/HIGH ==
     #  SOC_DROM_LOW/HIGH 0x40000000/0x44000000, one shared D/I window),
     #  soc.h:167-170 (SOC_IRAM_LOW/HIGH 0x4ff00000/0x4ffc0000, 768 KiB),
-    #  bootloader_qio_80m.elf of esp32p4_es-libs 3.3.8 (.iram_loader.text at
+    #  bootloader_qio_80m.elf of esp32p4_es-libs 3.3.9 (.iram_loader.text at
     #  0x4ff2cbd0 = bootloader_iram_loader_seg_start, the same value the dev
     #  repository's esp32p4_xip.ld and its own bootloader assert), sdkconfig
-    #  of esp32p4_es-libs 3.3.8 (CONFIG_MMU_PAGE_SIZE=0x10000). C-9: chip_id
+    #  of esp32p4_es-libs 3.3.9 (CONFIG_MMU_PAGE_SIZE=0x10000). C-9: chip_id
     #  ESP_CHIP_ID_ESP32P4 = 0x0012 (esp_app_format.h:27); the M5Stamp-P4 is
     #  chip revision v1.3 = 103 (dev P4 stage 2 efuse readout; the ES SDK is
     #  built for REV_MIN_FULL 1, REV_MAX_FULL 199). The P4 is the chip whose
@@ -1221,7 +1221,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="board flash size; overrides the manifest")
     parser.add_argument("--arduino-data", default="",
                         help="Arduino data directory holding packages/")
-    parser.add_argument("--core-version", default="3.3.8")
+    parser.add_argument("--core-version", default="3.3.9")
     parser.add_argument("--keep-work", action="store_true",
                         help="keep the staged objects for inspection")
     parser.add_argument("--partitions", nargs=2, metavar=("CSV", "BIN"),

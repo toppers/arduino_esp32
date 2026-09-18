@@ -31,7 +31,7 @@ integration sources, configuration headers, and compatibility headers under
 `ports/m5stack_xtensa/runtime/wifi`, selected from the same `esp32_s3` source
 commit. Original Espressif and project file headers are retained. At build time they
 link Wi-Fi driver, coexistence, PHY, lwIP, and related binary archives supplied by
-M5Stack Arduino core 3.3.8; those archives are not copied into the Release ZIP.
+M5Stack Arduino core 3.3.9; those archives are not copied into the Release ZIP.
 
 The WPA2 Connect profile includes `libsupplicant.a` and `libmbedcrypto.a` under
 `ports/m5stack_xtensa/runtime/wifi/prebuilt/wpa2`. They were built from ESP-IDF
@@ -58,7 +58,7 @@ repository:
 - the remaining, non-vendored parts of the `esp32_s3` port
   (`https://github.com/toppers/fmp3_esp_idf.git`)
 - `h7ga40/Arduino_TOPPERS_ASP_FreeRTOS_API` (TOPPERS license in file headers)
-- M5Stack Arduino-ESP32 core 3.3.8
+- M5Stack Arduino-ESP32 core 3.3.9
 - M5Unified and M5GFX submodules referenced by `esp32_s3`
 
 When source code is imported or adapted, preserve its file header, record the exact
@@ -88,7 +88,7 @@ repository (the former derived from `ports/m5stack_xtensa/app/phase3`), not take
 the development repository; see the same provenance file for details. At build time
 the port compiles and links against the RISC-V toolchain (`esp-rv32`) and the ESP32-C6
 SDK headers, linker scripts and libraries (`esp32c6-libs`) that the M5Stack Arduino
-core 3.3.8 installs; none of those files are copied into this repository or into the
+core 3.3.9 installs; none of those files are copied into this repository or into the
 Release ZIP.
 
 ## ESP32-C5 (M5Stamp-C5) port
@@ -107,7 +107,7 @@ modified), recorded file by file in the C5 section of
 `runtime/arduino/arduino_interrupt_c5.{c,cfg,h}` and `runtime/arduino/arduino_gpio_c5.c`
 were newly written for this repository from their C6 counterparts. At build time the
 port uses the RISC-V toolchain (`esp-rv32`) and the ESP32-C5 SDK (`esp32c5-libs`) of the
-M5Stack Arduino core 3.3.8, which are not copied into this repository or the Release ZIP.
+M5Stack Arduino core 3.3.9, which are not copied into this repository or the Release ZIP.
 
 ## ESP32-P4 (M5Stamp-P4) port
 
@@ -127,7 +127,7 @@ file in [`ports/m5stack_riscv/runtime/IMPORT_PROVENANCE_p4.md`](ports/m5stack_ri
 `app/phase3_p4/` were newly written for this repository from their C5 counterparts. At
 build time the port uses the RISC-V toolchain (`esp-rv32`) and the ESP32-P4 SDK
 (`esp32p4_es-libs`: its second-stage bootloader is what the board is flashed with) of the
-M5Stack Arduino core 3.3.8, which are not copied into this repository or the Release ZIP.
+M5Stack Arduino core 3.3.9, which are not copied into this repository or the Release ZIP.
 
 ### 段3: wifi-connect profile の追加出典（2026-09-15）
 
@@ -142,7 +142,7 @@ esp-idf 原本の同梱（D8 の逸脱）は、この段でさらに 3 本増え
 `#include` する lwIP contrib のヘッダ 3 本（`ping.h` `tcpecho_raw.h` `udpecho_raw.h`、
 `runtime/wifi/net/lwip_contrib_include/`）。出典は ESP-IDF v5.5.4 submodule に入れ子になっている
 lwIP submodule（`fd432e4ee2`）の `contrib/apps/{ping,tcpecho_raw,udpecho_raw}/`、
-BSD-3-Clause。M5Stack Arduino core 3.3.8 の SDK は lwIP contrib apps のヘッダを含まないため
+BSD-3-Clause。M5Stack Arduino core 3.3.9 の SDK は lwIP contrib apps のヘッダを含まないため
 （実体は `liblwip.a` の中にある）、ヘッダだけを補って同梱している。D8 の逸脱
 （`BUILDING.md`「ESP-IDF を複製しない」からの逸脱）は、esp-idf 原本 6 本（Apache-2.0:
 `periph_ctrl.c` `modem_clock.c` `modem_clock_hal.c` `efuse_hal.c` `efuse_hal_esp32c6.c`
@@ -232,7 +232,7 @@ mbedTLS 3.6.5 Apache-2.0 OR GPL-2.0-or-later、lwIP BSD-3-Clause、ESP-IDF の�
   （段5 判断 S5-4。理由は
   [`ports/m5stack_riscv/runtime/wifi/prebuilt/lwip/README.md`](ports/m5stack_riscv/runtime/wifi/prebuilt/lwip/README.md)）。
 - ビルド時に使う RISC-V トゥールチェーン `esp-rv32` 2601 と SDK `esp32c5-libs`
-  3.3.8 は M5Stack Arduino core 3.3.8 の物で、本リポジトリにも Release ZIP にも
+  3.3.9 は M5Stack Arduino core 3.3.9 の物で、本リポジトリにも Release ZIP にも
   複製しない（`packaging/release-allowlist.json` の `chipToolDependencies.esp32c5`
   が、C5 のステージを配るときに index がこの 2 つを要求することを検査する）。
 

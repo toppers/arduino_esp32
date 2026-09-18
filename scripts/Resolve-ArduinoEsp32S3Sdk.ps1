@@ -6,7 +6,7 @@
 [CmdletBinding()]
 param(
     [string]$ArduinoData = '',
-    [string]$CoreVersion = '3.3.8',
+    [string]$CoreVersion = '3.3.9',
 
     #  The core ships one SDK tree per chip, laid out identically and
     #  named for the chip both in the tool directory and in the linker

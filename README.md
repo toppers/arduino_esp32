@@ -41,7 +41,7 @@ https://github.com/toppers/arduino_esp32/releases/latest/download/package_topper
 
 そのうえで `Boards Manager` から順に入れます。
 
-1. `M5Stack` を検索して **3.3.8** を `Install`
+1. `M5Stack` を検索して **3.3.9** を `Install`
 2. `TOPPERS/FMP3 M5Stack boards` を検索して `Install`
 
 **M5Stack core は自動では入りません。** このボードは Arduino の *core reference*
@@ -53,7 +53,7 @@ Verify の開始直後に次で止まります。
 Invalid FQBN: missing platform release m5stack:esp32 referenced by board ...
 ```
 
-**3.3.8 以外は使えません**（同梱 ESP-IDF v5.5.4 の private な Wi-Fi ABI、
+**3.3.9 以外は使えません**（同梱 ESP-IDF v5.5.4 の private な Wi-Fi ABI、
 prebuilt archive、include 配置に依存しています）。
 
 ツールチェーンと esptool は Boards Manager が自動で取得します。**スケッチの
@@ -169,10 +169,13 @@ prebuilt archive、include 配置に依存しています）。
   ありません**（上流 core にはある。stage が `esp32p4_es`＝rev v3 未満の silicon 用 SDK で
   建っているため、この板は `esp32p4_es` に固定してあります。rev v3 以降の P4 では
   動かない可能性があります）。
-- **M5Stack core 3.3.8 自体の欠陥を回避しています**: 上流の `m5stack_stamp_p4` 板は
-  空のスケッチでも `esp32-hal-spi.c` のコンパイルで落ちます（`BOARD_SDMMC_POWER_CHANNEL`
-  未定義）。本板は `-DBOARD_SDMMC_POWER_CHANNEL=4` を足して回避しています（FMP3 の
-  リンクは core のオブジェクトを取らないので値は使われません）。
+- **core 3.3.8 の欠陥の回避は 3.3.9 で外しました**: 3.3.8 では上流の
+  `m5stack_stamp_p4` 板が空のスケッチでも `esp32-hal-spi.c` のコンパイルで落ちた
+  ため（`BOARD_SDMMC_POWER_CHANNEL` 未定義）、本板は
+  `-DBOARD_SDMMC_POWER_CHANNEL=4` を足して回避していました。3.3.9 は上流で直って
+  おり（`cores/` から当該識別子が消え、`arduino-cli compile -b
+  m5stack:esp32:m5stack_stamp_p4` が空スケッチを通ることを実測）、値 4 は Tab5 の
+  LDO チャネルで本板のものとは限らないため、定義を外して上流の値を継ぐようにしました。
 - **実機未確認**（上記「確認済みの範囲」）。
 
 ## M5Stamp-C5 の既知の制限（2026-09-16）
@@ -300,7 +303,8 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   同梱していますが、`x86_64-apple-darwin` 向けは含まれていません。
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の
   tick とは単位が異なります。
-- M5Stack Arduino core は **3.3.8 固定**です。
+- M5Stack Arduino core は **3.3.9 固定**、`M5GFX` は **0.2.29**、`M5Unified` は
+  **0.2.22** 固定です（上げたときの測定は [`docs/version-bumps.md`](docs/version-bumps.md)）。
 - **Bluetooth は Classic (SPP) だけで、M5Core 限定です。** BR/EDR 無線は
   ESP32 にしかなく、ESP32-S3 は BLE のみですが、BLE はどのボードにも
   入っていません。
@@ -324,6 +328,8 @@ ESP32-C5（M5Stamp-C5）は [`docs/c5-port.md`](docs/c5-port.md)、
 M5AtomS3 Lite は [`docs/atoms3lite-port.md`](docs/atoms3lite-port.md)、
 M5Stack ATOM Lite は [`docs/atomlite-port.md`](docs/atomlite-port.md)、
 ESP32-P4（M5Stamp-P4）は [`docs/p4-port.md`](docs/p4-port.md)。
+固定している依存（M5Stack core・M5GFX・M5Unified）を上げたときに何を測ったかは
+[`docs/version-bumps.md`](docs/version-bumps.md)。
 
 ## ライセンス
 

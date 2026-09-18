@@ -69,7 +69,7 @@ BOARDS = {
                       "M5CoreS3 (TOPPERS/FMP3)", "m5stack_cores3"),
     "m5sticks3_fmp3": ("esp32s3", "m5stack_sticks3",
                        "M5StickS3 (TOPPERS/FMP3)", "m5stack_sticks3"),
-    #  ESP32-S3, no display, no PSRAM. The M5Stack core 3.3.8 has no
+    #  ESP32-S3, no display, no PSRAM. The M5Stack core 3.3.9 has no
     #  m5stack_atoms3lite board at all (only m5stack_atoms3 and
     #  m5stack_atoms3r), so this derives from m5stack_atoms3: same chip, same
     #  8MB flash, same qio_qspi memory type and the same upload sizes as the
@@ -93,7 +93,7 @@ BOARDS = {
     "m5atomlite_fmp3": ("esp32", "m5stack_atom",
                         "M5AtomLite (TOPPERS/FMP3)", "m5stack_atom"),
     #  ESP32-C6 (RISC-V). Derived from the M5Stack core's m5stack_nano_c6
-    #  (boards.txt 3.3.8: tarch=riscv32, mcu=esp32c6, 4MB flash), which is
+    #  (boards.txt 3.3.9: tarch=riscv32, mcu=esp32c6, 4MB flash), which is
     #  what makes {compiler.path} and {compiler.sdk.path} resolve to the
     #  RISC-V toolchain and esp32c6-libs without anything chip-specific in
     #  platform.txt. Installed only when esp32c6 stages are present, like
@@ -101,13 +101,13 @@ BOARDS = {
     "m5nanoc6_fmp3": ("esp32c6", "m5stack_nano_c6",
                       "M5NanoC6 (TOPPERS/FMP3)", "m5stack_nano_c6"),
     #  ESP32-C5 (RISC-V). Derived from the M5Stack core's m5stack_stamp_c5
-    #  (boards.txt 3.3.8: tarch=riscv32, mcu=esp32c5, 4MB flash,
+    #  (boards.txt 3.3.9: tarch=riscv32, mcu=esp32c5, 4MB flash,
     #  bootloader_addr=0x2000 - the C5's bootloader offset, inherited as is;
     #  f_cpu=240000000L, the clock the stage is built for). C5 plan A9.
     "m5stampc5_fmp3": ("esp32c5", "m5stack_stamp_c5",
                        "M5StampC5 (TOPPERS/FMP3)", "m5stack_stamp_c5"),
     #  ESP32-P4 (RISC-V, dual core). Derived from the M5Stack core's
-    #  m5stack_stamp_p4 (boards.txt 3.3.8: tarch=riscv32, mcu=esp32p4,
+    #  m5stack_stamp_p4 (boards.txt 3.3.9: tarch=riscv32, mcu=esp32p4,
     #  chip_variant=esp32p4_es, 16MB qio flash, bootloader_addr=0x2000,
     #  f_cpu=360000000L - the clock the stage is built for). The
     #  ChipVariant menu the row inherits is dropped (BOARD_DROP_MENUS) and
@@ -127,7 +127,7 @@ BOARDS = {
 #  examples/AtomS3LiteRgb must not compile its real body on an AtomS3.
 #  Rewriting the macro is safe because M5Unified and M5GFX decide the board
 #  at run time (autodetect); neither library reads ARDUINO_M5STACK_ATOMS3*
-#  anywhere (grep, 3.3.8-era checkouts).
+#  anywhere (grep, 3.3.9-era checkouts).
 BOARD_BUILD_OVERRIDES = {
     "m5atoms3lite_fmp3": {"build.board": "M5STACK_ATOMS3LITE"},
     #  The M5StampP4 keeps its inherited build.board; what it pins is the
@@ -139,25 +139,23 @@ BOARD_BUILD_OVERRIDES = {
     #  place, so the pin is visible next to the other build.* lines.
     "m5stampp4_fmp3": {
         "build.chip_variant": "esp32p4_es",
-        #  The M5Stack core 3.3.8 does not compile for its own
-        #  m5stack_stamp_p4 board: cores/esp32/esp32-hal-spi.c:299 reads
-        #  BOARD_SDMMC_POWER_CHANNEL under SOC_SDMMC_IO_POWER_EXTERNAL (P4),
+        #  The M5Stack core 3.3.8 did not compile for its own
+        #  m5stack_stamp_p4 board: cores/esp32/esp32-hal-spi.c:299 read
+        #  BOARD_SDMMC_POWER_CHANNEL under SOC_SDMMC_IO_POWER_EXTERNAL (P4)
         #  and the variant's pins_arduino.h does not define it (the Tab5's
-        #  does: 4). Measured: `arduino-cli compile -b
-        #  m5stack:esp32:m5stack_stamp_p4` fails on an empty sketch with
-        #  "'BOARD_SDMMC_POWER_CHANNEL' undeclared". Arduino compiles the
-        #  whole core for every sketch, so this board would fail the same
-        #  way. The board-level build.extra_flags.esp32p4 (which takes
-        #  precedence over the platform's) restates the platform value and
-        #  adds the define. The value is never used: the FMP3 link takes no
-        #  object of the M5Stack core, so setLDOPower() is compiled and
-        #  discarded. Re-check when the core version moves.
-        "build.extra_flags.esp32p4":
-            "-DARDUINO_USB_MODE={build.usb_mode} "
-            "-DARDUINO_USB_CDC_ON_BOOT={build.cdc_on_boot} "
-            "-DARDUINO_USB_MSC_ON_BOOT={build.msc_on_boot} "
-            "-DARDUINO_USB_DFU_ON_BOOT={build.dfu_on_boot} "
-            "-DBOARD_SDMMC_POWER_CHANNEL=4",
+        #  does: 4), so an empty sketch failed with "'BOARD_SDMMC_POWER_CHANNEL'
+        #  undeclared". This board therefore restated build.extra_flags.esp32p4
+        #  with -DBOARD_SDMMC_POWER_CHANNEL=4 added.
+        #
+        #  3.3.9 fixes it upstream: the identifier no longer appears anywhere
+        #  under cores/ (SD_MMC.cpp still reads it, but under
+        #  `#if defined(...)`), and `arduino-cli compile -b
+        #  m5stack:esp32:m5stack_stamp_p4` builds an empty sketch (measured
+        #  2026-09-18, 314144 bytes). The override is removed: the value 4 was
+        #  the Tab5's LDO channel and is not known to be the StampP4's, so
+        #  leaving it defined would hand SD_MMC a possibly wrong channel now
+        #  that the guard no longer discards it. The board inherits the
+        #  platform's build.extra_flags.esp32p4 unchanged.
     },
 }
 
@@ -551,7 +549,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--library-root", default="")
     parser.add_argument("--sketchbook", default="")
     parser.add_argument("--arduino-data", default="")
-    parser.add_argument("--core-version", default="3.3.8")
+    parser.add_argument("--core-version", default="3.3.9")
     parser.add_argument("--prebuilt-stage-root", default="",
                         help="stages from build_prebuilt_stages.py; required")
     parser.add_argument("--python-executable", default="",

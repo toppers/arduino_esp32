@@ -22,6 +22,7 @@
 #include <nvs.h>
 #include <esp_log.h>
 #include <soc/rtc.h>
+#include <hal/clk_tree_ll.h>
 #include <soc/soc.h>
 #include <soc/efuse_reg.h>
 #include "m5_periph_clk.h"
@@ -102,6 +103,31 @@ i2c_del_master_bus(i2c_master_bus_handle_t bus_handle)
 	(void) bus_handle;
 	m5_mark_u32("[MK] i2c_del_master_bus     =", 0x32U, 0U);
 	return(ESP_OK);
+}
+
+/*
+ *  i2c_master_get_bus_handle：M5GFX 0.2.28 以降の「そのポートを既に誰かが
+ *  開いているか」判定に使われる（lgfx/v1/platforms/esp32/common.cpp の
+ *  i2c::init()）。本物のドライバは登録済みのバスを返し、M5GFX はそれを
+ *  「foreign bus」＝相乗りとみなして自前の初期化を丸ごと省く。
+ *
+ *  ★本ランタイムでは常に「開いていない」が正しい。上の i2c_new_master_bus は
+ *  ダミーハンドルを配るだけでどこにも登録せず、ESP-IDF の i2c_master ドライバも
+ *  Arduino の TwoWire もリンクされていない——I2C を持っている別の所有者が
+ *  存在しない。ここで ESP_OK を返すと M5GFX がパネル側 I2C の初期化を
+ *  飛ばし、表示が出なくなる（相乗り相手が居ないのに居ることにするため）。
+ *  ⇒ ESP_ERR_NOT_FOUND を返して M5GFX に自分で取らせる。これは M5GFX 0.2.27
+ *  以前（この分岐自体が無かった版）と同じ振る舞いである。
+ */
+esp_err_t
+i2c_master_get_bus_handle(i2c_port_num_t port, i2c_master_bus_handle_t *ret_handle)
+{
+	(void) port;
+	M5_STUB_HIT("i2c_master_get_bus_handle");
+	if (ret_handle != NULL) {
+		*ret_handle = NULL;
+	}
+	return(ESP_ERR_NOT_FOUND);
 }
 
 /*
@@ -218,6 +244,33 @@ void rtc_clk_cpu_freq_get_config(rtc_cpu_freq_config_t *out_config)
 	out_config->freq_mhz = TOPPERS_S3_CPU_FREQ_MHZ;
 }
 
+/*  XTAL 周波数：M5GFX 0.2.28 以降が getSpiClockFrequency() で使う
+ *  （lgfx/v1/platforms/esp32/common.cpp）。SPI 分周の計算に入るので
+ *  値が違うと表示の転送クロックがずれる——推測値を返してはいけない。
+ *
+ *  本物（esp_hw_support の rtc_clk.c）は RTC の退避レジスタを読むだけだが、
+ *  同じオブジェクトが esp_sleep_sub_mode_*・regi2c_ctrl_*・dbias テーブルを
+ *  芋づるで要求するため、そのためだけに SDK のアーカイブを引き込みたくない。
+ *  ⇒ 読み出しそのものを SDK のインライン（hal/clk_tree_ll.h の
+ *  clk_ll_xtal_load_freq_mhz、S3 と LX6 で同一の実装）で行う。値を書くのは
+ *  ESP-IDF 2nd-stage bootloader で、本ポートはその bootloader から起動する
+ *  （seam 起動方式）ので、この時点でレジスタは埋まっている。
+ *
+ *  0 は「レジスタの形式が不正＝書かれていない」で、本ポートの起動経路では
+ *  起こらない。起きたときに黙って進むと SPI クロックだけが静かに狂うので、
+ *  計装したうえで本ポートが載る全ボード共通の 40 MHz を返す。
+ */
+soc_xtal_freq_t rtc_clk_xtal_freq_get(void)
+{
+	uint32_t	mhz = clk_ll_xtal_load_freq_mhz();
+
+	if (mhz == 0U) {
+		M5_STUB_HIT("rtc_clk_xtal_freq_get(reg invalid)");
+		mhz = 40U;
+	}
+	return((soc_xtal_freq_t) mhz);
+}
+
 /*
  *  ------------------------------------------------------------------
  *  ログ（esp_log v2 の可変長 API・esp_log_timestamp）
@@ -329,4 +382,25 @@ void esp_log(esp_log_config_t config, const char *tag, const char *format, ...)
 
 uint32_t esp_log_timestamp(void)
 { return(0U); }
+
+/*  タグ別のログレベル：本ポートは持たない（上の esp_log_writev が見るのは
+ *  コンパイル時の M5_LOG_LEVEL 一本）。M5GFX 0.2.28 以降はこの 2 本を、
+ *  i2c_master ドライバが「ポートが空いている」ときに出すエラーログを
+ *  一時的に黙らせるためだけに使う（get して NONE を set し、元へ戻す）。
+ *  そのドライバをリンクしていない本ポートでは黙らせる相手が居ないので、
+ *  set は no-op でよく、get は現在の一律レベルを返せばよい。
+ *
+ *  ★set だけがこのガードの内側にある。合成ビルド（M5_USE_ESP_SHIM）では
+ *  esp/shim/esp_shim_libc.c が同名の set を持つため二重定義になるが、
+ *  get は**どこにも無い**ので合成側でも必要になる（下で定義する）。 */
+void esp_log_level_set(const char *tag, esp_log_level_t level)
+{
+	(void) tag; (void) level;
+}
 #endif /* !M5_USE_ESP_SHIM */
+
+esp_log_level_t esp_log_level_get(const char *tag)
+{
+	(void) tag;
+	return((esp_log_level_t) M5_LOG_LEVEL);
+}

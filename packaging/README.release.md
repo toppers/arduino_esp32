@@ -33,8 +33,8 @@ Arduinoの`setup()`／`loop()`は、FreeRTOSではなくTOPPERS/FMP3 SMPカー�
 ## 必要な環境
 
 - Arduino IDE 2.x
-- **M5Stack Arduino core 3.3.8**（先に入れておく必要があります。次章参照）
-- M5Unified 0.2.20 ／ M5GFX 0.2.27（`M5Unified` profileを使う場合のみ）
+- **M5Stack Arduino core 3.3.9**（先に入れておく必要があります。次章参照）
+- M5Unified 0.2.22 ／ M5GFX 0.2.29（`M5Unified` profileを使う場合のみ）
 
 **CMake、Ninja、Pythonは要りません。** スケッチのビルドに使うのは
 M5Stack coreに同梱のツールチェーンとesptoolだけで、FMP3側は事前にビルド済みの
@@ -42,7 +42,7 @@ M5Stack coreに同梱のツールチェーンとesptoolだけで、FMP3側は事
 
 ## インストール
 
-### 1. M5Stack Arduino core 3.3.8
+### 1. M5Stack Arduino core 3.3.9
 
 **これは自動では入りません。** 本ボードはArduinoの
 *core reference*でM5Stack coreのコンパイラ設定とコアソースを参照しており、
@@ -59,14 +59,14 @@ Invalid FQBN: missing platform release m5stack:esp32 referenced by board ...
 https://static-cdn.m5stack.com/resource/arduino/package_m5stack_index.json
 ```
 
-続いて`Tools > Board > Boards Manager`で`M5Stack`を検索し、**3.3.8**を選んで
+続いて`Tools > Board > Boards Manager`で`M5Stack`を検索し、**3.3.9**を選んで
 `Install`してください。
 
 > **この欄は複数のURLを書けます。** 次章のTOPPERS/FMP3のURLと両方必要なので、
 > **置き換えずに追加**してください（改行区切り、またはカンマ区切り）。
 > どちらか一方だけだと、そのボードがBoards Managerに出てきません。
 
-> **3.3.8以外のバージョンは使えません。** 同梱ESP-IDF v5.5.4のprivate Wi-Fi ABI、
+> **3.3.9以外のバージョンは使えません。** 同梱ESP-IDF v5.5.4のprivate Wi-Fi ABI、
 > archive、include配置に依存しています。
 
 ### 2. TOPPERS/FMP3ボード
@@ -85,14 +85,14 @@ https://github.com/toppers/arduino_esp32/releases/latest/download/package_topper
 
 **M5NanoC6とM5Stamp-C5を使う場合も追加のツールは不要です。** RISC-Vツールチェーン
 （`esp-rv32`）と各チップのSDK（M5NanoC6は`esp32c6-libs`、M5Stamp-C5は`esp32c5-libs`）は、
-前章で入れたM5Stack Arduino core 3.3.8に既に同梱されています。この2枚のために
+前章で入れたM5Stack Arduino core 3.3.9に既に同梱されています。この2枚のために
 別のインデックスやツールを追加する必要はありません。
 
 削除も`Boards Manager`の`Remove`で行えます。
 
 ### 3. M5Unifiedライブラリ（`M5Unified` profileのみ）
 
-`Tools > Manage Libraries`から`M5Unified` **0.2.20** と`M5GFX` **0.2.27**
+`Tools > Manage Libraries`から`M5Unified` **0.2.22** と`M5GFX` **0.2.29**
 を入れます。
 
 > **同梱のFMP3ランタイムはこのバージョンのソースに対してビルドされています。**

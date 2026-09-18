@@ -52,15 +52,15 @@ from pathlib import Path
 #  versions the stages were linked with; changing either means relinking.
 M5STACK_TOOL_DEPENDENCIES = [
     ("m5stack", "esp-x32", "2601"),
-    ("m5stack", "esptool_py", "5.2.0"),
-    ("m5stack", "esp32s3-libs", "3.3.8"),
+    ("m5stack", "esptool_py", "5.3.0"),
+    ("m5stack", "esp32s3-libs", "3.3.9"),
     #  ★The M5Core board links against the ESP32 (LX6) SDK, which is a
     #  separate tool from the S3 one. It was missing while the platform held
     #  only the CoreS3, and stayed missing when the second board was added -
     #  it went unnoticed because this machine already had the tool installed
     #  for other work, so the platform installed and built anyway. On a clean
     #  machine the M5Core builds would have failed at the first include.
-    ("m5stack", "esp32-libs", "3.3.8"),
+    ("m5stack", "esp32-libs", "3.3.9"),
 ]
 
 #  Tools a board needs only when its chip's stages are in the package. The
@@ -81,17 +81,17 @@ M5STACK_TOOL_DEPENDENCIES = [
 CHIP_TOOL_DEPENDENCIES = {
     "esp32c6": [
         ("m5stack", "esp-rv32", "2601"),
-        ("m5stack", "esp32c6-libs", "3.3.8"),
+        ("m5stack", "esp32c6-libs", "3.3.9"),
     ],
     "esp32c5": [
         ("m5stack", "esp-rv32", "2601"),
-        ("m5stack", "esp32c5-libs", "3.3.8"),
+        ("m5stack", "esp32c5-libs", "3.3.9"),
     ],
     #  The P4 SDK is the pre-v3-silicon variant (esp32p4_es-libs), the one
     #  the stage is built against (arduino_sdk.SDK_TOOL_NAMES).
     "esp32p4": [
         ("m5stack", "esp-rv32", "2601"),
-        ("m5stack", "esp32p4_es-libs", "3.3.8"),
+        ("m5stack", "esp32p4_es-libs", "3.3.9"),
     ],
 }
 
