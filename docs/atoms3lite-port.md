@@ -99,13 +99,31 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
   帰属は未確定**（2026-08-18 に AP を入れ替えて以降、S3 板でこの AP に繋いだ記録が無い）。
   本計画では直していない。
 
-  **（2026-09-18 追記）**: M5Stack ATOM Lite（LX6）の `NO_AP_FOUND` は
-  **環境要因だった**（別の機械・別の AP では warm 3/3・真cold 3/3 で接続。
-  `docs/atomlite-port.md` 8 節）。⇒ 「Xtensa 共通の課題かもしれない」という含みは
-  薄れ、**F-3 は S3 側の課題として残る**。LX6 は AP を見つけて繋がるのに対し、
-  S3 は AP を**見つけたうえで** 4-way が落ちるという違いも、もともと別物であること
-  を示唆している。**次の一手は変わらない**——CoreS3 / StickS3 で同じ AP を試して
-  「板固有か S3 共通か」を決めること（どちらも未実施）。
+  **（2026-09-18 追記）帰属が決まった: これは板固有ではなく S3 共通である。**
+  同じ日・同じ AP・同じ計器で 3 板を測った（計器は `docs/atomlite-port.md` 8 節の
+  使い捨てスケッチ。スキャン結果の SSID を目的 SSID と突き合わせ、真偽と
+  rssi/ch/auth だけを印字する）:
+
+  | 板 | チップ | AP を見つけたか | 結果 |
+  |---|---|---|---|
+  | M5Stack ATOM Lite | ESP32 (LX6) | 見つけた（rssi -62〜-71） | **CONNECTED**（warm 3/3・真cold 3/3） |
+  | **M5CoreS3** | ESP32-S3 | 見つけた（rssi -65、ch 10、auth 7） | `begin returned=0` のあと **`reason=17`** |
+  | **M5AtomS3 Lite** | ESP32-S3 | 見つけた（rssi -66、ch 10、auth 7） | `begin returned=0` のあと **`reason=17`** |
+
+  ⇒ **S3 の 2 板が同一の症状で落ち、同じ AP に LX6 は繋がる。** F-3 が
+  「他の S3 板で試していないので未確定」としていた帰属は、**S3 共通**で確定した。
+  AP は WPA2/WPA3 混在（`auth=7` = `WIFI_AUTH_WPA2_WPA3_PSK`）。
+
+  **絞り込み済みの範囲**（LX6 との差がどこに無いか）:
+  - STA 設定を組む `wifi/adapter/toppers_wifi_connect.c` は**両チップ共用の同一ファイル**
+  - `wifi/config/{esp32,esp32s3}` の WPA3 / SAE / PMF / 11W / RSN 系 define は**全て同値**
+  - `wifi/prebuilt/wpa2/{esp32,esp32s3}/libsupplicant.a` は同一構成のビルド（サイズも近い）
+
+  ⇒ 残る差は**チップごとの Wi-Fi blob**か、S3 固有の初期化経路。次に測るなら
+  `config.sta.pmf_cfg`（現状 `memset` で `capable=false`）を 1 軸だけ動かす。
+  WPA2/WPA3 混在 AP は transition mode で MFPC=1 を出すので、RSN IE の食い違い
+  （`reason=17` = `IE_IN_4WAY_DIFFERS`）と整合する仮説である。**ただし
+  「同じ設定で LX6 が通る理由」がこの仮説では説明できない**ので、確かめるまでは仮説。
 
 ## 6. 非退行
 
