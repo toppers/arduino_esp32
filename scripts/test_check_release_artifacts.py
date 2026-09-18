@@ -438,5 +438,90 @@ class PlatformContents(unittest.TestCase):
                              board)
 
 
+class UploadRecipe(unittest.TestCase):
+    """install_platform.py must not inherit the M5Stack flasher wrapper.
+
+    M5Stack core 3.3.9 put tools/flasher.{py,exe} between the upload recipe
+    and esptool. The wrapper is reached through {runtime.platform.path},
+    which for a board of this platform is THIS platform, so v0.6.0 shipped
+    an upload recipe naming a file that is only in the M5Stack core: every
+    Upload failed, on every OS. These hold the rewrite and the guard that
+    would have caught it at install time.
+    """
+
+    #  The three lines as core 3.3.9 writes them, plus the pattern_args key
+    #  that must survive untouched (it differs from pattern= by a suffix).
+    SOURCE = "\n".join([
+        "name=M5Stack",
+        'tools.flasher.cmd=python3 "{runtime.platform.path}/tools/flasher.py"',
+        'tools.flasher.cmd.windows='
+        '"{runtime.platform.path}\\tools\\flasher.exe"',
+        "tools.esptool_py.upload.pattern_args=--chip {build.mcu}",
+        'tools.esptool_py.upload.pattern={tools.flasher.cmd} --esptool '
+        '"{path}/{cmd}" --build-dir "{build.path}" {upload.pattern_args}',
+        'tools.esptool_py.program.pattern={tools.flasher.cmd} --esptool '
+        '"{path}/{cmd}" --build-dir "{build.path}" {program.pattern_args}',
+        'tools.esptool_py_app_only.upload.pattern={tools.flasher.cmd} '
+        '--esptool "{path}/{cmd}" --build-dir "{build.path}" '
+        '{tools.esptool_py_app_only.upload.pattern_args}',
+    ])
+
+    #  What v0.4.0 shipped, built from core 3.3.8, which had no wrapper.
+    #  The rewrite has to land on exactly these, not on something merely
+    #  workable: this is the recipe that was known to upload.
+    BEFORE_339 = {
+        "tools.esptool_py.upload.pattern":
+            '"{path}/{cmd}" {upload.pattern_args}',
+        "tools.esptool_py.program.pattern":
+            '"{path}/{cmd}" {program.pattern_args}',
+        "tools.esptool_py_app_only.upload.pattern":
+            '"{path}/{cmd}" {tools.esptool_py_app_only.upload.pattern_args}',
+    }
+
+    def _lines(self) -> list[str]:
+        import install_platform
+        with tempfile.TemporaryDirectory() as raw:
+            source = Path(raw) / "platform.txt"
+            source.write_text(self.SOURCE, encoding="utf-8")
+            return install_platform.platform_lines(
+                source, "LINK", "OBJCOPY", "PARTITIONS")
+
+    def test_patterns_match_the_release_that_could_upload(self):
+        produced = dict(line.split("=", 1) for line in self._lines()
+                        if "=" in line)
+        for key, expected in self.BEFORE_339.items():
+            self.assertEqual(produced[key], expected, key)
+
+    def test_wrapper_is_gone_entirely(self):
+        lines = self._lines()
+        self.assertEqual([line for line in lines if "flasher" in line], [])
+        #  The unsuffixed key is rewritten; the *_args key is not.
+        self.assertIn("tools.esptool_py.upload.pattern_args=--chip "
+                      "{build.mcu}", lines)
+
+    def test_guard_reports_only_what_is_neither_shipped_nor_known(self):
+        import install_platform
+        with tempfile.TemporaryDirectory() as raw:
+            root = Path(raw)
+            (root / "tools" / "partitions").mkdir(parents=True)
+            (root / "tools" / "partitions" / "boot_app0.bin").touch()
+            (root / "fmp3-prebuilt").mkdir()
+            lines = [
+                #  shipped
+                'a={runtime.platform.path}/tools/partitions/boot_app0.bin',
+                #  shipped, and the reference stops at the placeholder
+                'b={runtime.platform.path}/fmp3-prebuilt/{build.chip}/{p}',
+                #  deliberately absent
+                'c={runtime.platform.path}/tools/espota.py',
+                #  the platform root itself
+                'd={runtime.platform.path}',
+                #  the 3.3.9 regression
+                'e={runtime.platform.path}\\tools\\flasher.exe',
+            ]
+            self.assertEqual(
+                install_platform.unshipped_platform_references(lines, root),
+                {"tools/flasher.exe"})
+
+
 if __name__ == "__main__":
     unittest.main()

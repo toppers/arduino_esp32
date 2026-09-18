@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import datetime
@@ -510,11 +511,105 @@ def board_lines(source_boards: Path, board_id: str,
     return menus, lines
 
 
+#  M5Stack core 3.3.9 routes every upload through tools/flasher.{py,exe},
+#  an esptool wrapper that reuses <name>_flashed.bin reference images to
+#  write only the changed flash ranges. The wrapper is reached through
+#  {runtime.platform.path}, which for a board of THIS platform is this
+#  platform - and the wrapper lives in the M5Stack core, so the upload
+#  fails with "flasher.exe is missing" the first time a user presses
+#  Upload. Shipping a copy is not an option either: the non-Windows line
+#  runs it with python3, and requiring Python on the user's machine is the
+#  one thing the prebuilt stages exist to avoid. So these three patterns
+#  call esptool directly, the way the core did before 3.3.9. What is lost
+#  is the reflash speed-up, not correctness: the wrapper's only effect is
+#  which ranges esptool skips. --build-dir goes with it (a flasher
+#  argument, not an esptool one).
+UPLOAD_PATTERNS_WITHOUT_FLASHER = {
+    "tools.esptool_py.upload.pattern":
+        '"{path}/{cmd}" {upload.pattern_args}',
+    "tools.esptool_py.program.pattern":
+        '"{path}/{cmd}" {program.pattern_args}',
+    "tools.esptool_py_app_only.upload.pattern":
+        '"{path}/{cmd}" {tools.esptool_py_app_only.upload.pattern_args}',
+}
+
+
+#  Reached through {runtime.platform.path} by a line this platform keeps, but
+#  deliberately not shipped, because the feature behind it is not offered.
+#  Each entry is a path relative to the platform root, truncated at its first
+#  {placeholder} segment the way unshipped_platform_references() truncates.
+#  A reference NOT listed here and NOT present is what the guard exists to
+#  catch: that is how the 3.3.9 flasher would have been found at install time
+#  instead of when a user first pressed Upload.
+KNOWN_UNSHIPPED = {
+    #  OTA upload. Listed as unverified in README.md, and the .py line would
+    #  need Python on the user's machine.
+    "tools/espota.py",
+    "tools/espota.exe",
+    #  ESP Insights: no recipe of this platform produces its input.
+    "tools/gen_insights_package.exe",
+    #  The Windows-only partition tool the driver replaces on every host;
+    #  the recipe that used it is overridden and the guard above proves it.
+    "tools/gen_esp32part.exe",
+    #  SVD files for the IDE debugger, which this platform does not support.
+    "tools/ide-debug/svd",
+}
+
+PLATFORM_PATH_REFERENCE = re.compile(
+    r"\{runtime\.platform\.path\}([\\/][^\"'\s]*)?")
+
+
+def unshipped_platform_references(lines: list[str],
+                                  platform_root: Path) -> set[str]:
+    """Paths reached through {runtime.platform.path} that are not there.
+
+    A reference may end in a {placeholder} segment ({build.mcu}.svd, the
+    stage directory named by the menu), so the check stops at the first
+    segment that holds one and asks for the directory above it. That is
+    enough: a missing parent is the failure being looked for, and the
+    placeholder's own values are checked where they are produced.
+    """
+    missing = set()
+    for line in lines:
+        for match in PLATFORM_PATH_REFERENCE.finditer(line):
+            tail = (match.group(1) or "").strip("\\/")
+            if not tail:
+                continue
+            segments = tail.replace("\\", "/").split("/")
+            kept = []
+            for segment in segments:
+                if "{" in segment:
+                    break
+                kept.append(segment)
+            if not kept:
+                continue
+            reference = "/".join(kept)
+            if reference in KNOWN_UNSHIPPED:
+                continue
+            if not (platform_root / reference).exists():
+                missing.add(reference)
+    return missing
+
+
 def platform_lines(source: Path, link: str, objcopy: str,
                    partitions: str) -> list[str]:
     out = []
     for line in source.read_text(encoding="utf-8").splitlines():
-        if line.startswith("name="):
+        #  Keyed on the whole "<key>=" so that upload.pattern_args, which is
+        #  a different property and is kept as it is, does not match.
+        replacement = next(
+            (value for key, value in UPLOAD_PATTERNS_WITHOUT_FLASHER.items()
+             if line.startswith(key + "=")), None)
+        if replacement is not None:
+            out.append(f"{line.split('=', 1)[0]}={replacement}")
+        elif line.startswith("tools.flasher."):
+            #  Dropped, not kept-but-unused: the definitions name paths under
+            #  {runtime.platform.path} that are not here, and leaving them
+            #  would make the reference guard below report files no line
+            #  actually runs. A pattern that starts using the wrapper again
+            #  is caught by the {tools.flasher.cmd} check instead.
+            continue
+        elif line.startswith("name="):
             out.append("name=M5Stack Arduino with TOPPERS/FMP3")
         elif line.startswith("build.extra_flags="):
             #  Only the unsuffixed key: build.extra_flags.<mcu> is a different
@@ -651,6 +746,15 @@ def main(argv: list[str] | None = None) -> int:
 
     remove_installed_platform(platform_root)
     platform_root.mkdir(parents=True, exist_ok=True)
+    #  Claim the directory before anything is written into it. Not everything
+    #  that can fail is checkable up front - the reference guard below needs
+    #  the assembled platform to check against - and a failure after this
+    #  point used to leave a directory with no marker, which the NEXT run
+    #  then refused to remove. The final marker overwrites this one.
+    (platform_root / MARKER).write_text(
+        json.dumps({"package": "ToppersFMP3-M5Stack",
+                    "state": "incomplete"}, indent=2) + "\n",
+        encoding="utf-8")
 
     #  Only tools/ has to exist here, because it is reached through
     #  runtime.platform.path. gen_esp32part.exe is NOT copied: with prebuilt
@@ -756,6 +860,22 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(
             "A recipe still uses gen_esp32part, which this platform does not "
             "ship: " + "; ".join(dangling))
+    still_wrapped = [line for line in lines
+                     if "{tools.flasher.cmd}" in line]
+    if still_wrapped:
+        raise SystemExit(
+            "A pattern still goes through the M5Stack flasher wrapper, which "
+            "this platform does not ship. Add its key to "
+            "UPLOAD_PATTERNS_WITHOUT_FLASHER: " + "; ".join(still_wrapped))
+    missing = unshipped_platform_references(lines, platform_root)
+    if missing:
+        raise SystemExit(
+            "The platform.txt inherited from M5Stack core "
+            f"{args.core_version} reaches files through "
+            "{runtime.platform.path} that this platform does not ship. Either "
+            "ship them, rewrite the line, or - if the feature is one this "
+            "platform does not offer - name them in KNOWN_UNSHIPPED:\n  "
+            + "\n  ".join(sorted(missing)))
 
     (platform_root / "platform.txt").write_text(
         "\n".join(lines) + "\n", encoding="utf-8", newline="\r\n")
