@@ -109,9 +109,15 @@ prebuilt archive、include 配置に依存しています）。
   warm・真cold とも `tx_done=8`。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認**）、
   Wi-Fi スキャン（14 AP）、
   **Bluetooth Classic**（`[BluetoothSPP] discoverable as M5Stack-SPP` まで。
-  ペアリングは未実施）。**STA 接続はこの板でも未達**ですが、症状は AtomS3 Lite と
-  違い `reason=201 (NO_AP_FOUND) rssi=-128`（AP を見つけられない）です。
-  詳細と切り分けの次の一手は [`docs/atomlite-port.md`](docs/atomlite-port.md) 6-7 節。
+  ペアリングは未実施）。
+  **STA 接続**は、追加した板の無い機械での初回（2026-09-17）は
+  `reason=201 (NO_AP_FOUND) rssi=-128` で 2/2 失敗しましたが、**2026-09-18 に
+  別の機械・別の AP で測り直したところ warm 3/3・真cold 3/3 で接続しました**
+  （目的の SSID をスキャンで見つけ、`begin()` が 0 を返す。AP は WPA2/WPA3 混在、
+  ch=10、rssi -62〜-71）。⇒ **「LX6 の Wi-Fi 経路の欠陥」という筋は反証されました**。
+  ただし初回の失敗が「場所のせい」と断定できるわけではありません（当時は別 PC・
+  別の場所・別の日で軸が 1 つに絞れておらず、その環境は今から測れません）。
+  切り分けの全経過は [`docs/atomlite-port.md`](docs/atomlite-port.md) 8 節。
 - **M5Stamp-P4 実機**（2026-09-18、ESP32-P4 rev v1.3 + Stamp AddOn C6）で、
   minimal（`Blink` warm 5/5・真cold 5/5。**2 コア SMP** が `Processor 2 start.` と
   `[P4-CORE2] alive` で確認できます）、`GpioInterrupt`（G16 自己駆動、

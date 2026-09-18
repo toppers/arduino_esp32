@@ -22,9 +22,11 @@ M5AtomS3 Liteで実機確認したのは`Blink`・`GpioInterrupt`・本体RGB LE
 Wi-Fiスキャンで、**STA接続は未達**です（詳細はdocs/atoms3lite-port.md）。
 M5Stack ATOM Liteは`Minimal`・`WiFi`・`Bluetooth Classic (SPP)`の3つが出ます。
 実機で確認したのは`Blink`・`GpioInterrupt`（G23）・本体RGB LED（SK6812、G27。
-例題は`AtomLiteRgb`）・Wi-Fiスキャン・Bluetooth Classic（`discoverable`まで。
-ペアリングは未実施）で、**STA接続は未達**です（AtomS3 Liteとは症状が違い、
-`NO_AP_FOUND`。詳細はdocs/atomlite-port.md）。
+例題は`AtomLiteRgb`）・Wi-Fiスキャン・**Wi-Fi STA接続**（warm 3/3・真cold 3/3。
+WPA2/WPA3混在のAP、ch=10）・Bluetooth Classic（`discoverable`まで。
+ペアリングは未実施）です。STA接続は初回（板の無い機械で追加した直後）に
+`NO_AP_FOUND`で失敗しましたが、別の機械・別のAPでは繋がりました
+（詳細はdocs/atomlite-port.md 8節）。
 M5Stamp-P4は`Minimal`と`WiFi`の2つです。2コア SMP で起動し、PRC2 が
 `[P4-CORE2] alive N`を出します。**ESP32-P4自身に無線はありません**——`WiFi`は
 SDIOでつないだcompanionの**ESP32-C6（Stamp AddOn C6）**へRPCで渡すhosted方式で、
@@ -200,7 +202,7 @@ ESP32-S3にBR/EDR無線が無いため、S3の3機種では選択肢に出ませ
 `Bluetooth Classic (SPP)`です。** LCDが無いため`M5Unified + Dual Core`は
 ありません。本体RGB LED（SK6812、G27）は`WiFi`構成の`rgbLedWrite()`で
 点きます（例題`AtomLiteRgb`。`Minimal`／`Bluetooth Classic`ではリンクされず、
-例題は`#error`で止まります）。**STA接続は未達です**（上記）。
+例題は`#error`で止まります）。**Wi-Fi STA接続は実機で確認済み**です（上記）。
 
 **M5NanoC6とM5Stamp-C5で選べるFMP3 Runtimeは`Minimal`と`WiFi`だけです。**
 LCDが無いため`M5Unified + Dual Core`は無く、BR/EDR無線が無いため
@@ -466,8 +468,9 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
 - **M5Stack ATOM Lite実機**で、Minimal（`Blink` warm 5/5・真cold 5/5）、
   `GpioInterrupt`（G23、warm・真coldとも`VERDICT PASS`）、本体RGB LED
   （SK6812 G27、`AtomLiteRgb`で`tx_done=8`。**点灯と色順はユーザーが目視確認**）、
-  Wi-Fiスキャン（14 AP）、**Bluetooth Classic**（`discoverable`まで。ペアリングは
-  未実施）。**STA接続は未達**で、症状はAtomS3 Liteと違い`NO_AP_FOUND`です。
+  Wi-Fiスキャン（14 AP）、**Wi-Fi STA接続**（warm 3/3・真cold 3/3。目的のSSIDを
+  スキャンで見つけ`begin()`が0を返す。APはWPA2/WPA3混在・ch=10・rssi -62〜-71）、
+  **Bluetooth Classic**（`discoverable`まで。ペアリングは未実施）。
   判断と到達点はソースリポジトリの`docs/atomlite-port.md`
 
 未確認: **macOS**でのVerifyとUpload、OTA書き込み、

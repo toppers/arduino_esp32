@@ -138,7 +138,7 @@ sha256 `5227640a16f4b5e4e6904668b413bce2b5379bbba37d5deeb96b6f1c1e8115c1`）へ�
 | 2 | `GpioInterrupt` / WiFi（G23） | **warm・真cold とも PASS**: `VERDICT PASS pin=23 rising=5 falling=5 change=10 detached=0 dispatch=20 call=20 orphan=0 acre=2`、`readback ok` |
 | 3 | `AtomLiteRgb` / WiFi（G27） | **warm・真cold とも `tx_done=8 / write=8 / timeout=0`**（`[LX6-RGB] write red` -> `tx_done=1` … 8）。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認（2026-09-17）**——GRB の仮定と、SK6812 / WS2812B の交差集合で採ったビットタイミング（3 節）が実機で成立している |
 | 4 | `WiFiScan` / WiFi | **14 AP**（`found 14 APs` + `AP[0..13]`、`Scan] done`） |
-| 5 | `WiFiConnect` / WiFi（実 creds） | **2/2 失敗。ただし AtomS3 Lite とは別の落ち方**: `disconnected reason=201 (NO_AP_FOUND) rssi=-128`（S3 は `reason=17`、rssi -61）。7 節 |
+| 5 | `WiFiConnect` / WiFi（実 creds） | **2/2 失敗**: `disconnected reason=201 (NO_AP_FOUND) rssi=-128`。**この失敗は 2026-09-18 に別の機械で再現しなかった**（8 節）——結論は「当時の環境で AP が届いていなかった」側へ倒れた |
 | 6 | `BluetoothSPP` / Bluetooth Classic | **起動する**: `[BluetoothSPP] discoverable as M5Stack-SPP`、`BT.begin failed` は 0、unexpected 0。B-2（btclassic を出す判断）は**実機で支持された**。ペアリング・echo は端末が要るので未実施 |
 
 ### この板について分かったこと（台本に反映済み）
@@ -154,13 +154,8 @@ sha256 `5227640a16f4b5e4e6904668b413bce2b5379bbba37d5deeb96b6f1c1e8115c1`）へ�
 （RGB の点灯と色順は 2026-09-17 にユーザーが目視で確認した。板には
 リポジトリ版の `AtomLiteRgb`（2 周で止まる）が入っている。）
 
-- **Wi-Fi STA が `NO_AP_FOUND`（rssi=-128）で繋がらない**。同じ場所・同じ時刻に
-  スキャンは 14 AP を見つけており RF 自体は動いているので、(a) この板のアンテナ /
-  設置位置で当該 AP が届いていない、(b) LX6 側 Wi-Fi 経路の問題、の切り分けが要る。
-  **AtomS3 Lite の F-3（`reason=17`）とは症状が違う**ので、「Xtensa 共通の課題」とは
-  まだ言えない（S3 は AP を見つけて 4-way で落ちる、この板は AP を見つけられない）。
-  次の一手: 板を AP の近くへ置いて再試行、または同じ esp32 stage を使う M5Stack Basic で
-  同じ AP を試す。
+- ~~**Wi-Fi STA が `NO_AP_FOUND`（rssi=-128）で繋がらない**~~ → **8 節で切り分け済み**
+  （2026-09-18）。(b) LX6 側 Wi-Fi 経路の問題という筋は**反証された**。
 - `m5` profile の可否（4 節は類推のまま。実機では試していない）。
 - `BluetoothSPP` のペアリング・echo（端末が要る）。
 - AtomS3 Lite の F-1（console の文字落ち）は **この板でも起きる**。スキャンの 1 行が
@@ -170,3 +165,69 @@ sha256 `5227640a16f4b5e4e6904668b413bce2b5379bbba37d5deeb96b6f1c1e8115c1`）へ�
   効いた実例）。マスクをタグ末尾かつ空白非依存へ直し、両方の台本（S3 / LX6）に
   「壊れた行でもマスクされる」正対照を足した。F-2（scan が実 SSID を印字する）は
   この板でも同じ。
+
+
+## 8. STA 未達の切り分け（2026-09-18・**この板・この AP では再現せず**）
+
+6 節の #5（`NO_AP_FOUND` rssi=-128、2/2）を、板を**別の機械（deskmini、hub 1-1.4 p2）**へ
+繋いで測り直した。結論から言うと **`LX6 側 Wi-Fi 経路の問題` という筋は反証された**。
+
+### 測り方（`rssi=-128` は番兵値なので、症状だけでは分けられない）
+
+分けたいのは 2 つ:
+
+- **(A)** この板が目的の AP を**そもそもスキャンで見つけられない**のか
+- **(B)** 見つけられるのに `begin()` が `NO_AP_FOUND` を返すのか
+
+そこで使い捨てのスケッチを 1 本書いた（`scratchpad` のみ。リポジトリには入れない）。
+スキャン結果の SSID を**コンパイル時に埋めた目的 SSID と突き合わせ**、
+**一致したか否か（`match=0/1`）と、一致した AP の rssi / ch / auth だけ**を印字する。
+**SSID も PASS も一切印字しない。** 全 AP の ch / auth / rssi も出すので、
+2.4 GHz のどこを拾えているかの分布も同時に取れる。
+
+### 結果: warm 3/3・真cold 3/3 とも **見つけて、繋がる**
+
+```
+[Triage] scan count=13
+[Triage] MATCH target ssid is in scan
+[Triage] match rssi=-71  ch=10  auth=7
+[Triage] begin returned=0
+[Triage] CONNECTED
+```
+
+| 走行 | scan 件数 | 一致 AP の rssi | ch | auth | 結果 |
+|---|---|---|---|---|---|
+| warm 1-3 | 13 ほか | -71 ほか | 10 | 7 | **CONNECTED 3/3** |
+| 真cold 1 | 11 | -62 | 10 | 7 | **CONNECTED** |
+| 真cold 2 | - | - | 10 | 7 | **CONNECTED** |
+| 真cold 3 | 14 | -67 | 10 | 7 | **CONNECTED** |
+
+真cold は台本の `COLD=1`（esptool を一切呼ばない＝reset で cold boot を上書きしない）に
+`uhubctl -l 1-1.4 -p 2 -a cycle` で外から電源断を与えた。
+
+`auth=7` は `WIFI_AUTH_WPA2_WPA3_PSK`。⇒ **この板は WPA2/WPA3 混在 AP に繋がる。**
+
+### 帰属について言えること・言えないこと
+
+- **言える**: 「LX6 の Wi-Fi 接続経路に欠陥がある」は**反証された**。
+- **言えない**: 9/17 の失敗が「場所のせい」だと**断定はできない**。当時は
+  **別 PC・別の場所・別の日**で、軸が 1 つに絞れていない。当時の環境は今から
+  測れないので、言えるのは「この環境では再現しない」まで。
+  `rssi=-128` が「測れていない」番兵値であることは、AP が電波として届いて
+  いなかったという読みと**整合はする**（それ以上ではない）。
+- **AtomS3 Lite の F-3 の位置づけが変わる**: ATOM Lite 側が環境要因だったので、
+  「Xtensa 共通かもしれない」という含みは薄れ、S3 単独の課題として残る
+  （S3 は AP を**見つけたうえで** 4-way が落ちる＝`reason=17`）。
+
+### 採取の注意（踏んだ）
+
+**真cold のログは `grep` にバイナリ扱いされる。** 電源投入時の UART ゴミが混じるためで、
+`grep -a` が要る。実際これで一度 Triage 行が「無い」ように見えた。
+
+### 後始末
+
+実 creds は**作業コピー（scratchpad）にだけ**注入し、リポジトリの例題は無改変。
+測定後に板をリポジトリ版（ダミー creds）の `WiFiConnect` 像へ戻し、
+`[WiFiConnect] Set WIFI_SSID before uploading` が出て接続 0 であることを確認した
+（**フラッシュに実 creds は残っていない**）。採取ログは dev の
+`.steering/20260918-atomlite-sta/logs/`。
