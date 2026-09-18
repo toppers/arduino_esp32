@@ -119,7 +119,8 @@ M5GFX 0.2.27 を入れて建てた（dev `.steering/20260917-atomlite-plan/INVES
 | duplicate-symbol audit | esp32 4 stage とも 0 duplicated |
 | `check_host_paths.py`（導入済み platform） | PASS |
 | python テスト 4 本 | PASS |
-| 全 105 builds の直接 compile（7 板、11 stage 導入） | **96 PASS / 0 FAIL / 9 SKIP**（SKIP は `verify_package.py` が生成する `TwoFileSketch`——minimal 7 板 + btclassic 2 板——で、直接 compile では作れない。Boards Manager 経由の `verify_package.py` はこの機械では走らせていない） |
+| 全 105 builds の直接 compile（7 板、11 stage 導入） | **96 PASS / 0 FAIL / 9 SKIP**（SKIP は `verify_package.py` が生成する `TwoFileSketch`——minimal 7 板 + btclassic 2 板——で、直接 compile では作れない。Boards Manager 経由の `verify_package.py` はこの機械では走らせていない
+——**2026-09-18 に走らせた**。8 板 116 builds で PASS。`docs/p4-port.md` 2-11 節） |
 
 ## 6. 実機確認（2026-09-17、別 PC で実施。**済**）
 

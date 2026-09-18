@@ -463,3 +463,48 @@ DHCP の所要は真cold 3 回で `waited_ms=8000 / 9000 / 8400`（lease 14400 s
 
 切り分けの全経過は dev の
 `.steering/20260918-p4-arduino-hw-findings/README.md`（F-1）。
+
+## 2-11. リリース形の verify（2026-09-18・8 板 116 builds）
+
+`scripts/verify_package.py` を**この機械で初めて**通しました
+（`docs/atomlite-port.md` 段5 は「Boards Manager 経由の `verify_package.py` は
+この機械では走らせていない」と書いており、そこが埋まりました）。
+
+これは**利用者と同じ経路**を通す検査です——package index を作り、
+loopback HTTP で配って Boards Manager からインストールし、そのうえで
+スケッチを建てる。リポジトリから届くのは examples だけです。
+
+```
+PASSED: 116 builds from the installed package on x86_64-pc-linux-gnu (116 planned)
+```
+
+| 板 | builds |
+|---|---|
+| m5cores3_fmp3 / m5sticks3_fmp3 | 各 17（m5 6 + minimal 3 + wificonnect 8） |
+| m5core_fmp3 | 22（+ btclassic 5） |
+| m5atomlite_fmp3 | 16 |
+| m5atoms3lite_fmp3 / m5nanoc6_fmp3 / m5stampc5_fmp3 / **m5stampp4_fmp3** | 各 11 |
+| **合計** | **116 / 8 板、失敗 0** |
+
+### 手順で気をつけたこと（**検証対象を一意にする**）
+
+手で入れた `~/Arduino/hardware/toppers/esp32` は Boards Manager 版と
+**同じ `toppers:esp32` という ID** を名乗ります。両方在る状態で走らせると、
+どちらが選ばれるかによって「**パッケージを検証したつもりで手元の platform を
+検証していた**」という形になり得ます。⇒ platform を複製してから
+`install_platform.py --uninstall` で手元のものを撤去し、
+**パッケージ版だけが存在する状態**で回しました（`~/.arduino15/packages/toppers/
+hardware/esp32/0.5.0` のみ、sketchbook 側は空、を実測で確認）。
+終了後に core を uninstall して手元の platform を入れ直し、
+`Blink` が建つところまで戻したことも確認しています。
+
+PyInstaller（driver の凍結に要る）は**システムに入れず**スクラッチパッドの
+venv に入れました。CI は `pip install pyinstaller` します。
+
+### イメージの sha256 は**残していません**
+
+`--summary` は 116 本の「サイズと sha256」を出し、CI は他 OS との突合せ用に
+artifact として上げます。**リポジトリには入れません**——stage を建て直すたびに
+動く値で、置けば必ず腐り、腐った写しは「一致した」を誤って主張する側に働くからです
+（golden の写しを廃した `golden_from_presets.py` の経緯と同じ理由）。
+他ホストと比べたいときは、両方でこの verify を回して `--summary` 同士を比べます。
