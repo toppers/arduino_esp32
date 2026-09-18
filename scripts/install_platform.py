@@ -542,8 +542,15 @@ UPLOAD_PATTERNS_WITHOUT_FLASHER = {
 #  catch: that is how the 3.3.9 flasher would have been found at install time
 #  instead of when a user first pressed Upload.
 KNOWN_UNSHIPPED = {
-    #  OTA upload. Listed as unverified in README.md, and the .py line would
-    #  need Python on the user's machine.
+    #  OTA upload. Shipping espota would not make OTA work: it pushes to an
+    #  ArduinoOTA responder running on the board, and there is none. The
+    #  port exposes no listening socket (the Wi-Fi API stops at one
+    #  client request), no mDNS, and no esp_ota_* / libapp_update.a in any
+    #  stage; the core's ArduinoOTA cannot be borrowed because the core
+    #  runtime is not linked. The partition table has ota_0/ota_1/otadata,
+    #  which is the container and nothing else. README.md says so under
+    #  its constraints - not under "unverified", which it used to, and
+    #  which reads as "might work if you try it".
     "tools/espota.py",
     "tools/espota.exe",
     #  ESP Insights: no recipe of this platform produces its input.

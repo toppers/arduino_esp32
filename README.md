@@ -321,6 +321,16 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   2026-09-15 に修正しました（SDK の `-fstack-protector` が `__stack_chk_fail` ->
   `_exit` を参照する経路。実機でカナリア破壊 -> `*** stack smashing detected ***`
   -> `libc: _kill(sig=6)` で停止することまで確認）。
+- **OTA 書き込みは対応していません。** ボードは M5Stack core から
+  `upload.tool.network=esp_ota` を継いでいますが、**受け手がありません**——
+  OTA は端末側で待ち受ける ArduinoOTA 応答器へ PC 側から押し込む仕組みで、
+  本ポートには待ち受けソケットも mDNS も無く（`ToppersFMP3WiFiClass` の通信 API は
+  `tcpRequest()`＝1 回分のクライアント要求まで）、フラッシュを書き換える
+  `esp_ota_*` / `libapp_update.a` も stage に入っていません。core の
+  `ArduinoOTA` も、この節の「core のランタイムはリンクされません」のとおり
+  使えません。パーティション表は core のものを継いで `otadata` / `app0(ota_0)` /
+  `app1(ota_1)` を持っていますが、**入れ物があるだけです。** 対応するには
+  待ち受けと書き込みの両方を足す機能追加が要ります。
 - **Intel Mac には対応していません。** ビルドに必要なリンクドライバをホストごとに
   同梱していますが、`x86_64-apple-darwin` 向けは含まれていません。
 - FMP3 の `dly_tsk` の `RELTIM` はこのポートではマイクロ秒で、FreeRTOS API の
