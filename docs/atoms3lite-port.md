@@ -119,11 +119,47 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
   - `wifi/config/{esp32,esp32s3}` の WPA3 / SAE / PMF / 11W / RSN 系 define は**全て同値**
   - `wifi/prebuilt/wpa2/{esp32,esp32s3}/libsupplicant.a` は同一構成のビルド（サイズも近い）
 
-  ⇒ 残る差は**チップごとの Wi-Fi blob**か、S3 固有の初期化経路。次に測るなら
-  `config.sta.pmf_cfg`（現状 `memset` で `capable=false`）を 1 軸だけ動かす。
-  WPA2/WPA3 混在 AP は transition mode で MFPC=1 を出すので、RSN IE の食い違い
-  （`reason=17` = `IE_IN_4WAY_DIFFERS`）と整合する仮説である。**ただし
-  「同じ設定で LX6 が通る理由」がこの仮説では説明できない**ので、確かめるまでは仮説。
+  ⇒ 残る差は**チップごとの Wi-Fi blob**か、S3 固有の初期化経路。
+
+  **仮説 1「`pmf_cfg.capable=false` が原因」は実測で反証した（2026-09-18）。**
+  `config.sta.pmf_cfg.capable = true` を 1 軸だけ立てて CoreS3 で測ったところ、
+  像は `pmf_capable=1` と名乗ったうえで**やはり `reason=17`**。⇒ MFP capability は
+  原因ではない。（そもそもこの仮説は「同じ設定で LX6 が通る理由」を説明できて
+  いなかった。）
+
+  **新しい事実: association は成功しており、落ちるのはその後である。**
+  blob の状態遷移ログが採取に出ている:
+
+  ```
+  state: init -> auth (0xb0)
+  state: auth -> assoc (0x0)
+  state: assoc -> run (0x10)
+  state: run -> init (0x1100)     <- 0x11 = 17
+  ```
+
+  ⇒ auth も assoc も通って `run` まで行き、**4-way で落ちている**。
+  `IE_IN_4WAY_DIFFERS` の名前どおり、(Re)Assoc Request に載せた RSN IE と
+  EAPOL-Key msg 2/3 の IE が食い違っている、という読みと整合する。
+
+  **次の一手**: ここから先は supplicant 自身の診断が要る（`wpa_printf` 経由の
+  出力は現状の採取に出ていない——出ているのは `esp_shim:` / `esp_event:` /
+  `state:` / `wifi_adapter:` のみ）。blob と supplicant のログ水準を上げる計器を
+  作るのが先で、それ無しに次の仮説を立てても当て推量になる。
+
+  ### この実験で踏んだ罠（次にやる人へ）
+
+  **定義が届いたかを像に名乗らせること。** `A1_WIFI_PMF_CAPABLE` を渡す実験は
+  **2 回空振りした**。`reason=17` という**期待どおりの失敗**が返るので、
+  空振りに気づく手がかりが他に無い。
+
+  1. `build_prebuilt_stages.py --cmake-define X=ON` は **CMake 変数を作るだけ**で、
+     コンパイル定義にはならない。
+  2. `option()` を宣言して `FMP3_COMPILE_DEFS` へ足しても、**`net_objects` には
+     届かない**（アダプタはそこでコンパイルされる）。CMakeLists 239 行の
+     `M5_USE_ESP_SHIM` についての警告と同じ罠。
+     正しいのは `target_compile_definitions(net_objects PRIVATE X=1)`。
+  3. 確認は `build/prebuilt-work/<chip>/<profile>/build.ninja` の当該 `.obj` の
+     `DEFINES =` を見る。そのうえで**実行時のログに値を印字させる**。
 
 ## 6. 非退行
 
