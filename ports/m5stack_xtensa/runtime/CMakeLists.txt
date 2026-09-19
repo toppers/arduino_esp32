@@ -1049,6 +1049,17 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
         "-lstdc++@@-lm@@-Wl,--end-group")
     if(FMP3_RUNTIME_PROFILE MATCHES "^(wifi-connect|all-in-one)$")
         set(XIP_LINK_UFLAGS "-Wl,--wrap=esp_supplicant_init")
+        #  ★診断（既定 OFF・2026-09-19）: esp_wifi_sta_get_rsnxe の観測。
+        #  supplicant -> blob のアーカイブ間呼び出しなので --wrap が効く。
+        #  F-3（S3 の reason=17）で AP の RSNXE が S3 だけ空になる件の切り分け。
+        option(A1_WIFI_RSNXE_PROBE
+            "Log esp_wifi_sta_get_rsnxe arguments and result (diagnostic)" OFF)
+        if(A1_WIFI_RSNXE_PROBE)
+            set(XIP_LINK_UFLAGS
+                "${XIP_LINK_UFLAGS}@@-Wl,--wrap=esp_wifi_sta_get_rsnxe")
+            target_sources(net_objects PRIVATE
+                "${RUNTIME_ROOT}/wifi/shim/wifi_rsnxe_probe.c")
+        endif()
         #  チップごとに別物である。ソフト暗号でビルドした版が要る理由は
         #  wifi/prebuilt/wpa2/README.md を参照。
         set(WPA2_PREBUILT_ROOT

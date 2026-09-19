@@ -150,6 +150,38 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
   `state:` / `wifi_adapter:` のみ）。blob と supplicant のログ水準を上げる計器を
   作るのが先で、それ無しに次の仮説を立てても当て推量になる。
 
+  ### 原因を特定した（2026-09-19・supplicant の診断ビルド）
+
+  出荷の `libsupplicant.a` には診断が **1 行も入っていない**（`wpa_printf` は
+  `DEBUG_PRINT` で囲われており、未定義だと消える。`nm` で 0 件を実測）。
+  ⇒ ログ入りで建て直す計器を作った（dev `build_wpa_libs_espidf_esp32{,s3}.sh`
+  の `WPA_DEBUG_PRINT=1`、既定 OFF・出力先を `_dbg` に分離）。
+
+  **同じスケッチ・同じ AP・同じ supplicant ソースで S3 と LX6 を比べた結果**:
+
+  | | `set AP RSNXE`（association 時に記録） | `RSNXE in EAPOL-Key`（msg 3/4） | 結果 |
+  |---|---|---|---|
+  | **ESP32-S3** | **`len=0`（空）** | `len=3` | `reason=17` |
+  | **ESP32 (LX6)** | **`len=3`: `f4 01 20`** | `len=3`: `f4 01 20` | `Key negotiation completed` |
+
+  供給元は `esp_wifi_sta_get_rsnxe(bssid)`（両チップとも blob = `libnet80211.a`）。
+  `-Wl,--wrap` で観測すると、**実在の BSSID で呼ばれて NULL が返る**
+  （計器は `A1_WIFI_RSNXE_PROBE=ON`、既定 OFF）。⇒「鍵が違う」ではなく
+  **「blob が保持していない」**で確定。
+
+  supplicant 側の判定は `wpa.c:1170-1184` で**無条件**（`!sm->ap_rsnxe && ie->rsnxe`
+  も不一致とする）。Kconfig にも公開 API にも RSNXE の口は無い（grep 0 件）。
+
+  ⇒ **このポートでは回避できない。** 手当ての候補と問題:
+  - `--wrap` で RSNXE を捏造 → `f4 01 20` は**この AP の値**。RSNXE は「AP が
+    何に対応しているか」の宣言で、STA が勝手に作ってよいものではない
+  - 自前 scan から取る → `wifi_ap_record_t` に生 IE は無く、raw beacon には
+    promiscuous の層が要る（このポートに無い）
+  - WPA2 専用 AP を使う → 回避ではなく**条件の限定**（未実測）
+
+  **次の一手**: Espressif への報告（材料は揃っている）。制限は README と
+  配布 README に明記した。
+
   ### この実験で踏んだ罠（次にやる人へ）
 
   **定義が届いたかを像に名乗らせること。** `A1_WIFI_PMF_CAPABLE` を渡す実験は

@@ -100,9 +100,8 @@ prebuilt archive、include 配置に依存しています）。
   dispatch=call=20 orphan=0`）、本体 RGB LED（G35、`AtomS3LiteRgb` で
   `tx_done=8`。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認**）、
   Wi-Fi スキャン（16 AP）。
-  **STA 接続は現状この AP に繋がりません**（`reason=17` で 3/3 切断。
-  同じ stage を使う CoreS3 / StickS3 で同じ AP を試していないため、
-  板固有か Xtensa 共通かは未確定です。[`docs/atoms3lite-port.md`](docs/atoms3lite-port.md) F-3）
+  **STA 接続は WPA3 移行モードの AP に繋がりません**（`reason=17`
+  = `IE_IN_4WAY_DIFFERS`。原因は 2026-09-19 に特定しました——下記「既知の制限」）
 - **M5Stack ATOM Lite 実機**（2026-09-17、板の無い機械で追加したものを別の PC で
   確認）で、minimal（`Blink` warm 5/5・真cold 5/5）、`GpioInterrupt`（G23、warm と
   真cold の両方で `VERDICT PASS`）、本体 RGB LED（SK6812 G27、`AtomLiteRgb` で
@@ -272,6 +271,24 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
 
 ## 制約
 
+- **ESP32-S3 の 3 板は WPA3 移行モード（WPA2/WPA3 混在）の AP に STA 接続できません。**
+  `reason=17`（`IE_IN_4WAY_DIFFERS`）で 4-way handshake の最後に切断されます。
+  scan・認証・アソシエーションはすべて通り、**鍵交換の最終段だけ**が落ちます。
+
+  原因は SDK の Wi-Fi blob 側にあり、**このポートで回避できません**（2026-09-19 に
+  supplicant の診断ビルドで特定）。AP が beacon に載せる RSNXE を、ESP32-S3 の
+  blob が supplicant へ渡しません（`esp_wifi_sta_get_rsnxe()` が実在の BSSID に
+  対して NULL を返すことを実機で確認）。一方 AP は EAPOL-Key msg 3 に RSNXE を
+  載せてくるため、supplicant の「Beacon と EAPOL-Key の RSNXE は一致すべき」検査
+  （`wpa.c` の無条件判定。設定で外す口はありません）が不一致で落とします。
+
+  **ESP32（LX6）の 2 板は同じ AP に繋がります**——同じ supplicant ソース・同じ
+  スケッチで、`set AP RSNXE` が LX6 では `f4 01 20`、S3 では空でした。
+  ⇒ これは板固有でもこのポート固有でもなく、**チップの blob の差**です。
+
+  **WPA2 専用の AP なら S3 でも繋がる見込み**です（RSNXE を出さない AP なら
+  両側とも無しで一致するため）。ただし本ポートでは未実測です。
+  切り分けの全経過は [`docs/atoms3lite-port.md`](docs/atoms3lite-port.md) F-3。
 - **M5Stack Arduino core のランタイムはリンクされません。** FMP3 がカーネルなので、
   core 自身のランタイムも FreeRTOS も像に入りません。帰結として、**`Serial`・
   `delay()`・`millis()`・`micros()`・`Wire`・`SPI` は使えません**。

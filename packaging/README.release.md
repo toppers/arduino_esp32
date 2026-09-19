@@ -19,7 +19,8 @@ Arduinoボードパッケージです。
 （`M5Unified + Dual Core`は画面を持つCoreS3・M5StickS3・M5Stack Basicのみ、
 `Bluetooth Classic (SPP)`はESP32の2機種＝M5Stack BasicとATOM Liteのみ）。
 M5AtomS3 Liteで実機確認したのは`Blink`・`GpioInterrupt`・本体RGB LED・
-Wi-Fiスキャンで、**STA接続は未達**です（詳細はdocs/atoms3lite-port.md）。
+Wi-Fiスキャンで、**STA接続はWPA3移行モード（WPA2/WPA3混在）のAPに対して
+できません**（`reason=17`。下の「制約」参照。詳細はdocs/atoms3lite-port.md）。
 M5Stack ATOM Liteは`Minimal`・`WiFi`・`Bluetooth Classic (SPP)`の3つが出ます。
 実機で確認したのは`Blink`・`GpioInterrupt`（G23）・本体RGB LED（SK6812、G27。
 例題は`AtomLiteRgb`）・Wi-Fiスキャン・**Wi-Fi STA接続**（warm 3/3・真cold 3/3。
@@ -486,6 +487,15 @@ WPA2-PSK／WPA3-SAEの追加アクセスポイントでの互換性。
 
 ## 制約
 
+- **ESP32-S3の3板は、WPA3移行モード（WPA2/WPA3混在）のAPにSTA接続できません。**
+  `reason=17`（`IE_IN_4WAY_DIFFERS`）で4-way handshakeの最終段だけが落ちます
+  （scan・認証・アソシエーションは通ります）。原因はSDKのWi-Fi blob側にあり、
+  **このポートでは回避できません**——APがbeaconに載せるRSNXEをESP32-S3のblobが
+  supplicantへ渡さず（`esp_wifi_sta_get_rsnxe()`がNULLを返すことを実機で確認）、
+  APはEAPOL-Key msg 3にRSNXEを載せてくるため、supplicantの一致検査
+  （設定で外す口はありません）が落とします。**ESP32（LX6）の2板は同じAPに
+  繋がります**ので、板固有でもこのポート固有でもなく、チップのblobの差です。
+  WPA2専用のAPならS3でも繋がる見込みですが未実測です。
 - **M5Stack Arduino coreのランタイムはリンクされません。** FMP3がカーネルなので、
   core自身のランタイムもFreeRTOSも像に入りません。帰結として**`Serial`・`delay()`・
   `millis()`・`micros()`・`Wire`・`SPI`は使えません**。`<Wire.h>`や`<SPI.h>`を
