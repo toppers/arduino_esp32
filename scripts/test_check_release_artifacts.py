@@ -20,6 +20,7 @@ import io
 import json
 import shutil
 import sys
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -547,15 +548,48 @@ class ReusedDriver(unittest.TestCase):
                 make_package_index.published_driver(target, "2.0.0")
 
     def test_source_change_is_detected(self):
+        """Both answers, without assuming anything about this clone.
+
+        ★The first version of this test asserted the message for `v0.5.0`,
+        which only holds where that tag exists. actions/checkout does not
+        fetch tags by default, so CI saw "git does not know the tag v0.5.0"
+        and the test failed on a helper that was behaving correctly. Assert
+        against refs this test creates or derives instead.
+        """
         import make_package_index
-        ok, why = make_package_index.driver_source_unchanged_since("v0.5.0")
-        #  scripts/fmp3_link.py has changed since v0.5.0; the point is that the
-        #  helper says so rather than returning a silent True.
+        #  A ref that cannot exist: the helper must say so, not answer True.
+        ok, why = make_package_index.driver_source_unchanged_since(
+            "v9.9.9-no-such-ref")
         self.assertFalse(ok)
+        self.assertIn("v9.9.9-no-such-ref", why)
+
+        #  HEAD's own commit: the file cannot have changed since itself. A raw
+        #  SHA works because the helper resolves with `rev-parse <ref>^{commit}`,
+        #  and HEAD exists in every clone including a shallow one.
+        head = subprocess.run(["git", "rev-parse", "HEAD"],
+                              cwd=Path(__file__).resolve().parent.parent,
+                              capture_output=True, text=True)
+        self.assertEqual(head.returncode, 0, head.stderr)
+        ok, why = make_package_index.driver_source_unchanged_since(
+            head.stdout.strip())
+        self.assertTrue(ok, why)
+        self.assertIn("unchanged", why)
+
+        #  The "changed" answer needs a commit where the file differs. Deriving
+        #  it needs history, which a shallow clone may not have - skip rather
+        #  than assert something this clone cannot show.
+        root = Path(__file__).resolve().parent.parent
+        touched = subprocess.run(
+            ["git", "log", "-2", "--format=%H", "--",
+             "scripts/fmp3_link.py"],
+            cwd=root, capture_output=True, text=True)
+        commits = touched.stdout.split()
+        if len(commits) < 2:
+            self.skipTest("shallow clone: no earlier commit touching the "
+                          "driver source to compare against")
+        ok, why = make_package_index.driver_source_unchanged_since(commits[1])
+        self.assertFalse(ok, why)
         self.assertIn("fmp3_link.py", why)
-        ok, why = make_package_index.driver_source_unchanged_since("v9.9.9")
-        self.assertFalse(ok)
-        self.assertIn("tag", why)
 
 
 if __name__ == "__main__":
