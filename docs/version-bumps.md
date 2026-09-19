@@ -217,3 +217,55 @@ P4 は `ignored (not in baseline)` だった）。`--clean` の完全再ビル�
 （M5Stamp-P4 が「Minimal のみ・実機未確認」のままだった、M5Stack ATOM Lite が
 「実機で一度も動かしていません」のままだった、配布 README の board 一覧が
 8 板中 7 板しか載せていなかった）。
+
+---
+
+## 2026-09-19: v0.6.1 として公開（v0.6.0 の Upload 不能を直す）
+
+`v0.6.1` タグ、<https://github.com/toppers/arduino_esp32/releases/tag/v0.6.1>。
+`toppers-esp32-0.6.1.zip` は sha256
+`8a4d61c1b9a55b7b48547be8863cba4227bdeef6d0c3e1939e451074cef32ec5`。
+
+### なぜ出したか
+
+**v0.6.0 は全 OS で Upload できなかった。** M5Stack core 3.3.9 が書き込み経路を
+`tools/flasher.{py,exe}` 経由に変え、それが `{runtime.platform.path}`＝**本 platform**
+から引かれる（ラッパは core 側にあるので届かない）。`platform_lines()` が core の
+platform.txt を 1 行ずつ写す作りなので、そのまま入っていた。非 Windows 行は
+`python3` を要求し、prebuilt stage が避けている当のものを持ち込んでいた。
+
+### なぜ 116/116 の verify をすり抜けたか
+
+**`verify_package.py` はコンパイルまでしか見ない。** Upload 経路には計器が無い。
+v0.6.0 のとき 116/116 が通ったのは、壊れた場所を**誰も見ていなかった**からである。
+
+### 実機で Upload を確かめた（2 系統）
+
+今回は手で確かめた。`arduino-cli upload`＝**利用者と同じ経路**（`platform.txt` の
+upload recipe）を、**公開された 0.6.1 を Boards Manager から入れた状態**で実行:
+
+| 板 | 経路 | Upload | 書いた像の動作 |
+|---|---|---|---|
+| M5NanoC6（ESP32-C6） | USB Serial/JTAG | `Hash of data verified` | `banner=1 setup=1 heartbeat=29 blink=29 unexpected=0` |
+| M5Stack ATOM Lite（ESP32 LX6） | **実 UART**（FTDI・115200） | `Hash of data verified` | `banner=1 setup=1 heartbeat=29 blink=29 unexpected=0` |
+
+**2 系統にしたのは理由がある**——`flasher` の行は Windows 向けと非 Windows 向けで
+別々にあり、USB-JTAG と実 UART では esptool の掴み方も違う。片方だけでは
+「たまたま通った」を排除できない。また `Hash of data verified` は**書き込みの照合**で
+あって**起動の証拠ではない**ので、採取まで回して像が走っていることを見た。
+
+### その他の検査
+
+`verify_package` **124/124**（`Fmp3Sample1` が増えて 116 -> 124）、
+`check_release_artifacts` / `check_host_paths` とも PASSED、公開後に本物の URL から
+`toppers:esp32@0.6.1` を入れ直して代表 3 本が建つこと、そして**配布される
+`platform.txt` の `flasher` 参照が 0** であることを確認した。
+
+### 残っている穴（塞がっていない）
+
+**`verify_package` は依然として Upload 経路を見ない。** 今回は手で確かめたが、
+同種の変更——`platform_lines()` が core の行を写す箇所——が次に入れば、同じように
+すり抜ける。今日入った「`{runtime.platform.path}` 経由で参照されるのに同梱して
+いないものを列挙する install 時監査」が最も近い防御だが、それは**ファイルの不在**を
+見るものであって、**Upload が通るか**は見ていない。実機 Upload を検査へ組み込むには
+板が要るので、やるかどうかは判断事項として残す。
