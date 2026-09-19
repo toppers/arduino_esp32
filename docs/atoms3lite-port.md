@@ -107,12 +107,16 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
   | 板 | チップ | AP を見つけたか | 結果 |
   |---|---|---|---|
   | M5Stack ATOM Lite | ESP32 (LX6) | 見つけた（rssi -62〜-71） | **CONNECTED**（warm 3/3・真cold 3/3） |
+  | **M5Stack Basic** | ESP32 (LX6) | 見つけた（rssi -70、ch 10、auth 7） | **CONNECTED**（2026-09-19 追加） |
   | **M5CoreS3** | ESP32-S3 | 見つけた（rssi -65、ch 10、auth 7） | `begin returned=0` のあと **`reason=17`** |
   | **M5AtomS3 Lite** | ESP32-S3 | 見つけた（rssi -66、ch 10、auth 7） | `begin returned=0` のあと **`reason=17`** |
 
-  ⇒ **S3 の 2 板が同一の症状で落ち、同じ AP に LX6 は繋がる。** F-3 が
+  ⇒ **LX6 が 2 板とも通り、S3 が 2 板とも同一の症状で落ちる。** F-3 が
   「他の S3 板で試していないので未確定」としていた帰属は、**S3 共通**で確定した。
-  AP は WPA2/WPA3 混在（`auth=7` = `WIFI_AUTH_WPA2_WPA3_PSK`）。
+  各チップ 1 枚ずつだった段階では「ATOM Lite が例外だった」可能性が残っていたが、
+  2026-09-19 に M5Stack Basic（LX6 の 2 枚目、ESP32-D0WDQ6-V3、別個体・別ブリッジ）を
+  足して消えた。4 板とも同じ AP（WPA2/WPA3 混在 `auth=7`、ch 10）を同程度の
+  電波強度（rssi -62〜-71）で見つけたうえでの差である。
 
   **絞り込み済みの範囲**（LX6 との差がどこに無いか）:
   - STA 設定を組む `wifi/adapter/toppers_wifi_connect.c` は**両チップ共用の同一ファイル**

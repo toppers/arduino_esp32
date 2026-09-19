@@ -42,6 +42,12 @@ error: E_OBJ: AID_CYC requires at least one CRE_CYC in the system
 
 ## 実機で見たこと（M5Stack ATOM Lite・2026-09-18・60 秒）
 
+**M5CoreS3（ESP32-S3）でも 2026-09-19 に同じ結果を確認しました**——周期 60・
+アラーム 1・`change_priority=0`・`unexpected=0`。実行回数は 60/59/59 ですが、
+これは採取を打ち切った瞬間の差です（周期通知が 3 タスクを順に起こす途中で
+60 秒が来ると後ろの 2 本が 1 回ぶん少なく見える）。動作の差ではありません。
+
+
 ```
 [Sample1] created task id=3 / 4 / 5
 [Sample1] cyclic_start=0
