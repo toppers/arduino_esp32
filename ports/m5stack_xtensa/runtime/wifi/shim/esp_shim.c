@@ -216,8 +216,22 @@ esp_shim_tick_to_tmo(uint32_t tick)
 int64_t
 esp_shim_time_us(void)
 {
-	/* S3移植：ESP32-S3はXtensa CCOUNTベースのHRT(us)を使う */
-	return((int64_t) target_hrt_get_current());
+	/*
+	 *  Xtensa CCOUNT ベースの HRT(us) を使う。
+	 *
+	 *  2026-09-20（dev の 2026-07-27 の修正を本コピーへ移植）: ここは
+	 *      return((int64_t) target_hrt_get_current());
+	 *  だった。`target_hrt_get_current()` は FMP3 の HRTCNT 契約に従う
+	 *  **32bit** 値で 2^32us ≒ **71.6 分**でラップする。それを int64 へ
+	 *  ゼロ拡張して返していたため、本関数の契約（ESP-IDF の
+	 *  `esp_timer_get_time()` 相当＝**単調増加する 64bit マイクロ秒**）を
+	 *  71.6 分ごとに破っていた。帰結:
+	 *    - one-shot タイマの期限比較が巻き戻り、発火が最大 71 分遅れる
+	 *    - lwIP の `sys_now()` が逆行し、再送/keepalive のタイマが壊れる
+	 *  64bit 累積器は target_timer.h に元からあるので、切り詰めない
+	 *  `target_hrt_get_current64()` へ切り替えるだけで解消する。
+	 */
+	return(target_hrt_get_current64());
 }
 
 uint32_t

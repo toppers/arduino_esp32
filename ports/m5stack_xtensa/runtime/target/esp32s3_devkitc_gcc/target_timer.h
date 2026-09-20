@@ -330,6 +330,18 @@ extern void target_hrt_terminate(intptr_t exinf);
 #define TCYC_PER_HRT  ((uint32_t) TOPPERS_S3_CPU_FREQ_MHZ)
 
 /*
+ * target_hrt_raise_event() が CCOMPARE0 へ置く「ごく近い未来」のマージン
+ * （サイクル単位。詳細は target_hrt_raise_event() のコメント。
+ *  esp32_devkitc_gcc/target_timer.h と同一の定義）。
+ *
+ *  INIT … 初回に試すマージン。1us 相当（TCYC_PER_HRT サイクル）。
+ *  MAX  … リトライで拡大するときの上限。256us 相当（契約＝「即座に発生」を
+ *          損なわない範囲で飽和させ、以後は同じマージンで再試行する）。
+ */
+#define HRT_RAISE_MARGIN_INIT   (TCYC_PER_HRT)
+#define HRT_RAISE_MARGIN_MAX    (TCYC_PER_HRT * 256U)
+
+/*
  * HRT値の一時的な凍結（テストスイート用途。通常のシステム動作では
  * 使用しない・既定は無効）。
  *
@@ -458,6 +470,39 @@ Inline HRTCNT target_hrt_get_current(void)
     return (HRTCNT) (acc / TCYC_PER_HRT);
 }
 
+Inline int64_t target_hrt_get_current64(void)
+{
+    uint_t   prcidx;
+    uint32_t raw, delta;
+    uint64_t acc;
+    SIL_PRE_LOC;
+
+    if (_kernel_hrt_frozen) {
+        return (int64_t) _kernel_hrt_frozen_val;
+    }
+
+    /*
+     * RMW区間全体（CCOUNT読出し〜acc_cycles更新）を全割込みロックで
+     * 保護する（target_hrt_get_current() と同一）。
+     */
+    SIL_LOC_INT();
+    prcidx = xtensa_get_prcidx();
+    raw = xtensa_get_ccount();
+
+    /*
+     * 生サイクル値の32bit符号なし減算を先に行ってから累積する
+     * （target_hrt_get_current() と同一）。
+     */
+    delta = raw - _kernel_hrt_last_ccount[prcidx];
+    _kernel_hrt_last_ccount[prcidx] = raw;
+    _kernel_hrt_acc_cycles[prcidx] += (uint64_t) delta;
+    acc = _kernel_hrt_acc_cycles[prcidx];
+    SIL_UNL_INT();
+
+    /* 32bit版と違い，ここで HRTCNT へ切り詰めない */
+    return (int64_t) (acc / TCYC_PER_HRT);
+}
+
 /*
  * 高分解能タイマ割込みの要求
  *
@@ -467,16 +512,40 @@ Inline HRTCNT target_hrt_get_current(void)
  * 割込みには存在しない。CCOMPARE0をCCOUNT+1に設定し直すことで、
  * ほぼ即座に一致・割込み発生させる（Xtensaでの標準的な手法）。
  */
+/*
+ *  2026-09-20: dev（および本リポジトリの LX6 側）と同じ「マージンを広げて
+ *  再試行する」形へ揃えた。CCOMPARE0 の一致は**厳密一致**なので、
+ *  `ccount + 1` を置いた直後に CCOUNT がそこを通り過ぎていると、次の一致は
+ *  2^32 カウント後（240MHz で約 17.9 秒）まで起きない＝救済が救済にならない。
+ *  記録: fmp3_esp_idf_dev の .steering/20260728-hrt-raise-event-fix/。
+ */
 Inline void target_hrt_raise_event(ID prcid)
 {
-#ifdef TOPPERS_M5_TICK_DIAG
-    uint32_t _m5_w = xtensa_get_ccount() + 1U;
+    uint32_t margin = HRT_RAISE_MARGIN_INIT;
+    uint32_t w, now;
 
+    for (;;) {
+        w = xtensa_get_ccount() + margin;
+        xtensa_set_ccompare0(w);
+        now = xtensa_get_ccount();
+        if ((int32_t)(w - now) > 0) {
+            /* まだ未来＝CCOUNT は必ず w を通過する＝一致は確実に起きる */
+            break;
+        }
+#ifdef TOPPERS_M5_TICK_DIAG
+        /* 「取りこぼした（＝張り直しを要した）回数」。修正後は通常 0 */
+        _m5_tdiag[M5_TDIAG_RAISE_MISS]++;
+#endif /* TOPPERS_M5_TICK_DIAG */
+        if (margin < HRT_RAISE_MARGIN_MAX) {
+            margin <<= 2;
+        }
+    }
+
+#ifdef TOPPERS_M5_TICK_DIAG
     _m5_tdiag[M5_TDIAG_RAISE]++;
-    xtensa_set_ccompare0(_m5_w);
-    _m5_tdiag_note(_m5_w, 2U, M5_TDIAG_RAISE_MISS);
-#else /* TOPPERS_M5_TICK_DIAG */
-    xtensa_set_ccompare0(xtensa_get_ccount() + 1U);
+    _m5_tdiag[M5_TDIAG_LAST_CMP]  = w;
+    _m5_tdiag[M5_TDIAG_LAST_CC]   = now;
+    _m5_tdiag[M5_TDIAG_LAST_SITE] = 2U;
 #endif /* TOPPERS_M5_TICK_DIAG */
 }
 
