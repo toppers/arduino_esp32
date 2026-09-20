@@ -301,7 +301,12 @@ PRC1 で周期通知と 3 タスクが回る間に PRC2 の 60 行が 1 行も�
 
 ## 2026-09-21: v0.6.2 として公開（Xtensa のタイマ 3 件を直す）
 
-`v0.6.2` タグ。v0.6.1 からの実体は **ESP32-S3 / ESP32（Xtensa）のタイマまわりの
+`v0.6.2` タグ、<https://github.com/toppers/arduino_esp32/releases/tag/v0.6.2>。
+`toppers-esp32-0.6.2.zip` は sha256
+`33af8b25d39268551aca6873ba6f0f31daa3ceb0622565e917d08fb247f59082`。
+**リンクドライバは v0.6.1 のものを再利用した**（`scripts/fmp3_link.py` が
+不変なので `--reuse-driver-from 0.6.1`。このリリースに `fmp3-link-*.zip` は
+添付していない）。v0.6.1 からの実体は **ESP32-S3 / ESP32（Xtensa）のタイマまわりの
 欠陥 3 件**で、いずれも開発ツリー側では既に直っていたものが、arduino 側の複製に
 残っていた（[`tree-sync-audit.md`](tree-sync-audit.md)）。
 
@@ -361,3 +366,14 @@ CR を落としたコピーへ照合する形に直した。
 
 ⇒ 副産物として分かったこと: **v0.6.0 と v0.6.1 は、この CI が緑の状態では
 出していない**（ローカルの `verify_package.py` 124/124 が根拠だった）。
+
+### 公開後の確認（すべて実行済み）
+
+- `latest` の index を取得して、検査を通したものと**バイト一致**。
+  draft でも pre-release でもなく、アセットは 2 本とも添付されている。
+- index が名指しする**全 29 アセット**（platform 8 版 + ドライバ 21 本）を
+  実 URL から取得して sha256 照合 -> **29/29 一致**。引き継いだ過去の版も生きている。
+- **公開物だけで**隔離環境へ導入（`toppers:esp32@0.6.2`）し、代表 3 本を建てた:
+  `m5cores3_fmp3/m5/M5Unified`・`m5stampp4_fmp3/wificonnect/WiFiConnect`・
+  `m5atomlite_fmp3/btclassic/BluetoothSPP` -> **3/3 PASS**。
+- CI `verify-package` は 3 ホストとも **124/124**、`Compare images across hosts` も緑。
