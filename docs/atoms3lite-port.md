@@ -209,9 +209,13 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
   そこで終わっている。当時は「繋がったか」だけを見ていたので気づかなかった。
   ⇒ **失敗を見るときは、失敗したあとどうなるかも見る。**
 
-  原因は未特定（手元にこの AP しか無いので「`reason=17` のとき」以上に
-  絞れていない）。採取は
-  `fmp3_esp_idf_dev/.steering/20260920-aio-probe/logs/s3-*`。
+  **原因は同日に特定して直した**（branch `fix/xtensa-shim-timer-clamp`、
+  `docs/xtensa-timer-starvation.md`）。タイマの ms->us 変換の 32bit 折り返しと、
+  シムのタイマタスクが待ちを `TMAX_RELTIM` で頭打ちにしていなかったことの
+  合わせ技で、優先度 2 のタイマタスクが空転して下位タスクを全部飢餓させて
+  いた。dev では 2026-08-14 に直っており（`.steering/20260814-wifi-disconnect-hang/`）、
+  arduino 側は RISC-V のコピーにだけ修正が入っていた。
+  採取は `fmp3_esp_idf_dev/.steering/20260920-aio-probe/logs/s3-*`。
 
   ### この実験で踏んだ罠（次にやる人へ）
 
