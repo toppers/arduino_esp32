@@ -17,11 +17,11 @@
 **取り残しは Xtensa 側に集中している。** 確定したのは 3 件で、いずれも同日
 直した:
 
-| # | 件 | dev で直った日 | 直したブランチ |
+| # | 件 | dev で直った日 | 直した記録 |
 |---|---|---|---|
-| A-1 | `esp_shim_time_us()` が 32bit HRT を返し **71.6 分で時刻が巻き戻る** | 2026-07-27 | `fix/xtensa-hrt-drift` |
-| A-2 | `target_hrt_raise_event()` が `ccount+1` を 1 回置くだけで取りこぼす | 2026-07-28 | 同上 |
-| A-3 | タイマ待ちの `TMAX_RELTIM` 頭打ち／ms→us の 32bit 折り返し | 2026-08-14 | `fix/xtensa-shim-timer-clamp` |
+| A-1 | `esp_shim_time_us()` が 32bit HRT を返し **71.6 分で時刻が巻き戻る** | 2026-07-27 | 本ファイル（実証は下記） |
+| A-2 | `target_hrt_raise_event()` が `ccount+1` を 1 回置くだけで取りこぼす | 2026-07-28 | 本ファイル |
+| A-3 | タイマ待ちの `TMAX_RELTIM` 頭打ち／ms→us の 32bit 折り返し | 2026-08-14 | [`xtensa-timer-starvation.md`](xtensa-timer-starvation.md) |
 
 **A-1・A-2 は ESP32-S3 だけの取り残しだった**——同じこのリポジトリの中で、
 LX6 の `target_timer.h` には両方入っていて S3 のそれには入っていなかった。

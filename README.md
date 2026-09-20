@@ -221,8 +221,8 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   2026-09-20 に原因を特定して直しました（タイマの ms->us 変換の 32bit
   折り返しと、シムのタイマタスクが待ちを `TMAX_RELTIM` で頭打ちにして
   いなかったことの合わせ技で、優先度 2 のタイマタスクが空転して下位タスクを
-  全部飢餓させていた）。修正は branch `fix/xtensa-shim-timer-clamp`、
-  詳細と実測は [`docs/xtensa-timer-starvation.md`](docs/xtensa-timer-starvation.md)。
+  全部飢餓させていた）。詳細と実測は
+  [`docs/xtensa-timer-starvation.md`](docs/xtensa-timer-starvation.md)。
   修正後は繋がらない AP に対しても `loop()` は止まりません（M5CoreS3 で
   120 秒 117 周・欠番なし）。**繋がらないこと自体**は上記のとおり blob 側の
   問題で、このポートでは直せません。

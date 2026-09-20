@@ -209,8 +209,7 @@ flash 0x0-0x0FFF を読み戻して bootloader 像の先頭 4096 B と一致す�
   そこで終わっている。当時は「繋がったか」だけを見ていたので気づかなかった。
   ⇒ **失敗を見るときは、失敗したあとどうなるかも見る。**
 
-  **原因は同日に特定して直した**（branch `fix/xtensa-shim-timer-clamp`、
-  `docs/xtensa-timer-starvation.md`）。タイマの ms->us 変換の 32bit 折り返しと、
+  **原因は同日に特定して直した**（[`docs/xtensa-timer-starvation.md`](xtensa-timer-starvation.md)）。タイマの ms->us 変換の 32bit 折り返しと、
   シムのタイマタスクが待ちを `TMAX_RELTIM` で頭打ちにしていなかったことの
   合わせ技で、優先度 2 のタイマタスクが空転して下位タスクを全部飢餓させて
   いた。dev では 2026-08-14 に直っており（`.steering/20260814-wifi-disconnect-hang/`）、
