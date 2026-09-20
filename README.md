@@ -62,104 +62,39 @@ prebuilt archive、include 配置に依存しています）。
 
 ## 確認済みの範囲
 
-- 各構成が、Boards Manager 経由で入れたパッケージから
-  **対応するすべてのボードでビルドできること**（本数の正本は
-  `python3 scripts/verify_package.py --list-builds` の出力です。2026-09-20 時点で
-  8 ボード計 124 本。板ごとに選べる構成は冒頭の表のとおり）。
-  一括で実測した記録は **2026-09-17 の 105 本**（M5AtomLite を足した時点。Boards
-  Manager 経由ではなく、導入済み platform への直接 compile で 96 PASS / 0 FAIL /
-  9 SKIP（生成例題））と、**同日の M5Stamp-P4 の 3 本**（同じ形で 3/3 リンク）です。
-  その後に増えた分——例題 `Fmp3Sample1` と M5Stamp-P4 の `WiFi`——は
-  この一括実測には入っておらず、下記の実機確認で個別に通しています。
-  Xtensa 3 ボード分については
-  Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
-  成果物が 3 ホストでバイト単位に一致することを確認済み
-  （**M5NanoC6 の成果物はホスト間バイト一致の対象外**: 3 ホストでの
-  同一性は未計測です。driver 4（S5-8）でビルドパス依存は解消しましたが
-  （同一ホスト内で build path を変えても `.bin` が一致することは実測済み）、
-  cross-host は未検証のままです。下記「M5NanoC6 の既知の制限」参照）
-- 例題 [`Fmp3Sample1`](examples/Fmp3Sample1) を **6 板・全ポートの実機**で
-  （2026-09-19、M5Stack ATOM Lite・CoreS3・M5AtomS3 Lite・M5Stamp-P4・M5NanoC6・
-  M5Stamp-C5）。1 秒周期・60 秒採取で周期通知 60〜61 回、**アラームはどの板でも 1 回**、
-  `unexpected=0`。M5Stamp-P4 は同じ採取で `core2_alive=60 core2_full=60 prc2_start=1`
-  も出ており、PRC1 側が回る間に PRC2 の 60 行が 1 行も壊れていません
-- CoreS3 実機で、M5Unified（LCD・touch、SMP カーネル上）と Wi-Fi 接続
-  （Open / WPA2-PSK / WPA3-SAE -> DHCP -> DNS -> TCP）
-- M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
-  all-in-one。**touch・IMU・RTC はこの機種に無いので使えません**
-- **M5AtomS3 Lite 実機**で、minimal（`Blink` warm 5/5・真cold 5/5）、
-  `GpioInterrupt`（G7 自己駆動、`rising=5 falling=5 change=10 detached=0
-  dispatch=call=20 orphan=0`）、本体 RGB LED（G35、`AtomS3LiteRgb` で
-  `tx_done=8`。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認**）、
-  Wi-Fi スキャン（16 AP）。
-  **STA 接続は WPA3 移行モードの AP に繋がりません**（`reason=17`
-  = `IE_IN_4WAY_DIFFERS`。原因は 2026-09-19 に特定しました——下記「既知の制限」）
-- **M5Stack ATOM Lite 実機**（2026-09-17、板の無い機械で追加したものを別の PC で
-  確認）で、minimal（`Blink` warm 5/5・真cold 5/5）、`GpioInterrupt`（G23、warm と
-  真cold の両方で `VERDICT PASS`）、本体 RGB LED（SK6812 G27、`AtomLiteRgb` で
-  warm・真cold とも `tx_done=8`。**点灯と色順（赤 -> 緑 -> 青）はユーザーが目視確認**）、
-  Wi-Fi スキャン（14 AP）、
-  **Bluetooth Classic**（`[BluetoothSPP] discoverable as M5Stack-SPP` まで。
-  ペアリングは未実施）。
-  **STA 接続**は、追加した板の無い機械での初回（2026-09-17）は
-  `reason=201 (NO_AP_FOUND) rssi=-128` で 2/2 失敗しましたが、**2026-09-18 に
-  別の機械・別の AP で測り直したところ warm 3/3・真cold 3/3 で接続しました**
-  （目的の SSID をスキャンで見つけ、`begin()` が 0 を返す。AP は WPA2/WPA3 混在、
-  ch=10、rssi -62〜-71）。⇒ **「LX6 の Wi-Fi 経路の欠陥」という筋は反証されました**。
-  ただし初回の失敗が「場所のせい」と断定できるわけではありません（当時は別 PC・
-  別の場所・別の日で軸が 1 つに絞れておらず、その環境は今から測れません）。
-  切り分けの全経過は [`docs/atomlite-port.md`](docs/atomlite-port.md) 8 節。
-- **M5Stamp-P4 実機**（2026-09-18、ESP32-P4 rev v1.3 + Stamp AddOn C6）で、
-  minimal（`Blink` warm 5/5・真cold 5/5。**2 コア SMP** が `Processor 2 start.` と
-  `[P4-CORE2] alive` で確認できます）、`GpioInterrupt`（G16 自己駆動、
-  `rising=5 falling=5 change=10 detached=0 dispatch=call=20 orphan=0`）、
-  **hosted Wi-Fi のスキャン**（14〜16 AP）。この板の無線は P4 自身ではなく
-  **SDIO で繋いだ ESP32-C6（Stamp AddOn）**が担い、`[WiFiHosted] companion INIT
-  chip_id=0x0d` が相手と話せている一次証拠です。
-  **STA 接続 -> DHCP -> DNS -> TCP** も通ります（warm 3/3・真cold 3/3、
-  各回 `connected and DHCP completed` と `TCP received=255`。DHCP は 8〜9 秒）。実機でしか出なかった欠陥——SDK の bootloader が仕掛けた
-  ウォッチドッグによる起動ループ、`[WiFiScan]` の印字漏れ、PRC2 の 1 kHz ログ、
-  採取台本 5 件——は [`docs/p4-port.md`](docs/p4-port.md) 2-8 節に、
-  DHCP が通らなかった原因 2 件（cfg のオブジェクト ID がフォールバック値で
-  固まっていた／`host_by_name` の戻り値の向きが逆）は同 2-9 節にあります。
-  どちらも**戻り値を見ても捕まらない**型でした。コンソールの行頭欠落
-  （2-8 節で未解決としたもの）は原因が確定して直っています——
-  `fmp3_core` の `sio_irdy_snd()` が `sio_snd_chr()` の戻り値を捨てていた
-  という**全チップ共有**の欠陥で、詳細は同 2-10 節。
-- M5StickS3 実機で、minimal（`Blink`）、Wi-Fi スキャン（13 AP を検出）、
-  M5Unified（`board_M5StickS3` を検出、240x135 の LCD・IMU・PMIC）。
-  当初この機種だけ M5Unified が動かなかった経緯と原因は
-  [`docs/m5sticks3-m5unified.md`](docs/m5sticks3-m5unified.md)
-- **M5NanoC6（ESP32-C6）は `minimal` / `wificonnect` の 2 構成で配布物に
-  収録されています。** `Minimal`・`WiFi` の 2 つが `Tools > FMP3 Runtime` に
-  出ます。実機で確認済みなのは、stock M5Stack bootloader のまま
-  minimal（`Blink`）が起動すること（warm 5/5、真cold 9/10）と、
-  Wi-Fi STA -> DHCP -> DNS -> TCP がユーザーの実 AP（WPA2/WPA3 混在。**接続は 9/9 とも
-  WPA3-SAE**）に対して通ること（真cold 3/4、1 回は無音採取で成否判定不能）、および `WiFi` 構成で
-  `pinMode` / `digitalRead` の読み戻し、`attachInterrupt` の自己駆動試験、RGB LED への
-  RMT 送信完了が通ること（例題 `NanoC6Gpio`、warm 4 + 真cold 1。LED の色は赤 -> 緑 -> 青を目視確認）
-  です。**Open AP と WPA2-PSK 単独の AP は用意できず未実測（混在 AP では WPA3-SAE が選ばれた）、
-  BLE は未着手、M5Unified 相当の profile はありません**（下記「M5NanoC6 の既知の制限」）。判断と到達点は
-  [`docs/c6-port.md`](docs/c6-port.md)
-- **M5Stamp-C5（ESP32-C5）は `minimal` / `wificonnect` の 2 構成で配布物に
-  収録されています**（2026-09-16、段5）。`Minimal`・`WiFi` の 2 つが
-  `Tools > FMP3 Runtime` に出ます。実機で確認済みなのは、stock M5Stack
-  bootloader（**@0x2000**）のまま minimal（`Blink`）が起動すること
-  （warm 5/5・真cold 5/5、CPU 240 MHz）と、Wi-Fi の scan が 2.4 GHz と
-  5 GHz の両方を拾うこと、STA -> DHCP -> DNS -> TCP がユーザーの実 AP に
-  対して warm 3/3・真cold 3/3 で通ること、`WiFi` 構成で `pinMode` の
-  読み戻しと `attachInterrupt` の自己駆動試験（例題 `GpioInterrupt`、G1）が
-  PASS することです。判断 A0-A12 と段ごとの到達点は
-  [`docs/c5-port.md`](docs/c5-port.md)（下記「M5Stamp-C5 の既知の制限」も
-  読んでください）
+- **全構成が、対応するすべてのボードでビルドできること。** 本数の正本は
+  `python3 scripts/verify_package.py --list-builds` の出力（2026-09-20 時点で
+  8 ボード計 124 本）。板ごとに選べる構成は冒頭の表のとおりです
+- **Xtensa 3 ボードの成果物が、Windows・Linux x86_64・Apple Silicon macOS の
+  3 ホストでバイト単位に一致すること。** RISC-V 3 ボード（M5NanoC6・M5Stamp-C5・
+  M5Stamp-P4）はホスト間一致の対象外です（同一ホスト内で build path を変えても
+  `.bin` が一致することは実測済み。cross-host は未計測）
+- 例題 [`Fmp3Sample1`](examples/Fmp3Sample1) が **6 板・全ポートの実機**で動くこと
+  （M5Stack ATOM Lite・CoreS3・M5AtomS3 Lite・M5Stamp-P4・M5NanoC6・M5Stamp-C5）。
+  1 秒周期・60 秒採取で周期通知 60〜61 回、**アラームはどの板でも 1 回**、
+  `unexpected=0`。M5Stamp-P4 は同じ採取で `core2_alive=60 core2_full=60
+  prc2_start=1` も出ます
 
-## M5Stamp-P4 の既知の制限（2026-09-17）
+ボードごとの実機到達点:
 
-- **`Tools > FMP3 Runtime` は `Minimal` だけです。** P4 自身に無線が無く、Wi-Fi は
-  Stamp AddOn C6 経由の hosted 方式（SDIO + esp-hosted）になりますが、その Arduino
-  向けの層はまだありません（`docs/p4-port.md` 4 節、次の段）。画面も無いので
-  `M5Unified + Dual Core` もありません。**GPIO API（`pinMode` など）もまだありません**
-  （他の RISC-V 板と同じく `WiFi` 構成側に付ける予定）。
+| ボード | 実機で確認できていること |
+| --- | --- |
+| M5Stack CoreS3 | `M5Unified + Dual Core`（LCD・touch、SMP カーネル上）、Wi-Fi STA（Open / WPA2-PSK / WPA3-SAE）-> DHCP -> DNS -> TCP |
+| M5StickS3 | `Minimal`（`Blink`）、Wi-Fi スキャン（13 AP）、`M5Unified + Dual Core`（`board_M5StickS3` を検出、240x135 LCD・IMU・PMIC）。[`docs/m5sticks3-m5unified.md`](docs/m5sticks3-m5unified.md) |
+| M5AtomS3 Lite | `Minimal`（`Blink` warm 5/5・真cold 5/5）、`GpioInterrupt`（G7 自己駆動）、本体 RGB LED（G35、色順も目視確認）、Wi-Fi スキャン（16 AP）。**STA は WPA3 移行モードの AP に繋がりません**（下記「既知の制限」） |
+| M5Stack Basic | `Minimal`、`M5Unified + Dual Core`（LCD、SMP）、Wi-Fi スキャン。**touch・IMU・RTC はこの機種に無いので使えません** |
+| M5Stack ATOM Lite | `Minimal`（`Blink` warm 5/5・真cold 5/5）、`GpioInterrupt`（G23、warm・真cold とも PASS）、本体 RGB LED（SK6812 G27、色順も目視確認）、Wi-Fi スキャン（14 AP）と STA 接続（warm 3/3・真cold 3/3）、`Bluetooth Classic`（`discoverable as M5Stack-SPP` まで。ペアリングは未実施）。[`docs/atomlite-port.md`](docs/atomlite-port.md) |
+| M5NanoC6 | `Minimal`（`Blink` warm 5/5・真cold 9/10）、Wi-Fi STA -> DHCP -> DNS -> TCP（真cold 3/4、1 回は無音採取で判定不能。接続は 9/9 とも WPA3-SAE）、`pinMode` / `digitalRead` / `attachInterrupt` / RGB LED（例題 `NanoC6Gpio`）。**Open AP と WPA2-PSK 単独 AP は未実測、BLE は未着手**。[`docs/c6-port.md`](docs/c6-port.md) |
+| M5Stamp-C5 | `Minimal`（`Blink` warm 5/5・真cold 5/5、CPU 240 MHz）、Wi-Fi scan（2.4 GHz と 5 GHz の両方）、STA -> DHCP -> DNS -> TCP（warm 3/3・真cold 3/3）、`pinMode` と `attachInterrupt`（例題 `GpioInterrupt`、G1）。[`docs/c5-port.md`](docs/c5-port.md) |
+| M5Stamp-P4 | `Minimal`（`Blink` warm 5/5・真cold 5/5。**2 コア SMP** が `Processor 2 start.` と `[P4-CORE2] alive` で確認できます）、`GpioInterrupt`（G16 自己駆動）、hosted Wi-Fi のスキャン（14〜16 AP、`[WiFiHosted] companion INIT chip_id=0x0d`）、STA -> DHCP -> DNS -> TCP（warm 3/3・真cold 3/3、DHCP は 8〜9 秒）。[`docs/p4-port.md`](docs/p4-port.md) |
+
+いずれも各ボードの「既知の制限」の節とあわせて読んでください。
+
+## M5Stamp-P4 の既知の制限
+
+- **`Tools > FMP3 Runtime` は `Minimal` と `WiFi` の 2 つです。** 画面が無いので
+  `M5Unified + Dual Core` はありません。**GPIO API（`pinMode` など）は他の RISC-V 板と
+  同じく `WiFi` 構成にだけあります。**
 - **2 コア（SMP）で起動します。** スケッチは PRC1 で、PRC2 では runtime 側の小さな
   タスクが 1 秒ごとに `[P4-CORE2] alive N` を出します（core1 が動いている証拠。
   消し方は今のところありません）。
