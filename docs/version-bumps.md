@@ -295,3 +295,48 @@ PRC1 で周期通知と 3 タスクが回る間に PRC2 の 60 行が 1 行も�
 
 あわせて **F-3 の帰属に LX6 の 2 枚目を足した**（M5Stack Basic）。
 詳細は `docs/atoms3lite-port.md`。
+
+
+---
+
+## 2026-09-21: v0.6.2 として公開（Xtensa のタイマ 3 件を直す）
+
+`v0.6.2` タグ。v0.6.1 からの実体は **ESP32-S3 / ESP32（Xtensa）のタイマまわりの
+欠陥 3 件**で、いずれも開発ツリー側では既に直っていたものが、arduino 側の複製に
+残っていた（[`tree-sync-audit.md`](tree-sync-audit.md)）。
+
+| # | 件 | 症状 | 実証 |
+|---|---|---|---|
+| A-3 | タイマ待ちを `TMAX_RELTIM` で頭打ちにせず、`twai_sem` の戻り値も捨てていた。`_timer_arm` の ms->us が 32bit | **Wi-Fi 切断後に全タスクが 296 秒止まる**（`loop()` が呼ばれず、コンソールも沈黙） | 修正前 120 秒で 3 周 -> 修正後 117 周（欠番なし） |
+| A-1 | `esp_shim_time_us()` が 32bit HRT をゼロ拡張して返していた | **71.6 分で時刻が巻き戻る**。one-shot タイマが最大 71 分遅延、lwIP `sys_now()` が逆行 | 85 分 soak で 72.0 分に 2^32us を跨ぎ、171 サンプル全部で単調増加 |
+| A-2 | `target_hrt_raise_event()` が `ccount+1` を 1 回置くだけ | CCOMPARE0 の厳密一致を取りこぼすと次の一致まで最大 17.9 秒（240MHz） | コード等価（dev・LX6 と同一形）。**単独の実機実証は無し** |
+
+詳細は [`xtensa-timer-starvation.md`](xtensa-timer-starvation.md)。
+
+**A-1・A-2 は ESP32-S3 だけの取り残しだった**——同じこのリポジトリの中で、
+LX6 の `target_timer.h` には両方入っていた。複製は板ごとに別のタイミングで
+取られており、古さも板ごとに違う。
+
+### 配布バイト列が動いた範囲
+
+X-check（v0.6.1 相当のステージを基準）:
+
+```
+esp32s3/minimal:      DIFF  objs/time_event.o
+esp32s3/m5-unified:   DIFF  objs/time_event.o
+esp32s3/wifi-connect: DIFF  objs/time_event.o objs/esp_shim.o objs/esp_wifi_adapter.o
+esp32/wifi-connect:   DIFF  objs/esp_shim.o objs/esp_wifi_adapter.o
+esp32/bt-classic:     DIFF  objs/esp_shim.o
+esp32/minimal, esp32/m5-unified: MATCH
+```
+
+**LX6 の minimal と m5-unified が MATCH** なのは、LX6 のヘッダが元から直って
+いたからで、診断と整合する。RISC-V 3 板（C6/C5/P4）は無関係（ステージ不変）。
+
+### 同梱したが配布物には入らないもの
+
+`all-in-one`（M5Unified + Dual Core + WiFi の合成）の試作が入っている。
+**既定のステージ集合に無いので配布物には含まれない**——自分で
+`--profiles all-in-one` を建てたときだけ `Tools > FMP3 Runtime` に出る
+（画面のある 3 板のみ）。出荷の本数（124）も出荷バイト列も不変であることを
+確認済み。[`all-in-one-prototype.md`](all-in-one-prototype.md)。
