@@ -438,6 +438,30 @@ class PlatformContents(unittest.TestCase):
             self.assertEqual(verify_package.BOARD_PROFILES[board], expected,
                              board)
 
+        #  The experimental options are outside the allowlist on purpose, so
+        #  the loop above cannot hold them. They get the same treatment
+        #  against their own source of truth: install_platform offers the
+        #  all-in-one entry wherever the chip HAS an m5-unified stage (the
+        #  composite contains it) and the board has not declined it, and
+        #  verify_package must verify it on exactly those boards. Without
+        #  this a board could gain the menu entry and never be built with
+        #  it, which is the drift this test exists to catch.
+        aio_menu, _, aio_profile = install_platform.EXPERIMENTAL_ENTRY
+        self.assertEqual(
+            {board for board, profiles
+             in verify_package.EXPERIMENTAL_BOARD_PROFILES.items()
+             if aio_menu in profiles},
+            {board for board, (chip, _, _, _) in install_platform.BOARDS.items()
+             if "m5-unified" in STAGES[chip]
+             and aio_menu not in install_platform.BOARD_SKIP_ENTRIES.get(
+                 board, set())})
+        self.assertEqual(aio_profile, "all-in-one")
+        self.assertIn(aio_menu, verify_package.PROFILES)
+        self.assertEqual(verify_package.EXPERIMENTAL_PROFILES, {aio_menu})
+        #  and it must NOT be in any release table
+        for chip, profiles in STAGES.items():
+            self.assertNotIn(aio_profile, profiles, chip)
+
 
 class UploadRecipe(unittest.TestCase):
     """install_platform.py must not inherit the M5Stack flasher wrapper.

@@ -113,7 +113,20 @@ PROFILES = {
     #  and bt-classic is the profile with a second library object of its own.
     "btclassic": ["BluetoothSPP", "Blink", "LibraryInfo", MULTI_FILE_SKETCH,
                   "GpioInterrupt"],
+    #  EXPERIMENTAL. The all-in-one stage is not in SHIPPED_PROFILES, so this
+    #  row is not part of the release matrix (see EXPERIMENTAL_PROFILES
+    #  below): it runs only when --profiles names it, against a platform
+    #  installed from stages built with --profiles all-in-one. M5UnifiedWiFi
+    #  is the composition itself (M5GFX and the Wi-Fi stack in one sketch);
+    #  the other two are the same link checks every profile carries.
+    "aio": ["M5UnifiedWiFi", "Blink", "LibraryInfo"],
 }
+
+#  Profiles that exist but are not shipped. They are left out of the default
+#  --profiles, so the numbers a release quotes do not move when one is added,
+#  and the drift test holds them against their own table rather than against
+#  the release allowlist (which, correctly, does not list them).
+EXPERIMENTAL_PROFILES = {"aio"}
 
 #  board -> the menu options that board offers. Every board the platform
 #  offers is a row here, and verifying one says nothing about another: the
@@ -161,6 +174,27 @@ BOARD_PROFILES = {
     "m5stampp4_fmp3": {"minimal", "wificonnect"},
 }
 
+#  Which boards the experimental options are verified on. Kept apart from
+#  BOARD_PROFILES because that table is derived from the stages a release
+#  ships (the drift test asserts exactly that); an experimental stage is in
+#  no release, so a row here would make that assertion false.
+#
+#  aio CONTAINS m5-unified, so its boards are the boards that offer m5: the
+#  two ESP32-S3 boards with a display and the M5Core. install_platform's
+#  BOARD_SKIP_ENTRIES subtracts the display-less boards from both at once.
+EXPERIMENTAL_BOARD_PROFILES = {
+    "m5cores3_fmp3": {"aio"},
+    "m5sticks3_fmp3": {"aio"},
+    "m5core_fmp3": {"aio"},
+}
+
+
+def profiles_of(board: str) -> set:
+    """Every option this board can be verified with, shipped and not."""
+    return (BOARD_PROFILES[board]
+            | EXPERIMENTAL_BOARD_PROFILES.get(board, set()))
+
+
 #  Every board the platform offers, in the order they are verified.
 BOARDS = list(BOARD_PROFILES)
 
@@ -197,7 +231,7 @@ def planned_builds(boards, options) -> list[tuple[str, str, str]]:
     return [(board, option, example)
             for board in boards
             for option in sorted(PROFILES)
-            if option in options and option in BOARD_PROFILES[board]
+            if option in options and option in profiles_of(board)
             for example in PROFILES[option]]
 
 
@@ -382,7 +416,11 @@ def main() -> int:
                         help="default: <platform-dir>/../verify-package")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--profiles", nargs="*", choices=sorted(PROFILES),
-                        default=sorted(PROFILES))
+                        default=sorted(set(PROFILES) - EXPERIMENTAL_PROFILES),
+                        help="options to verify; the shipped ones by "
+                             "default. Naming an experimental one (aio) "
+                             "needs a platform installed from stages built "
+                             "with that profile")
     parser.add_argument("--boards", nargs="*", choices=BOARDS, default=BOARDS,
                         help="boards to build on; every board by default")
     parser.add_argument("--list-builds", action="store_true",

@@ -42,8 +42,10 @@ python scripts/build_prebuilt_stages.py --cmake <path/to/cmake> --ninja <path/to
 ```
 
 `minimal` / `m5-unified` / `wifi-connect` が
-`build/prebuilt/esp32s3/<構成>/` に出ます。実験的な `all-in-one` を作るには
-`--profiles all-in-one` を渡します（既定には入っていません）。
+`build/prebuilt/esp32s3/<構成>/` に出ます。実験的な `all-in-one`
+（M5Unified + Dual Core + WiFi を 1 つのステージに合成したもの）を作るには
+`--profiles all-in-one` を渡します（既定には入っていません）。到達点・使用量・
+未解決は [`docs/all-in-one-prototype.md`](docs/all-in-one-prototype.md)。
 
 Arduino のデータディレクトリは OS ごとに解決します
 （`%LOCALAPPDATA%\Arduino15` / `~/Library/Arduino15` / `~/.arduino15`）。

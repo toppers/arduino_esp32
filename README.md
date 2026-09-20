@@ -216,6 +216,16 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   **WPA2 専用の AP なら S3 でも繋がる見込み**です（RSNXE を出さない AP なら
   両側とも無しで一致するため）。ただし本ポートでは未実測です。
   切り分けの全経過は [`docs/atoms3lite-port.md`](docs/atoms3lite-port.md) F-3。
+
+  なお、この切断のあとスケッチが 296 秒止まる**別の**欠陥がありましたが、
+  2026-09-20 に原因を特定して直しました（タイマの ms->us 変換の 32bit
+  折り返しと、シムのタイマタスクが待ちを `TMAX_RELTIM` で頭打ちにして
+  いなかったことの合わせ技で、優先度 2 のタイマタスクが空転して下位タスクを
+  全部飢餓させていた）。修正は branch `fix/xtensa-shim-timer-clamp`、
+  詳細と実測は [`docs/xtensa-timer-starvation.md`](docs/xtensa-timer-starvation.md)。
+  修正後は繋がらない AP に対しても `loop()` は止まりません（M5CoreS3 で
+  120 秒 117 周・欠番なし）。**繋がらないこと自体**は上記のとおり blob 側の
+  問題で、このポートでは直せません。
 - **M5Stack Arduino core のランタイムはリンクされません。** FMP3 がカーネルなので、
   core 自身のランタイムも FreeRTOS も像に入りません。帰結として、**`Serial`・
   `delay()`・`millis()`・`micros()`・`Wire`・`SPI` は使えません**。
