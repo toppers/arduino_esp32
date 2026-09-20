@@ -505,9 +505,23 @@ def main(argv: list[str] | None = None) -> int:
                     "host from the allowlist and say so in the release notes.")
         for extra in sorted(present - set(wanted["linkDriver"]["hosts"])):
             print(f"  note driver for {extra} is present but not required")
+        #  make_package_index.py --reuse-driver-from は、ドライバを作り直さずに
+        #  **公開済みの tool 版へ依存させる**（BUILDING.md 3 節）。その場合
+        #  zip は前回のリリースに在り、**今回のリリースには添付しない**のが
+        #  正しい。URL のタグが今回の版でなければ「引き継いだもの」として
+        #  URL を叩いて確かめる——ローカルに無いことを欠陥と呼ばない。
+        #  （2026-09-20: この分岐が無く、reuse で出そうとした 0.6.2 が
+        #   「index が名指しする zip が無い」で止まった。口を足したときに
+        #   検査を教えていなかった。）
+        this_tag = f"/download/v{declared}/"
         for system in driver.get("systems", []):
-            check_archive(problems, f"driver {system.get('host', '?')}",
-                          release, system)
+            label = f"driver {driver.get('version', '?')} {system.get('host', '?')}"
+            if this_tag in str(system.get("url", "")):
+                check_archive(problems, f"driver {system.get('host', '?')}",
+                              release, system)
+            else:
+                check_kept(problems, label + " (reused)", system,
+                           PROBE, args.skip_url_probe)
         if not args.skip_driver_version:
             check_driver_version(problems, release, driver, repository)
 

@@ -571,6 +571,37 @@ class ReusedDriver(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 make_package_index.published_driver(target, "2.0.0")
 
+    def test_release_check_accepts_a_reused_driver(self):
+        """The release checker must not demand the reused zips locally.
+
+        ★2026-09-20: --reuse-driver-from points toolsDependencies at a tool
+        version whose archives live in the PREVIOUS release. The checker
+        required every driver system to be a file in this release's
+        directory, so the first release that used the lever failed with
+        "named by the index but not present" - a check that contradicted the
+        feature it was checking. It now probes the URL instead when the tag
+        in it is not this release's, and this test pins both halves.
+        """
+        import check_release_artifacts as cra
+        this_version = "0.6.2"
+        reused = {"host": "x86_64-mingw32",
+                  "url": "https://example.invalid/releases/download/v0.6.1/"
+                         "fmp3-link-x86_64-mingw32.zip",
+                  "archiveFileName": "fmp3-link-x86_64-mingw32.zip",
+                  "checksum": "SHA-256:" + "0" * 64, "size": "1"}
+        own = dict(reused,
+                   url="https://example.invalid/releases/download/v0.6.2/"
+                       "fmp3-link-x86_64-mingw32.zip")
+        self.assertNotIn(f"/download/v{this_version}/", reused["url"])
+        self.assertIn(f"/download/v{this_version}/", own["url"])
+        #  A driver of THIS release must still be present as a file.
+        problems: list[str] = []
+        with tempfile.TemporaryDirectory() as directory:
+            cra.check_archive(problems, "driver x86_64-mingw32",
+                              Path(directory), own)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("not present", problems[0])
+
     def test_source_change_is_detected(self):
         """Both answers, without assuming anything about this clone.
 
