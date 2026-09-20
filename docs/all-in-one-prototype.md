@@ -10,8 +10,8 @@
 | ステージ | S3・LX6 とも建つ | 165 objects、重複記号監査 0 / 0 allowed |
 | メニュー | 画面のある 3 板にだけ出る | `install_platform.BOARD_SKIP_ENTRIES` に `aio` を追加 |
 | ビルド行列 | **9/9 PASS**（3 板 x 3 例題） | `verify_package.py --list-builds --profiles aio` の行列をそのまま |
-| 実機 | **M5Stack Basic で 120 秒**、画面と Wi-Fi が同時に動く | 下記 |
-| 動的セマフォ | **peak 7 / 失敗 0**（未計測だった上限を測った） | 下記 |
+| 実機 | **M5Stack Basic と M5CoreS3** で 120 秒ずつ、画面と Wi-Fi が同時に動く | 下記 |
+| 動的セマフォ | **peak 7（LX6）/ 6（S3）・失敗 0**（未計測だった上限を測った） | 下記 |
 
 ### 実機（M5Stack Basic、ESP32-D0WDQ6-V3、2026-09-20）
 
@@ -31,6 +31,29 @@ wifi:    scan=16 scanap=115 connected=1
 **1 つの像で**: LCD が 320x240 で上がり、15 秒ごとのスキャンを 16 回（延べ 115 AP）
 こなし、STA が繋がって DHCP まで通り、その間 97 秒ぶん画面を書き替え続けた。
 `unexpected=0`。
+
+### 実機（M5CoreS3、ESP32-S3、2026-09-20）
+
+同じ例題を CoreS3 でも回した（`logs/s3-aio-noconnect.log`）:
+
+```
+[AIO] display board=10 w=320 h=240
+[AIO] scan=14
+[AIO] alive=101 status=6 sem_live=6 sem_peak=6 sem_acre_fail=0 sem_del_fail=0
+markers: banner=1 setup=1 unexpected=0
+wifi:    scan=12 scanap=89
+```
+
+**LCD 320x240 + スキャン 12 回（延べ 89 AP）を 120 秒。** セマフォ peak 6・失敗 0。
+
+**STA 接続は、この AP では確認できない。** ESP32-S3 は WPA3 移行モードの AP に
+`reason=17` で繋がらない（README「制約」、`docs/atoms3lite-port.md` F-3）。
+手元の AP がそれなので、S3 側の「画面 + STA 接続」は未測定のままである。
+
+さらに、**その切断のあとスケッチが止まる**ことがこの作業で見つかった。
+**合成のせいではない**——同じ停止が出荷の `wifi-connect` 構成（M5Unified 無し）
+でも再現し、STA を使わなければ all-in-one は 101 周回った。3 本の対照と
+JTAG の判定は `docs/atoms3lite-port.md` の「F-3 の続き（2026-09-20）」。
 
 ### 未計測だった上限を測った
 
@@ -89,7 +112,9 @@ platform を組み立て、変更前後で比較した → `boards.txt` の sha2
 3. `verify_package` の `EXPERIMENTAL_*` から通常の表へ移す（本数が 124 -> 133 になる）。
 4. パッケージが 1 チップあたり 5 MB 増える（S3 5.3 MB / LX6 5.2 MB）。
    配布物の大きさとダウンロード時間の判断が要る。
-5. CoreS3・M5StickS3 の実機確認（この試作で実機を見たのは M5Stack Basic のみ）。
+5. M5StickS3 の実機確認（この試作で実機を見たのは M5Stack Basic と M5CoreS3。
+   StickS3 はこの機械に繋いだことが無い）。S3 の「画面 + STA 接続」は
+   WPA2 専用の AP が要る（上記）。
 6. `M5Unified + Dual Core` と `WiFi` を残すのか、aio に一本化するのかの判断。
    残す場合、利用者から見て 4 つ目の選択肢が増える。
 
