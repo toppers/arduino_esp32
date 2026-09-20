@@ -3,30 +3,28 @@
 M5Stack の 8 機種で、Arduino の `setup()` / `loop()` を
 **TOPPERS/FMP3 SMP カーネルの上で**動かすための Arduino ボードパッケージです。
 
-| ボード | チップ |
-| --- | --- |
-| M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 |
-| M5StickS3 | ESP32-S3 / Xtensa LX7 |
-| M5AtomS3 Lite | ESP32-S3 / Xtensa LX7 |
-| M5Stack Basic | ESP32 / Xtensa LX6 |
-| M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 |
-| M5NanoC6 | ESP32-C6 / RISC-V |
-| M5Stamp-C5 | ESP32-C5 / RISC-V |
-| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア（Wi-Fi は C6 add-on 経由の hosted、下記） |
+1 つのパッケージに 8 つとも入り、`Tools > Board` で選びます。
 
-1 つのパッケージに 8 つとも入り、`Tools > Board` で選びます。M5NanoC6 ・
-M5Stamp-C5・M5AtomS3 Lite は `Tools > FMP3 Runtime` に `Minimal` と `WiFi` の
-2 構成しかありません（`M5Unified + Dual Core` と `Bluetooth Classic (SPP)` は
-ありません。前 2 者は画面も BR/EDR も無いため、M5AtomS3 Lite は画面が無く
-`M5Unified + Dual Core` の主要な例題（LCD へ描くもの）が実機で成立しないことを
-確認したためです。下記「確認済みの範囲」参照）。M5Stack ATOM Lite は
-`Minimal`・`WiFi`・`Bluetooth Classic (SPP)` の 3 構成で、`M5Unified + Dual Core`
-だけありません（画面が無い。この 1 点だけは実機ではなく AtomS3 Lite からの類推です。
-[`docs/atomlite-port.md`](docs/atomlite-port.md) 4 節）。M5Stamp-P4 は
-`Minimal` と `WiFi` の 2 構成です（2 コア SMP で起動します。**ESP32-P4 自身に
-無線はありません**——`WiFi` は SDIO でつないだ companion の ESP32-C6
-（Stamp AddOn C6）へ RPC で渡す hosted Wi-Fi で、その add-on が要ります。
-[`docs/p4-port.md`](docs/p4-port.md)）。
+| ボード | チップ | 選べる FMP3 Runtime |
+| --- | --- | --- |
+| M5Stack CoreS3 | ESP32-S3 / Xtensa LX7 | `Minimal` / `M5Unified + Dual Core` / `WiFi` |
+| M5StickS3 | ESP32-S3 / Xtensa LX7 | `Minimal` / `M5Unified + Dual Core` / `WiFi` |
+| M5AtomS3 Lite | ESP32-S3 / Xtensa LX7 | `Minimal` / `WiFi` |
+| M5Stack Basic | ESP32 / Xtensa LX6 | `Minimal` / `M5Unified + Dual Core` / `WiFi` / `Bluetooth Classic (SPP)` |
+| M5Stack ATOM Lite | ESP32-PICO-D4 / Xtensa LX6 | `Minimal` / `WiFi` / `Bluetooth Classic (SPP)` |
+| M5NanoC6 | ESP32-C6 / RISC-V | `Minimal` / `WiFi` |
+| M5Stamp-C5 | ESP32-C5 / RISC-V | `Minimal` / `WiFi` |
+| M5Stamp-P4 | ESP32-P4 / RISC-V デュアルコア | `Minimal` / `WiFi`（hosted。下の表を参照） |
+
+各 Runtime が何を提供し、どのボードで選べるのかは次のとおりです。ビルド時に
+1 つ選びます。**どの構成でも普通のスケッチがそのままビルドできます。**
+
+| FMP3 Runtime | 内容 | 選べるボードと、選べない理由 |
+| --- | --- | --- |
+| `Minimal` | FMP3 起動、`setup()` / `loop()`、heartbeat | 全 8 ボード |
+| `M5Unified + Dual Core` | LCD・touch・RTC・PMIC・IMU。SMP（PRC1／PRC2）で起動 | 画面のある 3 ボード（CoreS3・M5StickS3・M5Stack Basic）のみ。M5AtomS3 Lite は画面が無く、主要な例題（LCD へ描くもの）が実機で成立しないことを確認したため出していません。M5Stack ATOM Lite も画面が無く同様ですが、この 1 点だけは実機ではなく AtomS3 Lite からの類推です（[`docs/atomlite-port.md`](docs/atomlite-port.md) 4 節） |
+| `WiFi` | scan、Open / WPA2-PSK / WPA3-SAE 接続、DHCP、DNS、TCP | 全 8 ボード。ただし **ESP32-P4 自身に無線はありません**——M5Stamp-P4 の `WiFi` は SDIO でつないだ companion の ESP32-C6（Stamp AddOn C6）へ RPC で渡す hosted Wi-Fi で、その add-on が要ります（[`docs/p4-port.md`](docs/p4-port.md)） |
+| `Bluetooth Classic (SPP)` | SPP サーバ | ESP32 の 2 板（M5Stack Basic・M5Stack ATOM Lite）のみ。ESP32-S3／C6／C5／P4 に BR/EDR はありません（M5Stack ATOM Lite ではリンクのみ確認） |
 
 FreeRTOS ではなく FMP3 がブート・割込み・スケジューラを所有し、Arduino の
 スケッチは静的に構成された FMP3 タスクから呼ばれます。
@@ -62,35 +60,29 @@ prebuilt archive、include 配置に依存しています）。
 ビルドに CMake も Ninja も Python も要りません。** 導入手順と例題の詳細は
 [`packaging/README.release.md`](packaging/README.release.md) にあります。
 
-## ランタイム構成（`Tools > FMP3 Runtime`）
-
-ビルド時に 1 つ選びます。**どの構成でも普通のスケッチがそのままビルドできます。**
-
-| 構成 | 内容 |
-| --- | --- |
-| `Minimal` | FMP3 起動、`setup()` / `loop()`、heartbeat |
-| `M5Unified + Dual Core` | LCD・touch・RTC・PMIC・IMU。SMP（PRC1／PRC2）で起動 |
-| `WiFi` | scan、Open / WPA2-PSK / WPA3-SAE 接続、DHCP、DNS、TCP |
-| `Bluetooth Classic (SPP)` | SPP サーバ。**ESP32 の 2 板（M5Core・M5AtomLite）のみ**（ESP32-S3 に BR/EDR は無い。M5AtomLite ではリンクのみ確認） |
-
 ## 確認済みの範囲
 
 - 各構成が、Boards Manager 経由で入れたパッケージから
-  **対応するすべてのボードでビルドできること**
-  （`python3 scripts/verify_package.py --list-builds` が導出する本数、
-  2026-09-17 実測: CoreS3 17・M5StickS3 17・M5AtomS3 Lite 11・M5Core 22・
-  M5AtomLite 16・M5NanoC6 11・M5Stamp-C5 11・M5Stamp-P4 3 の計 108 本。
-  `Bluetooth Classic` は ESP32 の 2 板専用、M5NanoC6・M5Stamp-C5・M5AtomS3 Lite は
-  minimal と wifi-connect のみ、M5Stamp-P4 は minimal のみ。**M5AtomLite を足した
-  2026-09-17 の 105 本は Boards Manager 経由ではなく、導入済み platform に対する
-  直接 compile で 96 PASS / 0 FAIL / 9 SKIP（生成例題）を確認**。同日の M5Stamp-P4 の
-  3 本も同じ形で 3/3 リンク）。Xtensa 3 ボード分については
+  **対応するすべてのボードでビルドできること**（本数の正本は
+  `python3 scripts/verify_package.py --list-builds` の出力です。2026-09-20 時点で
+  8 ボード計 124 本。板ごとに選べる構成は冒頭の表のとおり）。
+  一括で実測した記録は **2026-09-17 の 105 本**（M5AtomLite を足した時点。Boards
+  Manager 経由ではなく、導入済み platform への直接 compile で 96 PASS / 0 FAIL /
+  9 SKIP（生成例題））と、**同日の M5Stamp-P4 の 3 本**（同じ形で 3/3 リンク）です。
+  その後に増えた分——例題 `Fmp3Sample1` と M5Stamp-P4 の `WiFi`——は
+  この一括実測には入っておらず、下記の実機確認で個別に通しています。
+  Xtensa 3 ボード分については
   Windows・Linux x86_64・Apple Silicon macOS の 3 ホストで実測し、
   成果物が 3 ホストでバイト単位に一致することを確認済み
   （**M5NanoC6 の成果物はホスト間バイト一致の対象外**: 3 ホストでの
   同一性は未計測です。driver 4（S5-8）でビルドパス依存は解消しましたが
   （同一ホスト内で build path を変えても `.bin` が一致することは実測済み）、
   cross-host は未検証のままです。下記「M5NanoC6 の既知の制限」参照）
+- 例題 [`Fmp3Sample1`](examples/Fmp3Sample1) を **6 板・全ポートの実機**で
+  （2026-09-19、M5Stack ATOM Lite・CoreS3・M5AtomS3 Lite・M5Stamp-P4・M5NanoC6・
+  M5Stamp-C5）。1 秒周期・60 秒採取で周期通知 60〜61 回、**アラームはどの板でも 1 回**、
+  `unexpected=0`。M5Stamp-P4 は同じ採取で `core2_alive=60 core2_full=60 prc2_start=1`
+  も出ており、PRC1 側が回る間に PRC2 の 60 行が 1 行も壊れていません
 - CoreS3 実機で、M5Unified（LCD・touch、SMP カーネル上）と Wi-Fi 接続
   （Open / WPA2-PSK / WPA3-SAE -> DHCP -> DNS -> TCP）
 - M5Stack Basic 実機で、minimal / M5Unified（LCD、SMP）/ Wi-Fi スキャン と
