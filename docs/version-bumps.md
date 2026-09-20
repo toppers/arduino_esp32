@@ -340,3 +340,24 @@ esp32/minimal, esp32/m5-unified: MATCH
 `--profiles all-in-one` を建てたときだけ `Tools > FMP3 Runtime` に出る
 （画面のある 3 板のみ）。出荷の本数（124）も出荷バイト列も不変であることを
 確認済み。[`all-in-one-prototype.md`](all-in-one-prototype.md)。
+
+### リリース作業中に見つけた CI の欠陥（2026-09-20）
+
+v0.6.2 のために `verify-package` を回したら `Build the platform` が落ちた。
+**「M5StampP4 is not pinned to the esp32p4_es SDK」——だが boards.txt には
+その行が在った。**
+
+検査式が `grep -q "^m5stampp4_fmp3\.build\.chip_variant=esp32p4_es$"` で、
+`install_platform.py` は boards.txt を **CRLF** で書く（初回コミットから一貫）。
+`$` は CR に阻まれるので、**この検査は書かれた日から一度も通っていなかった**
+（2026-09-17 の P4 追加で入り、以後 verify-package が回っていなかった）。
+CR を落としたコピーへ照合する形に直した。
+
+**手元で 30 分溶かした理由**: 対話シェルの `grep` が ugrep への委譲関数に
+なっていて、`$` を CR の前で一致させる。だから「手元では在る、CI では無い」に
+見えた。`/usr/bin/grep` では手元でも一致しない。
+⇒ **検査式の成否を手元で確かめるときは、`type grep` で実体を見ること**
+（`~/agents_playbook/rename-identifiers.md` に同じ罠の記録がある）。
+
+⇒ 副産物として分かったこと: **v0.6.0 と v0.6.1 は、この CI が緑の状態では
+出していない**（ローカルの `verify_package.py` 124/124 が根拠だった）。
