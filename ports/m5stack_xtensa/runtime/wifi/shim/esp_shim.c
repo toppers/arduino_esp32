@@ -1915,10 +1915,21 @@ typedef struct shim_timer {
 	void				(*fn)(void *);
 	void				*arg;
 	int64_t				deadline_us;	/* 0なら停止中 */
-	uint32_t			period_us;		/* 0ならワンショット */
+	uint64_t			period_us;		/* 0ならワンショット */
+	/*  2026-09-20: period_us を uint32→uint64 へ広げた（dev の 2026-08-14 の
+	 *  修正を Xtensa のこのコピーへ移植）。ms 指定の `_timer_arm` は ms を
+	 *  1000 倍した値が 32bit に収まらないことがある（実測: blob は
+	 *  0xfffffffe ms ≒ 49.7 日を「事実上無期限」の番人として使う）。
+	 *  詳細は esp_shim_timer_arm_ms() のコメント。  */
 } SHIM_TIMER;
 
 static SHIM_TIMER *shim_timer_list;		/* 全タイマ（生成順） */
+
+/*
+ *  タイマタスクの `twai_sem` が E_OK/E_TMOUT 以外を返した回数。
+ *  「起きてはならないことが起きた」ことを黙らせないための公開カウンタ。
+ */
+volatile uint32_t	esp_shim_timer_wait_err;
 
 static SHIM_TIMER *
 shim_timer_find(void *key, bool_t create)
@@ -1958,18 +1969,50 @@ esp_shim_timer_setfn(void *ptimer, void (*pfunc)(void *), void *parg)
 	}
 }
 
+/*
+ *  内部の 64bit 版。ms 指定の `_timer_arm` は us へ直すと 32bit に収まらない
+ *  ことがあるため（下記 esp_shim_timer_arm_ms 参照）、期限計算は 64bit で行う。
+ */
 void
-esp_shim_timer_arm_us(void *ptimer, uint32_t us, bool_t repeat)
+esp_shim_timer_arm_us64(void *ptimer, uint64_t us, bool_t repeat)
 {
 	SHIM_TIMER	*t = shim_timer_find(ptimer, true);
 
 	if (t != NULL) {
 		SHIM_LOCK();
 		t->deadline_us = esp_shim_time_us() + (int64_t)us;
-		t->period_us = repeat ? us : 0U;
+		t->period_us = repeat ? us : 0ULL;
 		SHIM_UNLOCK();
 		(void) sig_sem(SHIM_TIMER_SEM);		/* タイマタスクの再計算 */
 	}
+}
+
+void
+esp_shim_timer_arm_us(void *ptimer, uint32_t us, bool_t repeat)
+{
+	esp_shim_timer_arm_us64(ptimer, (uint64_t) us, repeat);
+}
+
+/*
+ *  ms 指定（osi の `_timer_arm`）。
+ *
+ *  **`tmout * 1000U` を 32bit で計算してはならない**（2026-08-14 に dev 側で
+ *  実機実測、2026-09-20 に本コピーでも CoreS3 で再現）:
+ *  Wi-Fi blob は association 時（`state: init -> auth`）に
+ *  `_timer_arm(ptimer, 0xfffffffe, false)`（= 4,294,967,294 ms ≒ 49.7 日）を
+ *  発行する——「事実上発火させない」という意味の番人である。これを 32bit で
+ *  1000 倍すると 0xfffff830 us ＝ **約 4,294.97 秒**へ折り返り、49.7 日の
+ *  タイマが 71.6 分のタイマに化ける。しかもその期限は FMP3 の
+ *  `TMAX_RELTIM`（4,000,000,000us）を超えるため、タイマタスクの `twai_sem`
+ *  が E_PAR で即座に返り続ける＝**優先度 2 のタスクが空転して全タスクを
+ *  飢餓させる**という現行バグの引き金になっていた。
+ *  記録: fmp3_esp_idf_dev の `.steering/20260814-wifi-disconnect-hang/` と
+ *  `.steering/20260920-aio-probe/`。
+ */
+void
+esp_shim_timer_arm_ms(void *ptimer, uint32_t ms, bool_t repeat)
+{
+	esp_shim_timer_arm_us64(ptimer, (uint64_t) ms * 1000ULL, repeat);
 }
 
 void
@@ -2046,15 +2089,62 @@ esp_shim_timer_task(EXINF exinf)
 			continue;			/* 他の期限到来タイマを続けて処理 */
 		}
 
-		if (next == 0) {
-			(void) twai_sem(SHIM_TIMER_SEM, TMO_FEVR);
-		}
-		else {
-			int64_t wait = next - now;
-			if (wait < 1000) {
-				wait = 1000;
+		{
+			TMO	tmo;
+			ER	ercd;
+
+			if (next == 0) {
+				tmo = TMO_FEVR;
 			}
-			(void) twai_sem(SHIM_TIMER_SEM, (TMO)wait);
+			else {
+				int64_t wait = next - now;
+
+				if (wait < 1000) {
+					wait = 1000;
+				}
+				/*
+				 *  ---- 上限で頭打ちにする（現行バグの根治）----
+				 *  FMP3 の `twai_sem` は `tmout > TMAX_RELTIM`（4,000,000,000us
+				 *  ＝約 4,000 秒）を **E_PAR で即座に弾く**（`VALID_TMOUT`、
+				 *  fmp3_core/kernel/check.h:92）。ここで頭打ちにしないと、
+				 *  期限が 4,000 秒より先の**タイマが 1 つでも**残っていて他に
+				 *  近い期限が無いとき、本ループは待たずに回り続ける。本タスクは
+				 *  優先度 2（ESP_SHIM_TIMER_TASK_PRI）＝ LOGTASK(3)・NET_TSK(4)・
+				 *  ARDUINO_TASK(10) より高いので、**割込みだけが動き、タスクは
+				 *  1 つも進まない**という全系停止になる。
+				 *  実測（M5CoreS3、2026-09-20）: WPA3 移行モード AP への STA が
+				 *  `reason=17` で切れたあと **296 秒**、Arduino の loop() が
+				 *  1 回も呼ばれずコンソールも沈黙した（dev 側の 2026-08-14 の
+				 *  実測 294.97 秒と一致）。
+				 *  頭打ちは意味論を変えない——起きたら `now`/`next` を採り直して
+				 *  もう一度待つだけである（長い待ちを分割するだけ）。
+				 */
+				if (wait > (int64_t) TMAX_RELTIM) {
+					wait = (int64_t) TMAX_RELTIM;
+				}
+				tmo = (TMO) wait;
+			}
+			ercd = twai_sem(SHIM_TIMER_SEM, tmo);
+			/*
+			 *  ---- 戻り値を捨てない（同上）----
+			 *  正常は E_OK（誰かが sig_sem した）と E_TMOUT（期限まで待った）
+			 *  だけ。それ以外は**起きてはならない**が、起きたときに黙って
+			 *  回り続けると上記の全系停止に戻る。数え、申告し、そして
+			 *  **必ず 1ms は寝る**（この経路が 100% CPU を占めないことを
+			 *  構造的に保証する）。
+			 */
+			if ((ercd != E_OK) && (ercd != E_TMOUT)) {
+				esp_shim_timer_wait_err++;
+				if ((esp_shim_timer_wait_err <= 4U)
+					|| ((esp_shim_timer_wait_err % 1024U) == 0U)) {
+					syslog(LOG_ERROR,
+						   "esp_shim: timer_task twai_sem ercd=%d tmo=%d n=%d"
+						   " -> sleep 1ms and continue",
+						   (int_t) ercd, (int_t) tmo,
+						   (int_t) esp_shim_timer_wait_err);
+				}
+				(void) dly_tsk(1000U);
+			}
 		}
 	}
 }

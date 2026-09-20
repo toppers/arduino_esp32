@@ -148,6 +148,9 @@ struct ets_timer;   /* blob側定義（rom/ets_sys.h）と互換のopaque扱い 
 extern void esp_shim_timer_setfn(void *ptimer, void (*pfunc)(void *),
 								 void *parg);
 extern void esp_shim_timer_arm_us(void *ptimer, uint32_t us, bool_t repeat);
+extern void esp_shim_timer_arm_ms(void *ptimer, uint32_t ms, bool_t repeat);
+extern void esp_shim_timer_arm_us64(void *ptimer, uint64_t us, bool_t repeat);
+extern volatile uint32_t esp_shim_timer_wait_err;
 extern void esp_shim_timer_disarm(void *ptimer);
 extern void esp_shim_timer_done(void *ptimer);
 

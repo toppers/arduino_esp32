@@ -690,7 +690,10 @@ slowclk_cal_get_wrapper(void)
 static void
 timer_arm_wrapper(void *timer, uint32_t tmout, bool repeat)
 {
-	esp_shim_timer_arm_us(timer, tmout * 1000U, repeat);
+	/*  ここは `tmout * 1000U`（32bit）だった。blob が「事実上無期限」として
+	 *  渡す 0xfffffffe ms が 0xfffff830 us へ折り返り、タイマタスクの全系停止
+	 *  （296 秒）を引き起こしていた。ms 版へ委譲する。  */
+	esp_shim_timer_arm_ms(timer, tmout, repeat);
 }
 
 static void
