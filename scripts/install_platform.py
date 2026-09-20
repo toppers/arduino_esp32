@@ -193,9 +193,14 @@ BOARD_DROP_MENUS = {
 #  touch sensor on G27, none of which this port has. bt-classic IS offered:
 #  the PICO-D4 has BR/EDR and the stage is board-independent (M5Core-proven),
 #  link-verified only until the board is run.
+#  The experimental all-in-one entry follows m5 exactly: it CONTAINS the
+#  m5-unified runtime (M5GFX and M5Unified compiled into the same stage), so
+#  a board that cannot use m5 cannot use aio either. Spelled out per board
+#  rather than derived from the m5 row, because the reason is the board's
+#  hardware and a future board could skip one without the other.
 BOARD_SKIP_ENTRIES = {
-    "m5atoms3lite_fmp3": {"m5"},
-    "m5atomlite_fmp3": {"m5"},
+    "m5atoms3lite_fmp3": {"m5", "aio"},
+    "m5atomlite_fmp3": {"m5", "aio"},
 }
 
 
