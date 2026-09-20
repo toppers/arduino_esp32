@@ -243,7 +243,15 @@ jobs:
             echo "M5StampP4 must not offer the ChipVariant menu"
             exit 1
           fi
-          grep -q "^m5stampp4_fmp3\.build\.chip_variant=esp32p4_es$" "$root/boards.txt" \
+          #  ★行末を `$` で留めないこと。install_platform.py は boards.txt を
+          #  **CRLF で書く**（Arduino の慣習。初回コミットから一貫）ので、
+          #  `...=esp32p4_es$` は CR に阻まれて**決して一致しない**。
+          #  この検査は 2026-09-17 に入ってから 2026-09-20 に気づくまで、
+          #  一度も通ったことがなかった（間の verify-package 実行が無かった）。
+          #  値まで見たいので前方一致では足りない -> CR を落としてから照合する。
+          tr -d '\r' < "$root/boards.txt" > "$RUNNER_TEMP/boards.lf.txt"
+          grep -q "^m5stampp4_fmp3\.build\.chip_variant=esp32p4_es$" \
+            "$RUNNER_TEMP/boards.lf.txt" \
             || { echo "M5StampP4 is not pinned to the esp32p4_es SDK"; exit 1; }
           for p in m5-unified bt-classic all-in-one; do
             if [ -e "$root/fmp3-prebuilt/esp32p4/$p" ]; then
