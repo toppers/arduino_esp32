@@ -243,12 +243,13 @@ jobs:
             echo "M5StampP4 must not offer the ChipVariant menu"
             exit 1
           fi
-          #  ★行末を `$` で留めないこと。install_platform.py は boards.txt を
-          #  **CRLF で書く**（Arduino の慣習。初回コミットから一貫）ので、
-          #  `...=esp32p4_es$` は CR に阻まれて**決して一致しない**。
-          #  この検査は 2026-09-17 に入ってから 2026-09-20 に気づくまで、
-          #  一度も通ったことがなかった（間の verify-package 実行が無かった）。
-          #  値まで見たいので前方一致では足りない -> CR を落としてから照合する。
+          #  Do NOT anchor with `$` against boards.txt. install_platform.py
+          #  writes it with CRLF (the Arduino convention, since the first
+          #  commit), so `...=esp32p4_es$` can never match - the CR is in the
+          #  way. Written on 2026-09-17, this check had therefore never passed
+          #  once; nobody noticed because verify-package was not run in
+          #  between. A prefix match would not pin the value, so strip the CR
+          #  and match the whole line.
           tr -d '\r' < "$root/boards.txt" > "$RUNNER_TEMP/boards.lf.txt"
           grep -q "^m5stampp4_fmp3\.build\.chip_variant=esp32p4_es$" \
             "$RUNNER_TEMP/boards.lf.txt" \
@@ -409,17 +410,34 @@ jobs:
         #  that leaks a build path into the image (__FILE__, for instance) would
         #  show up as a mismatch without meaning the build is broken.
         run: |
+          #  ★The two escape hatches below must not die on an unexpanded
+          #  glob. This step runs under `bash -e`, so when NO images-* artifact
+          #  exists at all, `images/*/images.txt` stays literal, `cat` fails,
+          #  and the step exits 1 BEFORE reaching the `exit 0` that was meant
+          #  to tolerate exactly that case. Observed 2026-09-20: the upstream
+          #  platform job failed, this job then reported
+          #  "cat: 'images/*/images.txt': No such file or directory" - a red
+          #  job whose message hid the real cause. nullglob plus an explicit
+          #  empty check makes the tolerant path actually tolerant.
+          shopt -s nullglob
+          listings=(images/*/images.txt)
+          if [ ${#listings[@]} -eq 0 ]; then
+            echo "no image listings at all: the verify jobs uploaded none."
+            echo "Look at the job that builds them - this job has nothing to"
+            echo "compare and is not the failure worth reading."
+            exit 0
+          fi
           reference=images/images-x86_64-mingw32/images.txt
           if [ ! -f "$reference" ]; then
             echo "no Windows reference in this run; listing what there is"
-            for f in images/*/images.txt; do echo "== $f"; cat "$f"; done
+            for f in "${listings[@]}"; do echo "== $f"; cat "$f"; done
             exit 0
           fi
           #  The first column is "profile/sketch", not just the
           #  profile: each profile is verified with its own example AND with a
           #  plain Blink, so the label carries both.
           echo "profile/sketch                reference        host                       verdict"
-          for f in images/*/images.txt; do
+          for f in "${listings[@]}"; do
             host=$(basename "$(dirname "$f")" | sed 's/^images-//')
             while read -r label size sum; do
               want=$(awk -v p="$label" '$1==p {print $3}' "$reference")
