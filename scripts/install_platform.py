@@ -42,6 +42,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from arduino_sdk import SdkError, resolve  # noqa: E402
+#  The chip -> port table and the profile -> application table, so that
+#  the staleness check below knows which sources a stage is built from
+#  without a second copy of either.
+import build_prebuilt_stages  # noqa: E402
 
 MARKER = ".toppers-fmp3-platform.json"
 
@@ -603,6 +607,61 @@ def unshipped_platform_references(lines: list[str],
     return missing
 
 
+#  Directories whose contents a stage is compiled from, so that "was this
+#  stage built before its own sources changed?" can be answered. The M5
+#  library sources the m5-unified stage also compiles are NOT scanned: they
+#  live outside the tree (the sketchbook) and walking 47 MB of M5GFX on every
+#  install costs more than it catches - their pin is held by
+#  verify_package.LIBRARY_VERSIONS instead.
+def stage_source_roots(library_root: Path, chip: str,
+                       profile: str) -> list[Path]:
+    stages = build_prebuilt_stages
+    port = library_root / "ports" / stages.CHIPS[chip].port
+    roots = [port / "runtime", library_root / "third_party" / "fmp3_core"]
+    application = stages.APPLICATIONS.get(profile)
+    if application is not None:
+        _, directory, outside_ports = application
+        roots.append(library_root / "fmp_app" / directory if outside_ports
+                     else port / "app" / directory)
+    return roots
+
+
+def newest_file(roots: list[Path]) -> tuple[float, Path] | None:
+    """The most recently modified file below any of roots, and when."""
+    newest: tuple[float, Path] | None = None
+    for root in roots:
+        if not root.exists():
+            continue
+        for parent, directories, names in os.walk(root):
+            directories[:] = [d for d in directories
+                              if d not in {".git", "__pycache__", "build"}]
+            for name in names:
+                path = Path(parent) / name
+                try:
+                    when = path.stat().st_mtime
+                except OSError:
+                    continue
+                if newest is None or when > newest[0]:
+                    newest = (when, path)
+    return newest
+
+
+def stale_stage(library_root: Path, chip: str, profile: str,
+                built_at: float) -> Path | None:
+    """The source file that changed after this stage was built, if any.
+
+    mtime, not a recorded revision: a stamp written into the stage would
+    change the distributed bytes, and one written beside it would not exist
+    for stages built by an older script. What this compares is exactly the
+    question being asked - did anything the stage is compiled from move
+    after the stage was made - and a pull touches only the files it changes.
+    """
+    newest = newest_file(stage_source_roots(library_root, chip, profile))
+    if newest is not None and newest[0] > built_at:
+        return newest[1]
+    return None
+
+
 def platform_lines(source: Path, link: str, objcopy: str,
                    partitions: str) -> list[str]:
     out = []
@@ -668,6 +727,9 @@ def main(argv: list[str] | None = None) -> int:
                         choices=list(dict.fromkeys(
                             entry[0] for entry in BOARDS.values())),
                         default=None)
+    parser.add_argument("--strict-stages", action="store_true",
+                        help="fail instead of warning when an installed stage "
+                             "is older than the sources it is built from")
     parser.add_argument("--uninstall", action="store_true")
     args = parser.parse_args(argv)
     args.chip_given = args.chip is not None
@@ -809,6 +871,8 @@ def main(argv: list[str] | None = None) -> int:
     #  a build directory still holds.
     staged = 0
     skipped = []
+    #  (chip, profile, built at, the source file that moved afterwards)
+    installed_stages: list[tuple[str, str, float, Path | None]] = []
     for chip in chips:
         chip_root = per_chip[chip]
         offered = {profile for _, _, profile in MENU_ENTRIES}
@@ -825,6 +889,12 @@ def main(argv: list[str] | None = None) -> int:
             shutil.copytree(
                 stage, platform_root / "fmp3-prebuilt" / chip / stage.name)
             staged += 1
+            #  The manifest is written last by prebuilt_stage.cmake, so its
+            #  mtime is when the stage finished.
+            built_at = (stage / "link-manifest.json").stat().st_mtime
+            installed_stages.append(
+                (chip, stage.name, built_at,
+                 stale_stage(library_root, chip, stage.name, built_at)))
         missing = sorted(EXPECTED_PROFILES[chip] - present)
         if missing:
             raise SystemExit(
@@ -913,6 +983,42 @@ def main(argv: list[str] | None = None) -> int:
         chip, _, display_name, _ = BOARDS[board_id]
         print(f"  Board:    {display_name}  ({chip})")
     print(f"  Stages:   {staged}")
+    #  Each stage's build time, because a set where one entry is a week older
+    #  than the rest is the shape of "that profile was not rebuilt" - and the
+    #  profiles that are not in the default set (bt-classic) are the ones this
+    #  happens to. Nothing else in the output distinguishes a stage built just
+    #  now from one left over from a previous session.
+    width = max((len(f"{chip}/{profile}")
+                 for chip, profile, _, _ in installed_stages), default=0)
+    for chip, profile, built_at, stale in sorted(installed_stages):
+        when = datetime.datetime.fromtimestamp(built_at).strftime(
+            "%Y-%m-%d %H:%M")
+        mark = "  <- STALE" if stale is not None else ""
+        print(f"    {chip + '/' + profile:<{width}}  {when}{mark}")
+    #  Grouped by the file that moved: one pull usually touches one shared
+    #  file and every stage under it, and thirteen lines saying the same
+    #  thing is how a warning stops being read.
+    by_source: dict[str, list[str]] = {}
+    for chip, profile, _, stale in sorted(installed_stages):
+        if stale is None:
+            continue
+        try:
+            name = str(stale.relative_to(library_root))
+        except ValueError:
+            name = str(stale)
+        by_source.setdefault(name, []).append(f"{chip}/{profile}")
+    if by_source:
+        outdated = sum(len(names) for names in by_source.values())
+        headline = (f"{outdated} of {staged} stages were built before "
+                    "sources they are compiled from changed.")
+        report = [f"    {source}\n      {', '.join(names)}"
+                  for source, names in sorted(by_source.items())]
+        if args.strict_stages:
+            raise SystemExit(headline + "\n" + "\n".join(report))
+        print(f"\n  WARNING: {headline}")
+        print("\n".join(report))
+        print("  Rebuild them, or confirm the change does not reach them"
+              " (X-check).")
     print("Restart Arduino IDE before selecting the board.")
     return 0
 

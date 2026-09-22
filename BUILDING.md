@@ -51,6 +51,38 @@ Arduino のデータディレクトリは OS ごとに解決します
 （`%LOCALAPPDATA%\Arduino15` / `~/Library/Arduino15` / `~/.arduino15`）。
 別の場所にある場合は `--arduino-data` で渡してください。
 
+### `bt-classic` は既定では建ちません。**配布物には入ります**
+
+```bash
+python scripts/build_prebuilt_stages.py --chip esp32 --profiles bt-classic
+```
+
+**上の既定の呼び出しでは建ちません。** 既定の集合は
+`SHIPPED_PROFILES = [minimal, m5-unified, wifi-connect]` で、`bt-classic` は
+`all-in-one` と同じくそこに入っていません。ただし `all-in-one` と違い
+**`bt-classic` は実際に配布され、M5Stack Basic と M5Stack ATOM Lite の
+`Tools > FMP3 Runtime` に出ます。** LX6 専用なので（S3 に BR/EDR が無い）
+`--chip esp32` 以外では拒否されます。
+
+**建て忘れても `install_platform.py` は何も言いません。** stage root にある
+ものを拾うだけなので、**前に建てた古い `bt-classic` がそのまま platform に
+入ります**。`EXPECTED_PROFILES` の検査は「在るか」しか見ておらず、
+「いつのものか」は見ていません。
+
+2026-09-18 に実際に踏みました: 5 チップを既定で建て直したつもりで、
+`build/prebuilt/esp32/bt-classic` だけが 1 週間前のまま残り、
+`pinMode` / `digitalWrite` が入る前（`cb6901f` 以前）の stage が platform に
+入りました。**リンク行列を回すまで気づきません**——気づいたのは
+`btclassic / GpioInterrupt` の 2 本が `undefined reference to 'digitalWrite'`
+で落ちたときです。
+
+`install_platform.py` は各 stage の作成時刻を表示し、その stage が建てられた
+あとにソースが変わっていれば警告します（`--strict-stages` で失敗にできます）。
+**ただし警告は見落とせます。**建て直したときは上の行を明示的に叩いてください。
+
+CI（`.github/workflows/verify-package.yml`）は 5 チップのループとは別に
+この呼び出しを持っています。
+
 ### M5NanoC6（ESP32-C6）のステージ
 
 ```bash

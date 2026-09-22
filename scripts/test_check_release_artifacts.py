@@ -18,6 +18,7 @@ import contextlib
 import hashlib
 import io
 import json
+import os
 import shutil
 import sys
 import subprocess
@@ -645,6 +646,81 @@ class ReusedDriver(unittest.TestCase):
         ok, why = make_package_index.driver_source_unchanged_since(commits[1])
         self.assertFalse(ok, why)
         self.assertIn("fmp3_link.py", why)
+
+
+class StaleStage(unittest.TestCase):
+    """install_platform.py must notice a stage it did not rebuild.
+
+    --prebuilt-stage-root copies whatever is under it, and EXPECTED_PROFILES
+    only asks whether a stage is THERE. bt-classic is not in the default
+    profile set but is shipped, so "rebuild everything" leaves it behind:
+    on 2026-09-18 a bt-classic from before pinMode existed went into a
+    platform and was found only when GpioInterrupt failed to link.
+    """
+
+    #  A chip whose port is not the one under test, so that the check can be
+    #  shown NOT to report a stage because some other port moved.
+    OTHER_PORT_CHIP = "esp32c6"
+
+    def _tree(self, root: Path) -> Path:
+        import build_prebuilt_stages as stages
+        for chip in ("esp32s3", self.OTHER_PORT_CHIP):
+            port = root / "ports" / stages.CHIPS[chip].port
+            (port / "runtime").mkdir(parents=True, exist_ok=True)
+            (port / "runtime" / "CMakeLists.txt").write_text("x")
+            (port / "app" / "phase3").mkdir(parents=True, exist_ok=True)
+            (port / "app" / "phase3" / "app.c").write_text("x")
+        (root / "third_party" / "fmp3_core").mkdir(parents=True)
+        (root / "third_party" / "fmp3_core" / "kernel.c").write_text("x")
+        return root
+
+    def _set_times(self, root: Path, when: float) -> None:
+        for path in root.rglob("*"):
+            if path.is_file():
+                os.utime(path, (when, when))
+
+    def test_nothing_moved_after_the_stage(self):
+        import install_platform
+        with tempfile.TemporaryDirectory() as raw:
+            root = self._tree(Path(raw))
+            self._set_times(root, 1000)
+            self.assertIsNone(
+                install_platform.stale_stage(root, "esp32s3", "minimal", 2000))
+
+    def test_its_own_port_moved(self):
+        import install_platform
+        import build_prebuilt_stages as stages
+        with tempfile.TemporaryDirectory() as raw:
+            root = self._tree(Path(raw))
+            self._set_times(root, 1000)
+            moved = (root / "ports" / stages.CHIPS["esp32s3"].port
+                     / "runtime" / "CMakeLists.txt")
+            os.utime(moved, (3000, 3000))
+            self.assertEqual(
+                install_platform.stale_stage(root, "esp32s3", "minimal", 2000),
+                moved)
+
+    def test_another_port_moving_is_not_this_stage_s_problem(self):
+        import install_platform
+        import build_prebuilt_stages as stages
+        with tempfile.TemporaryDirectory() as raw:
+            root = self._tree(Path(raw))
+            self._set_times(root, 1000)
+            os.utime(root / "ports" / stages.CHIPS[self.OTHER_PORT_CHIP].port
+                     / "runtime" / "CMakeLists.txt", (3000, 3000))
+            self.assertIsNone(
+                install_platform.stale_stage(root, "esp32s3", "minimal", 2000))
+
+    def test_the_kernel_counts_for_every_stage(self):
+        import install_platform
+        with tempfile.TemporaryDirectory() as raw:
+            root = self._tree(Path(raw))
+            self._set_times(root, 1000)
+            moved = root / "third_party" / "fmp3_core" / "kernel.c"
+            os.utime(moved, (3000, 3000))
+            self.assertEqual(
+                install_platform.stale_stage(root, "esp32s3", "minimal", 2000),
+                moved)
 
 
 if __name__ == "__main__":
