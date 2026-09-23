@@ -10,9 +10,13 @@
  *        「スケッチ非依存で固定」がこのポートの設計だからです。
  *        ⇒ タスクは実行時に作り（`toppers_fmp3_task_create`）、周期通知と
  *          アラーム通知は stage が持つ 1 個ずつを使います。
- *    (2) Serial 入力がありません（M5Stack core のランタイムを
- *        リンクしないため。README の「制約」）。
- *        ⇒ コマンドの代わりに、周期通知が進行を進めます。
+ *    (2) Arduino の `Serial` はありません（M5Stack core のランタイムを
+ *        リンクしないため。README の「制約」）。ただし**入力ができない
+ *        わけではありません**——FMP3 自身のシリアルドライバが受信を
+ *        持っており、`ToppersFMP3_Console.h` から使えます。
+ *        ⇒ 既定では周期通知が進行を進め（無人でも動く）、**コンソールから
+ *          文字が来たらコマンドとして解釈します**（本家と同じ作法）。
+ *          `h` で一覧が出ます。
  *
  *  残した要点は本家と同じです:
  *    - 優先度の違う 3 つのタスクが順に走ること
@@ -35,6 +39,7 @@
 #endif
 
 #include <ToppersFMP3_Kernel.h>
+#include <ToppersFMP3_Console.h>
 
 //  Minimal 構成には Wi-Fi 側のログ関数がありません。Blink と同じく
 //  FMP3 の低レベル出力を直接使います（`Serial` はこのポートにありません）。
@@ -106,6 +111,12 @@ static void alarmCallback(void)
     alarmCount++;
 }
 
+//  .ino のプロトタイプ自動挿入に頼らず、使う前に宣言しておく
+//  （static 関数は挿入されないことがある）。
+static void showCounters(void);
+static void showHelp(void);
+static void pollConsole(void);
+
 void setup()
 {
     logLine("[Sample1] start");
@@ -132,23 +143,106 @@ void setup()
     const int32_t cyclic = toppers_fmp3_cyclic_start(cyclicCallback);
     logNumber("[Sample1] cyclic_start=", (long)cyclic);
     const int32_t alarm = toppers_fmp3_alarm_start(alarmCallback, 3000000U);
+    showHelp();
     logNumber("[Sample1] alarm_start (3 s)=", (long)alarm);
 }
 
 static uint32_t loops;
 static bool swapped;
+static bool cyclicRunning = true;
 
-void loop()
+static void showCounters(void)
 {
-    //  delay() はありません。loop() は周期的に呼ばれます。
-    if (++loops % 50U != 0U) { return; }
-
     logNumber("[Sample1] cyclic count=", (long)cyclicCount);
     logNumber("[Sample1] alarm count=", (long)alarmCount);
     for (int i = 0; i < 3; i++) {
         logNumber("[Sample1] run count, index=", (long)i);
         logNumber("[Sample1]   count=", (long)runCount[i]);
     }
+}
+
+static void showHelp(void)
+{
+    logLine("[Sample1] commands: 1/2/3=wake task, p=swap priority,"
+            " c=counters, s=stop cyclic, r=restart cyclic,"
+            " a=re-arm alarm, h=this help\n");
+}
+
+//  本家 sample1 のコマンド処理に相当します。入力が無ければ何もしないので、
+//  無人で走らせたときの振る舞いは従来どおりです。
+static void pollConsole(void)
+{
+    while (FMP3Console.available() > 0) {
+        const int c = FMP3Console.read();
+        if (c < 0) { break; }
+        switch (c) {
+        case '1': case '2': case '3': {
+            const int index = c - '1';
+            if (taskId[index] > 0) {
+                const int32_t ercd = toppers_fmp3_task_wakeup(taskId[index]);
+                logNumber("[Sample1] wakeup index=", (long)index);
+                logNumber("[Sample1]   ercd=", (long)ercd);
+            }
+            break;
+        }
+        case 'p':
+            if (taskId[0] > 0 && taskId[2] > 0) {
+                const int32_t a = toppers_fmp3_task_change_priority(
+                    taskId[0], swapped ? 11 : 13);
+                const int32_t b = toppers_fmp3_task_change_priority(
+                    taskId[2], swapped ? 13 : 11);
+                swapped = !swapped;
+                logNumber("[Sample1] change_priority a=", (long)a);
+                logNumber("[Sample1] change_priority b=", (long)b);
+            }
+            break;
+        case 'c':
+            showCounters();
+            break;
+        case 's': {
+            const int32_t ercd = toppers_fmp3_cyclic_stop();
+            cyclicRunning = false;
+            logNumber("[Sample1] cyclic stop ercd=", (long)ercd);
+            break;
+        }
+        case 'r': {
+            const int32_t ercd = toppers_fmp3_cyclic_start(cyclicCallback);
+            cyclicRunning = true;
+            logNumber("[Sample1] cyclic start ercd=", (long)ercd);
+            break;
+        }
+        case 'a': {
+            const int32_t ercd = toppers_fmp3_alarm_start(alarmCallback, 3000000U);
+            logNumber("[Sample1] alarm re-arm ercd=", (long)ercd);
+            break;
+        }
+        case 'h': case '?':
+            showHelp();
+            break;
+        case '\r': case '\n': case ' ':
+            break;                       /*  改行と空白は読み捨てる  */
+        default:
+            //  logNumber は 10 進で出す。"0x" を付けると嘘になる。
+            logNumber("[Sample1] unknown command=", (long)c);
+            break;
+        }
+    }
+}
+
+void loop()
+{
+    //  delay() はありません。loop() は周期的に呼ばれます。
+    pollConsole();
+
+    //  状態表示は**周期通知が上がったときだけ**にします（1 秒に 1 回）。
+    //  loop() は 1ms ごとに回るので、回数で間引くと 50ms ごとに流れて
+    //  コマンドの応答が画面から消えます。
+    ++loops;
+    static uint32_t shownCyclic = 0xFFFFFFFFU;
+    if (cyclicCount == shownCyclic) { return; }
+    shownCyclic = cyclicCount;
+
+    showCounters();
 
     //  本家の chg_pri 相当。優先度を入れ替えると、同じ周期で起こされた
     //  3 タスクの走る順番が変わります。

@@ -226,6 +226,14 @@ M5GFX が本移植の持たない Arduino-ESP32 の SPI HAL 経路に切り替�
   修正後は繋がらない AP に対しても `loop()` は止まりません（M5CoreS3 で
   120 秒 117 周・欠番なし）。**繋がらないこと自体**は上記のとおり blob 側の
   問題で、このポートでは直せません。
+- **Arduino の `Serial` はありませんが、コンソール入力はできます。**
+  `Serial` は M5Stack core のランタイム側にあるので使えません（下記）。
+  一方 **FMP3 自身のシリアルドライバは受信を持っており**、全構成・全ボードの
+  stage に入っています。スケッチからは
+  [`src/ToppersFMP3_Console.h`](src/ToppersFMP3_Console.h) の
+  `FMP3Console.available()` / `FMP3Console.read()` で読めます（ログと同じ
+  1 本のポートです）。同梱例題 [`Fmp3Sample1`](examples/Fmp3Sample1) が
+  コマンド入力に使っています。
 - **M5Stack Arduino core のランタイムはリンクされません。** FMP3 がカーネルなので、
   core 自身のランタイムも FreeRTOS も像に入りません。帰結として、**`Serial`・
   `delay()`・`millis()`・`micros()`・`Wire`・`SPI` は使えません**。
