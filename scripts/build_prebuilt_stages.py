@@ -364,6 +364,15 @@ def main(argv: list[str] | None = None) -> int:
         if stage.exists():
             shutil.rmtree(stage)
         shutil.copytree(produced, stage)
+        #  "This stage matched its sources as of now": the build above either
+        #  re-staged or found nothing to do, and either way the stage is
+        #  current. The manifest's own mtime cannot say so - copytree keeps
+        #  the time it was staged, and a no-op build leaves that old even
+        #  after a source it does not use (a shared CMakeLists.txt) moved on.
+        #  install_platform.py reads this beside the stage; it is not inside
+        #  it, so nothing distributed changes.
+        (output_directory / f"{name}.built").write_text(
+            "built by build_prebuilt_stages.py\n", encoding="utf-8")
 
         manifest = json.loads(
             (stage / "link-manifest.json").read_text(encoding="utf-8"))

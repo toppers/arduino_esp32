@@ -711,6 +711,50 @@ class StaleStage(unittest.TestCase):
             self.assertIsNone(
                 install_platform.stale_stage(root, "esp32s3", "minimal", 2000))
 
+    def _stage(self, root: Path, manifest_time: float) -> Path:
+        stage = root / "build" / "prebuilt" / "esp32s3" / "minimal"
+        stage.mkdir(parents=True)
+        (stage / "link-manifest.json").write_text("{}")
+        os.utime(stage / "link-manifest.json", (manifest_time, manifest_time))
+        return stage
+
+    def test_no_marker_means_the_manifest_time(self):
+        import install_platform
+        with tempfile.TemporaryDirectory() as raw:
+            stage = self._stage(Path(raw), 2000)
+            self.assertEqual(install_platform.stage_built_at(stage), 2000)
+
+    def test_a_later_no_op_build_counts(self):
+        # ninja found nothing to do, so the manifest kept its old time, but
+        # build_prebuilt_stages.py ran and left the marker: the stage is
+        # current as of the marker, and a shared file edited in between (a
+        # CMakeLists.txt this stage does not use) must not make it STALE.
+        import install_platform
+        import build_prebuilt_stages as stages
+        with tempfile.TemporaryDirectory() as raw:
+            root = self._tree(Path(raw))
+            self._set_times(root, 1000)
+            stage = self._stage(root, 1500)
+            shared = (root / "ports" / stages.CHIPS["esp32s3"].port
+                      / "runtime" / "CMakeLists.txt")
+            os.utime(shared, (2000, 2000))
+            marker = stage.parent / "minimal.built"
+            marker.write_text("x")
+            os.utime(marker, (2500, 2500))
+            built_at = install_platform.stage_built_at(stage)
+            self.assertEqual(built_at, 2500)
+            self.assertIsNone(
+                install_platform.stale_stage(root, "esp32s3", "minimal", built_at))
+
+    def test_an_older_marker_does_not_hide_a_newer_manifest(self):
+        import install_platform
+        with tempfile.TemporaryDirectory() as raw:
+            stage = self._stage(Path(raw), 3000)
+            marker = stage.parent / "minimal.built"
+            marker.write_text("x")
+            os.utime(marker, (1000, 1000))
+            self.assertEqual(install_platform.stage_built_at(stage), 3000)
+
     def test_the_kernel_counts_for_every_stage(self):
         import install_platform
         with tempfile.TemporaryDirectory() as raw:

@@ -78,6 +78,11 @@ python scripts/build_prebuilt_stages.py --chip esp32 --profiles bt-classic
 
 `install_platform.py` は各 stage の作成時刻を表示し、その stage が建てられた
 あとにソースが変わっていれば警告します（`--strict-stages` で失敗にできます）。
+作成時刻は、`link-manifest.json` と、`build_prebuilt_stages.py` がその profile を
+建てるたびに stage の横へ置く `<profile>.built` の新しいほうです。後者が無いと、
+ninja が「やることなし」と判断した建て直しのあとも manifest が古いまま残り、
+共有の `CMakeLists.txt` を触っただけで最新の stage が STALE と出続けます
+（2026-09-29 に実際にそうなった。`.built` は stage の外にあり、配布物には入りません）。
 **ただし警告は見落とせます。**建て直したときは上の行を明示的に叩いてください。
 
 CI（`.github/workflows/verify-package.yml`）は 5 チップのループとは別に

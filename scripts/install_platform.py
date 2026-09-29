@@ -646,6 +646,23 @@ def newest_file(roots: list[Path]) -> tuple[float, Path] | None:
     return newest
 
 
+def stage_built_at(stage: Path) -> float:
+    """When the stage was last known to match its sources.
+
+    The manifest is written last by prebuilt_stage.cmake, so its mtime is
+    when the stage was last staged. build_prebuilt_stages.py also leaves
+    <profile>.built beside the stage every time it builds that profile,
+    including when ninja had nothing to do; the newer of the two counts.
+    Without the marker a no-op rebuild looked stale for ever, because the
+    manifest stays old while a shared file it does not depend on moves on.
+    """
+    built_at = (stage / "link-manifest.json").stat().st_mtime
+    marker = stage.parent / f"{stage.name}.built"
+    if marker.is_file():
+        built_at = max(built_at, marker.stat().st_mtime)
+    return built_at
+
+
 def stale_stage(library_root: Path, chip: str, profile: str,
                 built_at: float) -> Path | None:
     """The source file that changed after this stage was built, if any.
@@ -889,9 +906,7 @@ def main(argv: list[str] | None = None) -> int:
             shutil.copytree(
                 stage, platform_root / "fmp3-prebuilt" / chip / stage.name)
             staged += 1
-            #  The manifest is written last by prebuilt_stage.cmake, so its
-            #  mtime is when the stage finished.
-            built_at = (stage / "link-manifest.json").stat().st_mtime
+            built_at = stage_built_at(stage)
             installed_stages.append(
                 (chip, stage.name, built_at,
                  stale_stage(library_root, chip, stage.name, built_at)))

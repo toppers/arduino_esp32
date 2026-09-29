@@ -1463,6 +1463,13 @@ add_custom_command(
         ${PREBUILT_STAGE_DEPENDS}
         "$<TARGET_FILE:fmp3>"
         ${PREBUILT_CONSUMER_OBJECTS}
+        #  The list itself, so that REMOVING an object re-stages: the objects
+        #  that are left are all older than the stage, so without this ninja
+        #  finds nothing to do and the removed object stays in objs/ (seen
+        #  2026-09-29: m5_i2s_std_tx.o kept in the ESP32 m5-unified stage
+        #  after the source was limited to the ESP32-S3). file(GENERATE)
+        #  rewrites the list only when its content changes.
+        "${PREBUILT_CONSUMER_OBJS_FILE}"
         ${WIFI_PREBUILT_ARCHIVES}
         "${RUNTIME_ROOT}/cmake/${A1_CHIP_PREBUILT_SCRIPT}"
         "${A1_XIP_LD}"
