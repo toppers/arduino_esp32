@@ -412,6 +412,70 @@ m5_aud_self(void)
 	return(NULL);
 }
 
+#ifndef M5_USE_ESP_SHIM	/* ★合成構成では esp/shim が定義する（多重定義になる） */
+/*
+ *  xTaskGetCurrentTaskHandle の実体（compat/freertos/task.h）。
+ *  プールのタスクなら、xTaskCreate が返したのと同じハンドル（枠のアドレス）を
+ *  返す。Speaker_Class::_in_task はこれを自分の spk_task のハンドルと比べて、
+ *  自タスクから呼ばれたかを判定する。
+ *  プール外のタスク（スケッチなど）には、どの枠とも一致しない代表値を返す。
+ *  FreeRTOS は現在のタスクとして NULL を返さないので、NULL にはしない
+ *  （wifi/shim/esp_shim.c の同名関数と同じ扱い）。
+ */
+static char	m5_aud_not_pooled;
+
+void *
+esp_shim_task_get_current(void)
+{
+	M5_AUD_TSK	*t = m5_aud_self();
+
+	return((t != NULL) ? (void *) t : (void *) &m5_aud_not_pooled);
+}
+#endif /* !M5_USE_ESP_SHIM */
+
+/*
+ *  通知値の排他。
+ *
+ *  ワーカー枠の 2 本目（M5_AUDIO_TSK2）は PRC2 にあり、PRC1 のタスクから
+ *  xTaskNotifyGive されうる。loc_cpu は**呼んだコアの割込みしか止めない**ので、
+ *  PRC1 の t->notify++ と PRC2 の読み書きが同時に走り、通知が消えうる。
+ *  FreeRTOS ABI（m5_freertos_abi.c）のクリティカル区間はスピンロックで
+ *  コアをまたいで排他するので、使える構成ではそれを使う。
+ *  cfg にスピンロック（M5_ABI_SPN）が無い構成（all-in-one）では ABI の
+ *  ロックが取れないので、従来どおり loc_cpu にする。そこでは通知は PRC1 の
+ *  中で閉じている（その構成のワーカーは esp/shim 側が持つ）。
+ */
+typedef struct {
+	volatile uint32_t	owner;
+	volatile uint32_t	count;
+} m5_notify_mux_t;
+extern int32_t	m5_abi_available(void);
+extern int		xPortEnterCriticalTimeout(m5_notify_mux_t *mux, int timeout);
+extern void		vPortExitCritical(m5_notify_mux_t *mux);
+static m5_notify_mux_t	m5_notify_mux = { 0xB33FFFFFU, 0U };
+
+static bool_t
+m5_notify_lock(void)
+{
+	if ((m5_abi_available() != 0)
+			&& (xPortEnterCriticalTimeout(&m5_notify_mux, -1) != 0)) {
+		return(true);
+	}
+	(void) loc_cpu();
+	return(false);
+}
+
+static void
+m5_notify_unlock(bool_t abi)
+{
+	if (abi) {
+		vPortExitCritical(&m5_notify_mux);
+	}
+	else {
+		(void) unl_cpu();
+	}
+}
+
 uint32_t
 esp_shim_task_notify_take(int clear_on_exit, uint32_t timeout_ms)
 {
@@ -423,26 +487,27 @@ esp_shim_task_notify_take(int clear_on_exit, uint32_t timeout_ms)
 		return(0U);		/*  ★プール外タスクは通知値を持たない  */
 	}
 	for (;;) {
-		loc_cpu();
+		bool_t	abi = m5_notify_lock();
+
 		v = t->notify;
 		if (v > 0U) {
 			t->notify = (clear_on_exit != 0) ? 0U : (v - 1U);
-			unl_cpu();
+			m5_notify_unlock(abi);
 			return(v);
 		}
-		unl_cpu();
+		m5_notify_unlock(abi);
 		if (timeout_ms == 0U) {
 			return(0U);
 		}
 		er = (timeout_ms == 0xFFFFFFFFU)
 			 ? slp_tsk() : tslp_tsk((RELTIM)(timeout_ms * 1000U));	/* ms→μs */
 		if (er == E_TMOUT) {
-			loc_cpu();
+			abi = m5_notify_lock();
 			v = t->notify;
 			if (v > 0U) {
 				t->notify = (clear_on_exit != 0) ? 0U : (v - 1U);
 			}
-			unl_cpu();
+			m5_notify_unlock(abi);
 			return(v);
 		}
 	}
@@ -452,13 +517,15 @@ void
 esp_shim_task_notify_give(void *task_handle)
 {
 	M5_AUD_TSK	*t = (M5_AUD_TSK *) task_handle;
+	bool_t		abi;
 
 	if (t == NULL) {
 		return;
 	}
-	loc_cpu();
+	abi = m5_notify_lock();
 	t->notify++;
-	unl_cpu();
+	m5_notify_unlock(abi);
+	/*  起床は解放のあと（スピンロック中はサービスコールが E_CTX になる）。 */
 	(void) wup_tsk(t->tskid);	/* ★E_QOVR（既にラッチ済み）は正常 */
 }
 

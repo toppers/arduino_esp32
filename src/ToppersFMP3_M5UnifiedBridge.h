@@ -33,6 +33,41 @@ void toppers_m5_draw_text(int32_t x, int32_t y, const char *text,
                           uint16_t foreground, uint16_t background);
 void toppers_m5_push_rgb565(int32_t x, int32_t y, int32_t width,
                             int32_t height, const uint16_t *pixels);
+
+/*
+ *  内蔵スピーカー。**CoreS3 / CoreS3-SE だけ**（AW88298 アンプ、I2S1）。
+ *  ほかの板では begin / ready / tone が -1 を返し、何も鳴らさない。
+ *
+ *  toppers_m5_speaker_begin: 開始する。setup() / loop() から呼ぶこと
+ *    （I2S の割込みを配線する処理がコア 0 のタスクでしか動かないため）。
+ *    1 = 鳴らせる、-1 = この板では使えない／開始に失敗、
+ *    -3 = コア 0 以外から呼んだ（状態は変えないので、コア 0 から再試行できる）。
+ *  toppers_m5_speaker_ready: 1 = 開始済み、0 = 未開始、負 = begin の失敗理由。
+ *  toppers_m5_speaker_tone: 単音を非同期に鳴らす（すぐ戻る）。未開始なら
+ *    先に begin する。frequency_hz は 20..20000、duration_ms は 1..60000、
+ *    volume は 0..255（0 は無音）。この音のチャンネル音量になる。
+ *    1 = 受け付けた、0 = 受け付けなかった（直前の要求を M5 がまだ取り込んで
+ *    いない。捨ててよい）、-2 = 引数が範囲外、-1 / -3 は begin と同じ。
+ *    短い音が重なっても前の音を切らないよう、M5 の 4 チャンネルを順に使う。
+ *  toppers_m5_speaker_stop: 鳴っている音をすべて止める。
+ *  toppers_m5_speaker_set_volume: 全体音量 0..255（M5.Speaker.setVolume）。
+ *    既定は M5Unified と同じ 64。1 = 設定した、-1 = この板では使えない。
+ *    ★振幅は「全体音量の二乗 × tone の volume の二乗」に比例する
+ *    （M5Unified の Speaker_Class の計算そのまま）。1 kHz のトーンで書かれた
+ *    PCM の最大振幅（最大 32767）を CoreS3 で測った値:
+ *        全体 64 × volume 64 → 64     全体 64 × volume 255 → 1009
+ *        全体 255 × volume 64 → 1009  全体 255 × volume 255 → 16004
+ *    既定の全体音量 64 のまま小さい volume で鳴らすと、とても小さい。
+ *  toppers_m5_speaker_amp_reg: AW88298 のレジスタ値（16 ビット）を読む。
+ *    診断用。読めなければ -1。
+ */
+int32_t toppers_m5_speaker_begin(void);
+int32_t toppers_m5_speaker_ready(void);
+int32_t toppers_m5_speaker_tone(uint32_t frequency_hz, uint32_t duration_ms,
+                                uint8_t volume);
+void toppers_m5_speaker_stop(void);
+int32_t toppers_m5_speaker_set_volume(uint8_t master_volume);
+int32_t toppers_m5_speaker_amp_reg(uint8_t reg);
 /*  バックライトOFF＋パネルsleep（CoreS3はAXP2101経由。PMICの状態は保持される） */
 void toppers_m5_display_off(void);
 

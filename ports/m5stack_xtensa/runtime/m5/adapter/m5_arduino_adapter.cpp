@@ -56,7 +56,15 @@ extern "C" int32_t toppers_m5_begin(void)
     config.external_display_value = 0;
     config.external_speaker_value = 0;
     config.internal_mic = false;
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+    /*  Configures the speaker only: M5Unified starts it on first use, and
+     *  toppers_m5_speaker_* below refuses every board but the CoreS3 / SE,
+     *  the ones whose path (I2S1 -> AW88298) has been run here. The I2S
+     *  channel behind it is m5/audio/m5_i2s_std_tx.c. */
+    config.internal_spk = true;
+#else
     config.internal_spk = false;
+#endif
     config.internal_imu = true;
     config.internal_rtc = true;
 
@@ -274,6 +282,148 @@ extern "C" void toppers_m5_display_off(void)
     M5.Display.sleep();
     phase5AdapterLog("[M5] display off (brightness 0 + panel sleep)\n");
 }
+
+/*
+ *  内蔵スピーカー（CoreS3 / CoreS3-SE）。
+ *
+ *  M5.Speaker（M5Unified の Speaker_Class）をそのまま使う。I2S の送信は
+ *  m5/audio/m5_i2s_std_tx.c、キューは m5/shim/m5_freertos_abi.c。
+ *
+ *  ★begin はコア 0（PRC1）のタスクから呼ぶこと。I2S の DMA 割込みを配線する
+ *    esp_intr_alloc_intrstatus（esp_shim_intr.c）が PRC1 のタスク文脈専用で、
+ *    Speaker の begin の中でそれが呼ばれる。setup() / loop() は PRC1 で動く。
+ */
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+namespace {
+
+constexpr int32_t kSpeakerUnavailable = -1;	/* この板では使えない／開始に失敗 */
+constexpr int32_t kSpeakerBadArgument = -2;
+constexpr int32_t kSpeakerWrongCore = -3;		/* PRC1 以外から開始しようとした */
+
+/*  トーンを交互に載せる M5 のチャンネル数。短い効果音が重なっても前の音を
+ *  切らないように 4 本を順に使う（M5 は 8 本持つ）。 */
+constexpr uint8_t kToneChannels = 4;
+uint8_t speakerNextChannel;
+int32_t speakerBeginResult;			/* 0 = 未開始、1 = 開始済み、負 = 失敗 */
+
+bool speakerBoardSupported()
+{
+    const auto board = M5.getBoard();
+    return (board == m5::board_t::board_M5StackCoreS3)
+        || (board == m5::board_t::board_M5StackCoreS3SE);
+}
+
+bool onPrc1()
+{
+    uint32_t prid;
+    __asm__ __volatile__("rsr %0, prid" : "=r"(prid));
+    return ((prid >> 13) & 1U) == 0U;
+}
+
+}  // namespace
+
+extern "C" int32_t toppers_m5_speaker_begin(void)
+{
+    if (M5.Speaker.isRunning()) {
+        speakerBeginResult = 1;
+        return 1;
+    }
+    if (!speakerBoardSupported()) {
+        speakerBeginResult = kSpeakerUnavailable;
+        return kSpeakerUnavailable;
+    }
+    if (!onPrc1()) {
+        return kSpeakerWrongCore;			/* 状態は変えない：PRC1 から再試行できる */
+    }
+    speakerBeginResult = M5.Speaker.begin() ? 1 : kSpeakerUnavailable;
+    if (speakerBeginResult == 1) {
+        phase5AdapterLog("[M5] speaker started\n");
+    }
+    else {
+        phase5AdapterLog("[M5] speaker failed to start\n");
+    }
+    return speakerBeginResult;
+}
+
+extern "C" int32_t toppers_m5_speaker_ready(void)
+{
+    if (M5.Speaker.isRunning()) {
+        return 1;
+    }
+    return speakerBeginResult;
+}
+
+extern "C" int32_t toppers_m5_speaker_tone(uint32_t frequency_hz,
+                                           uint32_t duration_ms,
+                                           uint8_t volume)
+{
+    if ((frequency_hz < 20U) || (frequency_hz > 20000U)
+        || (duration_ms == 0U) || (duration_ms > 60000U)) {
+        return kSpeakerBadArgument;
+    }
+    if (!M5.Speaker.isRunning()) {
+        const int32_t begun = toppers_m5_speaker_begin();
+        if (begun != 1) {
+            return begun;
+        }
+    }
+    const uint8_t channel = speakerNextChannel;
+    speakerNextChannel = static_cast<uint8_t>((channel + 1U) % kToneChannels);
+    M5.Speaker.setChannelVolume(channel, volume);
+    /*  非同期：M5 の spk_task が鳴らす。stop_current_sound=true なので、同じ
+     *  チャンネルに前の音が残っていれば置き換える。M5 が受け付けなかった
+     *  （そのチャンネルに書き込み中の要求がある）ときは 0 を返す。 */
+    return M5.Speaker.tone(static_cast<float>(frequency_hz), duration_ms,
+                           channel, true) ? 1 : 0;
+}
+
+extern "C" void toppers_m5_speaker_stop(void)
+{
+    if (M5.Speaker.isRunning()) {
+        M5.Speaker.stop();
+    }
+}
+
+/*
+ *  全体音量（M5.Speaker.setVolume）。M5Unified の既定は 64 で、ここでは
+ *  変えない。振幅は「全体音量の二乗 × トーンの音量の二乗」に比例する
+ *  （Speaker_Class::spk_task）。開始前でも設定でき、開始後に効く。
+ */
+extern "C" int32_t toppers_m5_speaker_set_volume(uint8_t master_volume)
+{
+    if (!speakerBoardSupported()) {
+        return kSpeakerUnavailable;
+    }
+    M5.Speaker.setVolume(master_volume);
+    return 1;
+}
+
+/*
+ *  AW88298 のレジスタを読む（診断用。耳の代わりにアンプの状態を確かめる）。
+ *  I2C 上は 16 ビットのビッグエンディアン。読めなければ -1。
+ */
+extern "C" int32_t toppers_m5_speaker_amp_reg(uint8_t reg)
+{
+    if (!speakerBoardSupported()) {
+        return -1;
+    }
+    uint8_t value[2] = { 0, 0 };
+    if (!M5.In_I2C.readRegister(0x36, reg, value, 2, 400000)) {
+        return -1;
+    }
+    return (static_cast<int32_t>(value[0]) << 8) | value[1];
+}
+
+#else  /* !CONFIG_IDF_TARGET_ESP32S3 */
+/*  Speaker_Class is not built for this chip (see CMakeLists.txt): the
+ *  bridge exists so that a sketch links everywhere, and says so. */
+extern "C" int32_t toppers_m5_speaker_begin(void) { return -1; }
+extern "C" int32_t toppers_m5_speaker_ready(void) { return -1; }
+extern "C" int32_t toppers_m5_speaker_tone(uint32_t, uint32_t, uint8_t) { return -1; }
+extern "C" void toppers_m5_speaker_stop(void) { }
+extern "C" int32_t toppers_m5_speaker_set_volume(uint8_t) { return -1; }
+extern "C" int32_t toppers_m5_speaker_amp_reg(uint8_t) { return -1; }
+#endif /* CONFIG_IDF_TARGET_ESP32S3 */
 
 extern "C" int32_t toppers_m5_board(void) { return phase5Board; }
 extern "C" int32_t toppers_m5_display_width(void) { return phase5Width; }

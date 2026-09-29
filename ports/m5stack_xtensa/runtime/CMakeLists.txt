@@ -716,8 +716,17 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${M5UNIFIED_SOURCE_ROOT}/utility/led/*.cpp"
         "${M5UNIFIED_SOURCE_ROOT}/utility/power/*.cpp"
         "${M5UNIFIED_SOURCE_ROOT}/utility/rtc/*.cpp")
-    list(FILTER M5UNIFIED_CPP_SOURCES EXCLUDE REGEX
-        "utility/(Speaker|Mic)_Class\\.cpp$")
+    #  Mic_Class is never built (no microphone path). Speaker_Class is built
+    #  for the ESP32-S3 only, where m5/audio/m5_i2s_std_tx.c supplies the I2S
+    #  channel API it calls; the ESP32 (LX6) has no driver for it here, and
+    #  its M5Unified speaker path goes through the internal DAC instead.
+    if(A1_CHIP STREQUAL "esp32s3")
+        list(FILTER M5UNIFIED_CPP_SOURCES EXCLUDE REGEX
+            "utility/Mic_Class\\.cpp$")
+    else()
+        list(FILTER M5UNIFIED_CPP_SOURCES EXCLUDE REGEX
+            "utility/(Speaker|Mic)_Class\\.cpp$")
+    endif()
 
     add_library(m5_runtime_objects OBJECT
         ${M5GFX_CPP_SOURCES}
@@ -731,6 +740,9 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         #  FreeRTOS queue / semaphore / critical-section ABI for prebuilt
         #  IDF archives and drivers written against the real headers.
         "${RUNTIME_ROOT}/m5/shim/m5_freertos_abi.c"
+        #  I2S TX channel for Speaker_Class, which is built for the ESP32-S3
+        #  only (see the M5UNIFIED_CPP_SOURCES filter above).
+        $<$<STREQUAL:${A1_CHIP},esp32s3>:${RUNTIME_ROOT}/m5/audio/m5_i2s_std_tx.c>
         #  wifi プロファイルと同じ動的セマフォ実装。
         #  ★結合 profile では seam_objects（wifi ブロック）が同じ TU を
         #    コンパイルするので、ここで足すと同じソースが 2 つの .o になり
@@ -1143,9 +1155,17 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
                XIP_LINK_LIBGROUP "${XIP_LINK_LIBGROUP}")
     else()
         string(JOIN "@@" XIP_LINK_UFLAGS ${M5_BEGIN_WRAPS})
+        #  -lhal on the ESP32-S3: m5_i2s_std_tx.c calls i2s_hal_std_set_tx_slot
+        #  and i2s_hal_set_tx_clock, which are register code in libhal.a with
+        #  no RTOS underneath. Only the members that are referenced are pulled.
+        if(A1_CHIP STREQUAL "esp32s3")
+            set(_m5_hal "-lhal@@")
+        else()
+            set(_m5_hal "")
+        endif()
         set(XIP_LINK_LIBGROUP
             "-L${ARDUINO_SDK_LIBRARY_ROOT}@@-Wl,--start-group@@"
-            "-lsoc@@-lstdc++@@-lm@@-Wl,--end-group")
+            "-lsoc@@${_m5_hal}-lstdc++@@-lm@@-Wl,--end-group")
         string(JOIN "" XIP_LINK_LIBGROUP ${XIP_LINK_LIBGROUP})
     endif()
     set(XIP_EXTRA_TSCRIPTS "${M5_PERIPHERALS_LD}")
