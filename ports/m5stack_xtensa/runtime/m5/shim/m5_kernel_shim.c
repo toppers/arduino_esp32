@@ -185,33 +185,41 @@ esp_shim_task_yield(void)
  *    esp_timer_get_time が進まないと QEMU で AXP2101 無応答時に無限ループ＝
  *    ハングする。したがって確実に進む値を返す必要がある。
  *
- *  実装：CCOUNT（CPU サイクルカウンタ）を読み，32bit ラップをソフトウェアで
- *    64bit へ拡張し，CPU 周波数[MHz]で割って μs にする。kernel HRT の Inline
- *    （target_hrt_get_current）は TU を跨ぐと確実にリンクできない実績（1-5 の
- *    get_my_prcidx 参照）があるため使わず，CCOUNT 直読で自己完結させる。
- *    M5 は単一コア・main_task 単一文脈なのでラップ拡張の状態に排他は不要。
+ *  実装：カーネルの 64bit HRT（target_hrt_get_current64、target_timer.h）を
+ *    そのまま返す。wifi/shim/esp_shim.c の esp_shim_time_us と同じ時刻源。
+ *
+ *  ★2026-09-29 まではここで CCOUNT を直読し、32bit ラップを**両コア共有の
+ *    変数 1 組**（前回値と上位）で 64bit へ拡張していた。m5-unified は
+ *    TNUM_PRCID=2 で建つので、これは 3 点で壊れていた:
+ *      - CCOUNT はコアごとのレジスタで、2 コアの値は揃っていない（CPU1 の
+ *        リセット解除が遅い分の定数差がある）。片方のコアが他方の前回値より
+ *        小さい値を読むと、起きていないラップを数えて 2^32 サイクル跳ぶ。
+ *        実測（CoreS3、PRC2 のワーカーから呼んだ）: 数 us の待ちが
+ *        26,843,566 us と出た。2^32 / 160MHz = 26,843,545 us で、偽のラップ
+ *        1 回分に一致する。
+ *      - 前回値と上位の read-modify-write に排他が無く、同じコアのタスクと
+ *        割込みの間でも安全でなかった。
+ *      - 1 周期（160MHz で約 26.8 秒）呼ばれないと本物のラップを取りこぼし、
+ *        時刻が戻る。
+ *    旧コメントが挙げていた理由はどちらも今は成り立たない。「kernel HRT の
+ *    Inline は TU を跨ぐとリンクできない」は、Wi-Fi 側の shim が現にこれで
+ *    リンクして動いている（コア番号を get_my_prcidx ではなく PRID から読む
+ *    xtensa_get_prcidx に変わっている）。「M5 は単一コア」は TNUM_PRCID=2
+ *    になって崩れた。
+ *
+ *    target_hrt_get_current64 はコアごとに自分の累積器だけを触り、起動時に
+ *    CPU1 の原点を CPU0 へ揃えてある（target_hrt_sync_origin）ので、どちらの
+ *    コアから呼んでも同じ時間軸になる。累積の RMW は SIL の全割込みロック
+ *    （入れ子可）で守られ、サービスコールを使わないので、タスク・割込み・
+ *    CPU ロック中のどこからでも呼べる。64bit なので 71.6 分でも巻き戻らない。
  */
-#ifndef TOPPERS_S3_CPU_FREQ_MHZ
-#define TOPPERS_S3_CPU_FREQ_MHZ	160		/* プロジェクト既定＝160MHz */
-#endif
-
-static uint32_t	m5_ccount_last;
-static uint64_t	m5_ccount_hi;			/* 累積したラップ分（<<32 前の上位） */
+#include "target_timer.h"
 
 int64_t
 esp_timer_get_time(void)
 {
-	uint32_t	now;
-	uint64_t	cycles;
-
 	m5_ctr[M5_CTR_MICROS]++;
-	__asm__ __volatile__ ("rsr %0, ccount" : "=a"(now));
-	if (now < m5_ccount_last) {
-		m5_ccount_hi += (uint64_t)1U << 32;		/* 32bit ラップ検出 */
-	}
-	m5_ccount_last = now;
-	cycles = m5_ccount_hi + (uint64_t)now;
-	return((int64_t)(cycles / (uint64_t)TOPPERS_S3_CPU_FREQ_MHZ));
+	return(target_hrt_get_current64());
 }
 
 /*
