@@ -728,6 +728,9 @@ if(FMP3_RUNTIME_PROFILE MATCHES "^(m5-unified|all-in-one)$")
         "${RUNTIME_ROOT}/m5/shim/m5_gpio_stub.c"
         "${RUNTIME_ROOT}/m5/shim/m5_idf_stubs.c"
         "${RUNTIME_ROOT}/m5/shim/m5_kernel_shim.c"
+        #  FreeRTOS queue / semaphore / critical-section ABI for prebuilt
+        #  IDF archives and drivers written against the real headers.
+        "${RUNTIME_ROOT}/m5/shim/m5_freertos_abi.c"
         #  wifi プロファイルと同じ動的セマフォ実装。
         #  ★結合 profile では seam_objects（wifi ブロック）が同じ TU を
         #    コンパイルするので、ここで足すと同じソースが 2 つの .o になり
