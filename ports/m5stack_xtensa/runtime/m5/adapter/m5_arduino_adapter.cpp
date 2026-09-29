@@ -120,7 +120,13 @@ extern "C" int32_t toppers_m5_begin(void)
                ? 1 : -1;
 }
 
-extern "C" void toppers_m5_update(void)
+/*
+ *  入力の取得と診断描画を分ける。toppers_m5_update は従来の診断スケッチ
+ *  向けで、触れた位置へ印を描く。ゲームは toppers_m5_poll_touch を呼び、
+ *  入力を読むたびに画面を書き換えない（書き換えるとスクロール中の一括転送と
+ *  重なってチラつく）。
+ */
+extern "C" void toppers_m5_poll_touch(void)
 {
     M5.update();
     phase5TouchCount = M5.Touch.getCount();
@@ -128,8 +134,79 @@ extern "C" void toppers_m5_update(void)
         const auto &detail = M5.Touch.getDetail(0);
         phase5TouchX = detail.x;
         phase5TouchY = detail.y;
+    }
+}
+
+extern "C" void toppers_m5_update(void)
+{
+    toppers_m5_poll_touch();
+    if (phase5TouchCount > 0) {
         M5.Display.fillCircle(phase5TouchX, phase5TouchY, 4, TFT_CYAN);
     }
+}
+
+namespace {
+
+bool phase5DisplayReady()
+{
+    return (phase5Width > 0) && (phase5Height > 0);
+}
+
+}  // namespace
+
+extern "C" void toppers_m5_draw_begin(void)
+{
+    if (phase5DisplayReady()) {
+        M5.Display.startWrite();
+    }
+}
+
+extern "C" void toppers_m5_draw_end(void)
+{
+    if (phase5DisplayReady()) {
+        M5.Display.endWrite();
+    }
+}
+
+extern "C" void toppers_m5_fill_rect(int32_t x, int32_t y,
+                                     int32_t width, int32_t height,
+                                     uint16_t rgb565)
+{
+    if (!phase5DisplayReady() || (width <= 0) || (height <= 0)) {
+        return;
+    }
+    M5.Display.fillRect(x, y, width, height, rgb565);
+}
+
+extern "C" void toppers_m5_draw_text(int32_t x, int32_t y, const char *text,
+                                     uint16_t foreground, uint16_t background)
+{
+    if (!phase5DisplayReady() || (text == nullptr)) {
+        return;
+    }
+    M5.Display.setTextSize(1);
+    M5.Display.setTextColor(foreground, background);
+    M5.Display.setCursor(x, y);
+    M5.Display.print(text);
+}
+
+/*
+ *  LCD の SPI DMA は塞いである（phase5DisableDisplayDma、理由は
+ *  m5_idf_prelude.h）ので、pushImage は CPU が pixels を SPI の FIFO へ
+ *  写し終えてから戻る（最後の FIFO 分がまだ送出中でも、pixels はもう
+ *  読まれない）。戻った時点で pixels を再利用してよいのはこのためで、
+ *  DMA を有効にすると DMA が後から pixels を読むので、この約束が崩れる。
+ */
+extern "C" void toppers_m5_push_rgb565(int32_t x, int32_t y,
+                                       int32_t width, int32_t height,
+                                       const uint16_t *pixels)
+{
+    if (!phase5DisplayReady() || (width <= 0) || (height <= 0) ||
+        (pixels == nullptr)) {
+        return;
+    }
+    M5.Display.pushImage(x, y, width, height,
+                         reinterpret_cast<const lgfx::rgb565_t *>(pixels));
 }
 
 extern "C" void toppers_m5_draw_liveness(uint32_t seconds)
