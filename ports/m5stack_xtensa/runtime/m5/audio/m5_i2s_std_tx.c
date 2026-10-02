@@ -517,7 +517,6 @@ i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t size,
 	if (!ch->enabled) {
 		return(ESP_ERR_INVALID_STATE);
 	}
-	peak = ch->peak_abs;
 	while (done < size) {
 		if ((ch->curr == NULL) || (ch->rw_pos >= ch->buf_size)) {
 			if (!xQueueReceive(ch->free_q, &ch->curr,
@@ -544,7 +543,11 @@ i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t size,
 		memcpy(&ch->curr[ch->rw_pos], &from[done], n);
 		/*  The loudest sample written, for m5_i2s_tx_stats: the one number
 		 *  that tells "the amplifier is fed silence" from "it is fed audio"
-		 *  without a listener. 16-bit samples, the only width M5 writes. */
+		 *  without a listener. 16-bit samples, the only width M5 writes.
+		 *  Merged per chunk, not once at the end: this call spends most of
+		 *  its time blocked on free_q above, and writing back a peak read
+		 *  before the block would undo any reset made meanwhile. */
+		peak = 0U;
 		for (k = 0U; k + 1U < n; k += 2U) {
 			int16_t		v = (int16_t)(from[done + k] | (from[done + k + 1U] << 8));
 			uint32_t	a = (v < 0) ? (uint32_t)(-(int32_t) v) : (uint32_t) v;
@@ -553,10 +556,12 @@ i2s_channel_write(i2s_chan_handle_t handle, const void *src, size_t size,
 				peak = a;
 			}
 		}
+		if (peak > ch->peak_abs) {
+			ch->peak_abs = peak;
+		}
 		ch->rw_pos += (uint32_t) n;
 		done += n;
 	}
-	ch->peak_abs = peak;
 	ch->bytes_written += done;
 	if (bytes_written != NULL) {
 		*bytes_written = done;
@@ -599,7 +604,7 @@ i2s_del_channel(i2s_chan_handle_t handle)
  *  Diagnostics for a test or a bridge; any argument may be NULL.
  *  peak_abs is the largest |sample| written since the last
  *  m5_i2s_tx_reset_peak(). It is updated by the writer task without a lock,
- *  so a reset that races a write may keep or lose that one write's peak;
+ *  so a reset that races a write may keep or lose one buffer's worth;
  *  it is a measurement aid, not an interface anything should depend on.
  */
 void

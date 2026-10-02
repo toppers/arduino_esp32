@@ -327,9 +327,42 @@ Verify／Upload後、Serial Monitorで`M5.begin and initial LCD draw PASS`、
 60秒後の`60-second M5Unified integration PASS`を確認します。LCDには生存時間が
 表示され、画面を触るとtouch座標と描画が更新されます。
 
-このprofileではSpeaker／Micを除外しています。
+このprofileではMicを除外しています。Speakerは**CoreS3／CoreS3-SEの内蔵スピーカー
+だけ**、下記のC APIから使えます。
 CJKフォントは同梱していません（フォントは`ToppersFMP3_M5Fonts.h`のIDで
 選択でき、アプリが実際に使ったものだけがリンクされます）。
+
+### CoreS3の内蔵スピーカー
+
+`ToppersFMP3_M5UnifiedBridge.h`の`toppers_m5_speaker_*`でトーンを鳴らします
+（AW88298アンプ、I2S1、48 kHz）。ボードは`M5CoreS3 (TOPPERS/FMP3)`、
+`Tools > FMP3 Runtime`は`M5Unified + Dual Core`です（CoreS3-SEも同じボードを
+選びます）。
+
+```cpp
+#include <ToppersFMP3_M5Unified.h>
+
+void setup()
+{
+    toppers_m5_begin();
+    toppers_m5_speaker_begin();               // setup()／loop()から呼ぶ
+    toppers_m5_speaker_set_volume(128);       // 全体音量（既定64）
+    toppers_m5_speaker_tone(1000, 200, 128);  // 1 kHz、200 ms。すぐ戻る
+}
+```
+
+- `toppers_m5_speaker_tone`は効果音用で、チャンネル0〜3を順に使います。
+  BGMは`toppers_m5_speaker_tone_channel(周波数, 長さ, 音量, 4)`のようにチャンネル
+  4〜7へ載せ、`toppers_m5_speaker_stop_channel(4)`でそれだけを止めます。
+  `toppers_m5_speaker_stop()`は全チャンネルを止めます。
+- `toppers_m5_speaker_begin`は**`setup()`／`loop()`（コア0）から**呼んでください。
+  ほかのコアから呼ぶと-3を返します（状態は変わらないので、コア0から再試行
+  できます）。`tone`／`tone_channel`は未開始なら自分で開始します。
+- 音の大きさは「全体音量の二乗×音量の二乗」に比例します。既定の全体音量64のまま
+  小さい音量で鳴らすと、ほとんど聞こえません。
+- CoreS3以外のボードでは`begin`／`tone`／`tone_channel`が-1を返し、何も鳴りません
+  （スケッチはそのままビルドできます）。
+- 鳴らすのはトーンだけです。WAV・MP3の再生とマイク入力はありません。
 
 ## StackChanBasic
 
@@ -432,6 +465,9 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
 - CoreS3実機で、Minimal profileのUpload、FMP3 3.4.0起動、Arduino task、
   `setup()`、1秒heartbeat
 - M5Unified（LCD／touch、SMPカーネル上）と、`WiFi` profileでのscanおよび接続の実機動作
+- CoreS3の内蔵スピーカー: アンプの有効化、48 kHzでの送出、チャンネル指定と停止を
+  実機の送出データで確認。ゲームのBGMは開発中の環境で耳で確認済み、個々の効果音とBGMとの重なりは
+  耳では未確認。**CoreS3-SEは実機未確認**
 - Wi-Fi connectはAndroidテザリングでオープンAP、WPA2-PSK、WPA3-SAEに接続し、
   DHCP、DNS、TCP受信まで
 

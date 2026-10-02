@@ -303,6 +303,9 @@ constexpr int32_t kSpeakerWrongCore = -3;		/* PRC1 以外から開始しよう�
 /*  トーンを交互に載せる M5 のチャンネル数。短い効果音が重なっても前の音を
  *  切らないように 4 本を順に使う（M5 は 8 本持つ）。 */
 constexpr uint8_t kToneChannels = 4;
+/*  toppers_m5_speaker_tone_channel / stop_channel が受け付けるチャンネル数
+ *  （M5 の sound_channel_max）。0..3 は tone の順送りと共有になる。 */
+constexpr uint8_t kSpeakerChannels = 8;
 uint8_t speakerNextChannel;
 int32_t speakerBeginResult;			/* 0 = 未開始、1 = 開始済み、負 = 失敗 */
 
@@ -353,12 +356,33 @@ extern "C" int32_t toppers_m5_speaker_ready(void)
     return speakerBeginResult;
 }
 
+namespace {
+
+bool speakerToneArgsValid(uint32_t frequency_hz, uint32_t duration_ms)
+{
+    return (frequency_hz >= 20U) && (frequency_hz <= 20000U)
+        && (duration_ms != 0U) && (duration_ms <= 60000U);
+}
+
+/*  引数は確かめ済み、開始も済んでいる前提で、1 チャンネルに 1 音を載せる。 */
+int32_t speakerToneOn(uint8_t channel, uint32_t frequency_hz,
+                      uint32_t duration_ms, uint8_t volume)
+{
+    M5.Speaker.setChannelVolume(channel, volume);
+    /*  非同期：M5 の spk_task が鳴らす。stop_current_sound=true なので、同じ
+     *  チャンネルに前の音が残っていれば置き換える。M5 が受け付けなかった
+     *  （そのチャンネルに書き込み中の要求がある）ときは 0 を返す。 */
+    return M5.Speaker.tone(static_cast<float>(frequency_hz), duration_ms,
+                           channel, true) ? 1 : 0;
+}
+
+}  // namespace
+
 extern "C" int32_t toppers_m5_speaker_tone(uint32_t frequency_hz,
                                            uint32_t duration_ms,
                                            uint8_t volume)
 {
-    if ((frequency_hz < 20U) || (frequency_hz > 20000U)
-        || (duration_ms == 0U) || (duration_ms > 60000U)) {
+    if (!speakerToneArgsValid(frequency_hz, duration_ms)) {
         return kSpeakerBadArgument;
     }
     if (!M5.Speaker.isRunning()) {
@@ -369,18 +393,38 @@ extern "C" int32_t toppers_m5_speaker_tone(uint32_t frequency_hz,
     }
     const uint8_t channel = speakerNextChannel;
     speakerNextChannel = static_cast<uint8_t>((channel + 1U) % kToneChannels);
-    M5.Speaker.setChannelVolume(channel, volume);
-    /*  非同期：M5 の spk_task が鳴らす。stop_current_sound=true なので、同じ
-     *  チャンネルに前の音が残っていれば置き換える。M5 が受け付けなかった
-     *  （そのチャンネルに書き込み中の要求がある）ときは 0 を返す。 */
-    return M5.Speaker.tone(static_cast<float>(frequency_hz), duration_ms,
-                           channel, true) ? 1 : 0;
+    return speakerToneOn(channel, frequency_hz, duration_ms, volume);
+}
+
+extern "C" int32_t toppers_m5_speaker_tone_channel(uint32_t frequency_hz,
+                                                   uint32_t duration_ms,
+                                                   uint8_t volume,
+                                                   uint8_t channel)
+{
+    if (!speakerToneArgsValid(frequency_hz, duration_ms)
+        || (channel >= kSpeakerChannels)) {
+        return kSpeakerBadArgument;
+    }
+    if (!M5.Speaker.isRunning()) {
+        const int32_t begun = toppers_m5_speaker_begin();
+        if (begun != 1) {
+            return begun;
+        }
+    }
+    return speakerToneOn(channel, frequency_hz, duration_ms, volume);
 }
 
 extern "C" void toppers_m5_speaker_stop(void)
 {
     if (M5.Speaker.isRunning()) {
         M5.Speaker.stop();
+    }
+}
+
+extern "C" void toppers_m5_speaker_stop_channel(uint8_t channel)
+{
+    if ((channel < kSpeakerChannels) && M5.Speaker.isRunning()) {
+        M5.Speaker.stop(channel);
     }
 }
 
@@ -420,7 +464,9 @@ extern "C" int32_t toppers_m5_speaker_amp_reg(uint8_t reg)
 extern "C" int32_t toppers_m5_speaker_begin(void) { return -1; }
 extern "C" int32_t toppers_m5_speaker_ready(void) { return -1; }
 extern "C" int32_t toppers_m5_speaker_tone(uint32_t, uint32_t, uint8_t) { return -1; }
+extern "C" int32_t toppers_m5_speaker_tone_channel(uint32_t, uint32_t, uint8_t, uint8_t) { return -1; }
 extern "C" void toppers_m5_speaker_stop(void) { }
+extern "C" void toppers_m5_speaker_stop_channel(uint8_t) { }
 extern "C" int32_t toppers_m5_speaker_set_volume(uint8_t) { return -1; }
 extern "C" int32_t toppers_m5_speaker_amp_reg(uint8_t) { return -1; }
 #endif /* CONFIG_IDF_TARGET_ESP32S3 */

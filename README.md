@@ -79,7 +79,7 @@ prebuilt archive、include 配置に依存しています）。
 
 | ボード | 実機で確認できていること |
 | --- | --- |
-| M5Stack CoreS3 | `M5Unified + Dual Core`（LCD・touch、SMP カーネル上）、Wi-Fi STA（Open / WPA2-PSK / WPA3-SAE）-> DHCP -> DNS -> TCP、内蔵スピーカーへの I2S 出力（`M5Unified + Dual Core`。AW88298 の有効化とサンプルレート 48 kHz を実測。**音は耳で未確認**）。[`docs/cores3-audio.md`](docs/cores3-audio.md) |
+| M5Stack CoreS3 | `M5Unified + Dual Core`（LCD・touch、SMP カーネル上）、Wi-Fi STA（Open / WPA2-PSK / WPA3-SAE）-> DHCP -> DNS -> TCP、内蔵スピーカーのトーン出力（`M5Unified + Dual Core`。効果音はチャンネル 0..3 を順に、BGM はチャンネル指定で鳴らせる。AW88298 の有効化とサンプルレート 48 kHz を実測。ゲームの BGM は耳で確認済み、**個々の効果音と同時再生は耳で未確認**。CoreS3-SE は実機未確認）。[`docs/cores3-audio.md`](docs/cores3-audio.md) |
 | M5StickS3 | `Minimal`（`Blink`）、Wi-Fi スキャン（13 AP）、`M5Unified + Dual Core`（`board_M5StickS3` を検出、240x135 LCD・IMU・PMIC）。[`docs/m5sticks3-m5unified.md`](docs/m5sticks3-m5unified.md) |
 | M5AtomS3 Lite | `Minimal`（`Blink` warm 5/5・真cold 5/5）、`GpioInterrupt`（G7 自己駆動）、本体 RGB LED（G35、色順も目視確認）、Wi-Fi スキャン（16 AP）。**STA は WPA3 移行モードの AP に繋がりません**（下記「既知の制限」） |
 | M5Stack Basic | `Minimal`、`M5Unified + Dual Core`（LCD、SMP）、Wi-Fi スキャン。**touch・IMU・RTC はこの機種に無いので使えません** |
