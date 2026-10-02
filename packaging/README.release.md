@@ -472,8 +472,8 @@ log taskが読む前の一時バッファ再利用による重複・文字化け
   `setup()`、1秒heartbeat
 - M5Unified（LCD／touch、SMPカーネル上）と、`WiFi` profileでのscanおよび接続の実機動作
 - CoreS3の内蔵スピーカー: アンプの有効化、48 kHzでの送出、チャンネル指定と停止を
-  実機の送出データで確認。ゲームのBGMは開発中の環境で耳で確認済み、個々の効果音とBGMとの重なりは
-  耳では未確認。**CoreS3-SEは実機未確認**
+  実機の送出データで確認。このパッケージで建てたゲームで、効果音とBGMの試聴と操作も確認済み
+  （クリア時のBGM停止は未確認）。**CoreS3-SEは実機未確認**
 - Wi-Fi connectはAndroidテザリングでオープンAP、WPA2-PSK、WPA3-SAEに接続し、
   DHCP、DNS、TCP受信まで
 
