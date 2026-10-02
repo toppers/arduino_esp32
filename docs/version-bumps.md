@@ -433,3 +433,29 @@ X-check（基準 `dbbb054`）で `esp32s3` の `minimal` / `wifi-connect`、`esp
 `M5Unified` 例題はビルド・リンクできたが、ステージは 0.2.29 のソースから作って
 あるので、動くかは確かめていない。利用者向けの手引きに「入れたあと M5GFX の版を
 確かめる」を足し、0.7.0 のリリースノートにも追記した。
+
+### 公開後に埋めた確認（2026-10-03）: ゲーム本体
+
+公開時点ではゲーム（`ArtosRoguelike`）が開発 PC に無く、代用スケッチでしか確かめて
+いなかった。届いた作業コピー（git 管理外、2026-10-03 受領）を、上の隔離環境
+（公開物の `toppers:esp32@0.7.0`、M5GFX 0.2.29、M5Unified 0.2.22）で建てた。
+
+| スケッチ | 結果 |
+| --- | --- |
+| `src/firmware/DisplayProbe` | ビルド・リンク PASS。ゲームが使う API（`poll_touch`・`draw_*`・`push_rgb565`・`set_font`・`speaker_*`・`tone_channel`・`stop_channel`）はすべて ELF で `T`（強い定義） |
+| `src/firmware/ParkDevice` | ビルド PASS |
+| `src/firmware/TouchProbe` | ビルド PASS |
+
+CoreS3 実機（書き込みは `arduino-cli upload`、利用者と同じ経路）:
+
+- `DisplayProbe` は 1 回の起動で `[Artos]` の失敗メッセージ（画面・タッチ・8×16 フォント・
+  スピーカー）が 1 つも出ず、`[M5] speaker started`、30 秒間 `loop` が回り続けた。
+  リセット・例外なし。
+- `ParkDevice` を書くと `[ParkDevice] LCD off; Arduino task parked.` のあと heartbeat が
+  0 になった。その状態のまま `DisplayProbe` を書き戻せ（`Hash of data verified`）、
+  ゲームが再び起動した。
+- `no time event is processed in hrt interrupt on PRC2.`（カーネルの LOG_NOTICE）が
+  30 秒に 2 回出た。音声を足す前の試験を含む手元の 16 本のログすべてで 0〜3 回出ており、
+  今回で増えたものではない。
+
+**画面の目視・タッチ操作・試聴はしていない**（人が見て、触って、聞く項目は利用者側）。
