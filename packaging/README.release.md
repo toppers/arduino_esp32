@@ -102,6 +102,12 @@ https://github.com/toppers/arduino_esp32/releases/latest/download/package_topper
 `Tools > Manage Libraries`から`M5Unified` **0.2.22** と`M5GFX` **0.2.29**
 を入れます。
 
+> **入れたあと、`M5GFX`が0.2.29のままか確かめてください。** `M5Unified`は`M5GFX`に
+> 依存しているので、依存ライブラリも一緒に入れると、`M5GFX`が最新版で上書きされる
+> ことがあります（`arduino-cli lib install M5GFX@0.2.29 M5Unified@0.2.22`で、
+> 0.2.32が入ることを確認しました）。違っていたら、`M5GFX`を0.2.29に選び直して
+> ください。`arduino-cli`なら`lib install --no-deps`で依存の自動導入を止められます。
+
 > **同梱のFMP3ランタイムはこのバージョンのソースに対してビルドされています。**
 > ライブラリだけ更新するとヘッダと事前ビルド済みオブジェクトが食い違い、
 > 未定義シンボルやリンクエラーになります。他のprofileでは不要です。

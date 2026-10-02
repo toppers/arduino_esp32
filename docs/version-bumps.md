@@ -377,3 +377,59 @@ CR を落としたコピーへ照合する形に直した。
   `m5cores3_fmp3/m5/M5Unified`・`m5stampp4_fmp3/wificonnect/WiFiConnect`・
   `m5atomlite_fmp3/btclassic/BluetoothSPP` -> **3/3 PASS**。
 - CI `verify-package` は 3 ホストとも **124/124**、`Compare images across hosts` も緑。
+
+---
+
+## 2026-10-02: v0.7.0 として公開（CoreS3 の内蔵スピーカー）
+
+`v0.7.0` タグ（`c99d74e`）、<https://github.com/toppers/arduino_esp32/releases/tag/v0.7.0>。
+`toppers-esp32-0.7.0.zip` は sha256
+`cef76f25f73408945f7d2a1f89f7c1da36ad05dde550b0bb31c31a21fd0eee59`。
+**リンクドライバは 0.6.1 のものを再利用した**（`scripts/fmp3_link.py` は v0.6.1 から
+不変。公開済みのドライバの最新は 0.6.1 で、0.6.2 も同じものを使っている。
+`Open 0.7.0` のコミットメッセージに「0.6.2 のもの」とあるのは誤り）。
+
+実体は、CoreS3 / CoreS3-SE の内蔵スピーカー（効果音のトーンと、チャンネル指定の
+BGM）、画面・タッチの C ブリッジ、その下の FreeRTOS ABI、`esp_timer_get_time` が
+コア 1 で 26.8 秒跳ぶ欠陥の修正。詳細は [`cores3-audio.md`](cores3-audio.md)。
+依存の版（core 3.3.9、M5Unified 0.2.22、M5GFX 0.2.29）は動かしていない。
+
+### 配布バイト列が動いた範囲
+
+X-check（基準 `dbbb054`）で `esp32s3` の `minimal` / `wifi-connect`、`esp32` の
+`minimal` / `wifi-connect` / `bt-classic` が MATCH。DIFF は両チップの `m5-unified`
+だけ。RISC-V 3 板は無関係（ステージ不変）。
+
+### 版の文字列が 2 か所にあった（CI を 1 回やり直した）
+
+`Open 0.7.0` で `library.properties` だけを上げ、`src/ToppersFMP3_M5CoreS3.cpp` の
+`libraryInfo()` を `0.6.2` のまま CI（run 37013943903、3 ホスト 124/124）を通した。
+**CI は通り、`make_package_index.py` も ZIP を作った。** 捕まえたのは、そのあとの
+`check_release_artifacts.py` だった。直した `c99d74e` で CI を回し直し
+（run 37025946769）、その `platform` から作り直したものを出した。
+⇒ **版を上げるときは `library.properties` と `libraryInfo()` の 2 か所を同じ
+コミットで上げること。** CI は検査しないので、気づくのは index を作ったあとになる。
+
+### 公開後の確認
+
+- CI `verify-package`（run 37025946769）は 3 ホストとも **124/124**、
+  `Compare images across hosts` は 372 件すべて identical。
+- `check_release_artifacts` / `check_host_paths`（1,247 ファイル）とも PASSED。
+- `latest` の index を取得して、検査を通したものと**バイト一致**。draft でも
+  pre-release でもなく、アセットは 2 本とも添付されている。
+- index が名指しする**全 30 アセット**（platform 9 版 + ドライバ 21 本）を実 URL から
+  取得して sha256 照合 -> **30/30 一致**。
+- **公開物だけで**隔離環境へ導入（`toppers:esp32@0.7.0`、core 3.3.9、M5GFX 0.2.29、
+  M5Unified 0.2.22）し、4 本を建てた: `m5cores3_fmp3/m5/M5Unified`・
+  `m5stampp4_fmp3/wificonnect/WiFiConnect`・`m5atomlite_fmp3/btclassic/BluetoothSPP`・
+  チャンネル試験のスケッチ（リポジトリ外） -> **4/4 PASS**。チャンネル試験は CoreS3 へ
+  書き込み、開発ツリーでの結果（`cores3-audio.md`）と同じ値を得た。
+
+### 導入で見つけた罠: M5GFX が最新に上書きされる
+
+隔離環境で `arduino-cli lib install M5GFX@0.2.29 M5Unified@0.2.22` を実行すると、
+**M5GFX は 0.2.32 になった**。M5Unified の依存解決が、先に入れた 0.2.29 を最新で
+上書きする。CI は `--no-deps` を付けているので当たらない。0.2.32 でも
+`M5Unified` 例題はビルド・リンクできたが、ステージは 0.2.29 のソースから作って
+あるので、動くかは確かめていない。利用者向けの手引きに「入れたあと M5GFX の版を
+確かめる」を足し、0.7.0 のリリースノートにも追記した。

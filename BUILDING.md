@@ -339,6 +339,12 @@ fatal error: ToppersFMP3_M5Unified.h: No such file or directory
 
 ## 3. パッケージと index を作る
 
+**版は 2 か所にあります。** `library.properties` の `version` と、
+`src/ToppersFMP3_M5CoreS3.cpp` の `libraryInfo()` です。同じコミットで両方を
+上げてから CI を回してください。CI はこの一致を見ないので、片方を忘れても
+`verify-package` は通り、index も作れます。捕まえるのは、そのあとの
+`check_release_artifacts.py` です（0.7.0 で実際に CI を 1 回やり直しました）。
+
 ```bash
 curl -fL -o package_toppers_index.published.json \
     https://github.com/toppers/arduino_esp32/releases/latest/download/package_toppers_index.json
